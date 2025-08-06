@@ -1,0 +1,27 @@
+# Fichiers Python compilés
+__pycache__/
+*.pyc
+
+# Base de données locale
+db.sqlite3
+
+# Environnement virtuel
+env/
+venv/
+
+# Fichiers temporaires
+*.log
+*.pot
+*.mo
+
+# Paramètres de l’IDE
+.vscode/
+.idea/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Migrations compilées
+*/migrations/*.pyc
+*/migrations/__pycache__/
