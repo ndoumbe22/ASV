@@ -1,0 +1,64 @@
+version: "3.1"
+
+stories:
+- story: accueil et symptômes
+  steps:
+  - intent: saluer
+  - action: utter_saluer
+  - intent: demander_symptomes
+  - action: utter_demander_symptomes
+
+- story: solution et précautions
+  steps:
+  - intent: demander_solution
+  - action: utter_demander_solution
+  - intent: demander_precautions
+  - action: utter_demander_precautions
+
+- story: rappel médicaments
+  steps:
+  - intent: rappel_medicaments
+  - action: utter_rappel_medicaments
+
+- story: rappel rendez-vous
+  steps:
+  - intent: rappel_rendezvous
+  - action: utter_rappel_rendezvous
+
+- story: localisation pharmacie et prise de rendez-vous
+  steps:
+  - intent: localisation_pharmacie
+  - action: utter_localisation_pharmacie
+  - intent: prise_rendezvous
+  - action: utter_prise_rendezvous
+
+- story: humeur positive
+  steps:
+  - intent: humeur_bonne
+  - action: utter_happy
+
+- story: humeur négative avec aide
+  steps:
+  - intent: humeur_triste
+  - action: utter_cheer_up
+  - action: utter_did_that_help
+
+- story: aide confirmée
+  steps:
+  - intent: affirmation
+  - action: utter_happy
+
+- story: aide refusée
+  steps:
+  - intent: negation
+  - action: utter_au_revoir
+
+- story: dire au revoir
+  steps:
+  - intent: au_revoir
+  - action: utter_au_revoir
+
+- story: défi bot
+  steps:
+  - intent: defis_bot
+  - action: utter_iamabot
