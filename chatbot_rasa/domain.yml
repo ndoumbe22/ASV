@@ -2,64 +2,77 @@ version: "3.1"
 
 intents:
   - saluer
+  - remercier
   - au_revoir
-  - demander_symptomes
-  - demander_solution
-  - demander_precautions
-  - rappel_medicaments
-  - rappel_rendezvous
-  - localisation_pharmacie
-  - prise_rendezvous
-  - faq_maladies
-  - humeur_bonne          # ajouté pour mood_great
-  - humeur_triste         # ajouté pour mood_unhappy
-  - affirmation           # pour intent affirm (oui)
-  - negation              # pour intent deny (non)
-  - defis_bot             # pour bot_challenge
+  - demander_maladie
+  - ask_presentation
+  - prendre_rendez_vous
+  - demander_rendez_vous
+
+entities:
+  - maladie
+  - date
+  - heure
+
+slots:
+  maladie:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: maladie
+
+  date:
+    type: text
+    mappings:
+      - type: from_entity
+        entity: date
+      - type: from_text
+    influence_conversation: true
+  heure:
+    type: text
+    mappings:
+      - type: from_entity
+        entity: heure
+      - type: from_text
+    influence_conversation: true
 
 responses:
   utter_saluer:
-    - text: "Bonjour ! Comment puis-je vous aider aujourd’hui ?"
+    - text: "Bonjour, comment puis-je vous aider ?"
+    - text: "Salut 👋, que puis-je faire pour vous aujourd'hui ?"
+
+  utter_remercier:
+    - text: "Avec plaisir !"
+    - text: "Je suis là pour vous aider 😊"
 
   utter_au_revoir:
-    - text: "Merci, prenez soin de vous ! À bientôt."
+    - text: "Au revoir, prenez soin de vous."
+    - text: "Bonne journée et à bientôt !"
 
-  utter_demander_symptomes:
-    - text: "Pouvez-vous préciser depuis quand vous avez ces symptômes et leur intensité ?"
+  utter_presentation:
+    - text: "Je suis un assistant de santé virtuel, conçu pour répondre à vos questions médicales et vous accompagner dans la gestion de votre santé."
 
-  utter_demander_solution:
-    - text: "Je vous conseille de consulter un médecin. Voulez-vous que je vous trouve un centre médical proche ?"
+  utter_symptome_paludisme:
+    - text: "Les symptômes du paludisme incluent fièvre, frissons, sueurs, maux de tête, nausées."
+  utter_symptome_grippe:
+    - text: "Les symptômes de la grippe sont fièvre, fatigue, toux, nez qui coule, douleurs musculaires."
+  utter_symptome_diabete:
+    - text: "Le diabète peut provoquer soif excessive, urination fréquente, fatigue, perte de poids."
+  utter_symptome_covid:
+    - text: "Les symptômes du COVID incluent toux, fièvre, fatigue, perte du goût ou de l’odorat."
+  utter_symptome_tuberculose:
+    - text: "La tuberculose provoque toux persistante, fièvre, sueurs nocturnes, perte de poids."
+  utter_symptome_autre:
+    - text: "Je n'ai pas encore d'informations sur les symptômes de cette maladie."
+  utter_symptome_generique:
+    - text: "De quelle maladie voulez-vous connaître les symptômes ?"
 
-  utter_demander_precautions:
-    - text: "Hydratez-vous bien, reposez-vous et évitez les efforts physiques."
+  utter_confirmer_rendez_vous:
+    - text: "Je note, vous voulez un rendez-vous le {date} à {heure}, c'est bien ça ?"
 
-  utter_rappel_medicaments:
-    - text: "D'accord, je vous rappellerai de prendre vos médicaments à l'heure prévue."
-
-  utter_rappel_rendezvous:
-    - text: "Je vous rappellerai votre rendez-vous médical à l’heure convenue."
-
-  utter_localisation_pharmacie:
-    - text: "Voici la pharmacie la plus proche : [Nom, Adresse]. Voulez-vous l’itinéraire ?"
-
-  utter_prise_rendezvous:
-    - text: "Très bien, je peux fixer un rendez-vous. Pour quel jour et quelle heure exactement ?"
-
-  utter_faq_maladies:
-    - text: "Voici les informations que j’ai trouvées sur cette maladie : ..."
-
-  # Ajouts liés aux tests
-  utter_greet:
-    - text: "Bonjour ! Comment puis-je vous aider ?"
-
-  utter_happy:
-    - text: "Je suis content de l'entendre !"
-
-  utter_cheer_up:
-    - text: "Ne vous inquiétez pas, ça ira mieux bientôt."
-
-  utter_did_that_help:
-    - text: "Est-ce que cela vous a aidé ?"
-
-  utter_iamabot:
-    - text: "Je suis un chatbot médical, comment puis-je vous aider ?"
+actions:
+  - action_repondre_maladie
+  - action_repondre_symptome
+  - action_prendre_rendez_vous
+  - action_lister_rendez_vous

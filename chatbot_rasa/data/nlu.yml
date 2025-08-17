@@ -3,111 +3,59 @@ version: "3.1"
 nlu:
 - intent: saluer
   examples: |
-    - Bonjour
-    - Salut
-    - Coucou
-    - Bonsoir
-    - Hello
-    - Hi
+    - bonjour
+    - salut
+    - coucou
+    - bonsoir
+    - hello
+
+- intent: remercier
+  examples: |
+    - merci
+    - merci beaucoup
+    - c’est gentil
+    - merci bien
 
 - intent: au_revoir
   examples: |
-    - Merci, au revoir
-    - Bonne journée
-    - À bientôt
-    - Bye
-    - Goodbye
+    - au revoir
+    - à plus tard
+    - bye
+    - bonne journée
 
-- intent: demander_symptomes
+- intent: demander_maladie
   examples: |
-    - J'ai de la fièvre et mal à la tête
-    - Je tousse beaucoup et j'ai le nez qui coule
-    - J'ai mal au ventre depuis hier
-    - Je ressens des douleurs musculaires
-    - Mon enfant a des boutons rouges
-    - J’ai mal à la gorge
+    - Qu'est-ce que la [grippe](maladie) ?
+    - Explique-moi le [diabète](maladie)
+    - Parle-moi du [paludisme](maladie)
+    - que sais-tu du [covid](maladie)
+    - [tuberculose](maladie)
+    - [grippe](maladie)
+    - [paludisme](maladie)
+    - j'ai la [grippe](maladie)
+    - j'ai le [paludisme](maladie)
+    - je souffre de [paludisme](maladie)
+    - je pense avoir la [grippe](maladie)
 
-- intent: demander_solution
+- intent: ask_presentation
   examples: |
-    - Que puis-je faire ?
-    - Quel traitement me conseillez-vous ?
-    - Comment me soigner ?
-    - Quels médicaments dois-je prendre ?
+    - qui es-tu ?
+    - présente-toi
+    - parle-moi de toi
+    - fais une présentation
 
-- intent: demander_precautions
+- intent: prendre_rendez_vous
   examples: |
-    - Quelles précautions dois-je prendre ?
-    - Comment éviter d’aggraver ma maladie ?
-    - Que dois-je éviter de manger ?
+    - Je veux prendre un rendez-vous demain à 15h
+    - Peux-tu me réserver un rendez-vous mardi matin ?
+    - Fixe-moi un rendez-vous avec le docteur à 10h
+    - Rendez-vous vendredi à 14h
+    
 
-- intent: rappel_medicaments
+- intent: demander_rendez_vous
   examples: |
-    - Rappelle-moi de prendre mes médicaments à 8h
-    - Donne-moi un rappel pour mes comprimés
-    - Préviens-moi quand c’est l’heure de mon traitement
-
-- intent: rappel_rendezvous
-  examples: |
-    - Rappelle-moi mon rendez-vous chez le médecin
-    - Quand est mon prochain rendez-vous ?
-    - Préviens-moi avant mon rendez-vous
-
-- intent: localisation_pharmacie
-  examples: |
-    - Où est la pharmacie la plus proche ?
-    - Trouve-moi un centre médical près de moi
-    - Y a-t-il un hôpital à proximité ?
-
-- intent: prise_rendezvous
-  examples: |
-    - Prends un rendez-vous pour demain 10h
-    - Réserve-moi une consultation vendredi
-    - Fixe un rendez-vous avec un cardiologue
-
-- intent: faq_maladies
-  examples: |
-    - Qu’est-ce que le paludisme ?
-    - Quels sont les symptômes de la grippe ?
-    - Comment prévenir le diabète ?
-    - Le paludisme est-il contagieux ?
-
-- intent: humeur_bonne
-  examples: |
-    - Je vais bien
-    - Je me sens super
-    - Ça va très bien
-    - Je suis heureux(se)
-    - I feel great
-    - I am happy
-
-- intent: humeur_triste
-  examples: |
-    - Je ne me sens pas bien
-    - Ça ne va pas
-    - Je suis triste
-    - I feel sad
-    - I am unhappy
-
-- intent: affirmation
-  examples: |
-    - Oui
-    - Exactement
-    - C’est ça
-    - Oui, bien sûr
-    - Yes
-    - Yeah
-
-- intent: negation
-  examples: |
-    - Non
-    - Pas du tout
-    - Jamais
-    - No
-    - Nope
-
-- intent: defis_bot
-  examples: |
-    - Es-tu un bot ?
-    - Tu es un robot ?
-    - Are you a bot?
-    - Are you a robot?
+    - Quels sont mes rendez-vous ?
+    - Montre-moi mes rendez-vous
+    - J'ai quels rendez-vous ?
+    - Liste de mes rendez-vous
+    - Est-ce que j’ai des rendez-vous ?
