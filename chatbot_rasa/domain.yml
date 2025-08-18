@@ -28,14 +28,14 @@ slots:
       - type: from_entity
         entity: date
       - type: from_text
-    influence_conversation: true
+    influence_conversation: false
   heure:
     type: text
     mappings:
       - type: from_entity
         entity: heure
       - type: from_text
-    influence_conversation: true
+    influence_conversation: false
 
 responses:
   utter_saluer:
@@ -73,6 +73,5 @@ responses:
 
 actions:
   - action_repondre_maladie
-  - action_repondre_symptome
   - action_prendre_rendez_vous
   - action_lister_rendez_vous

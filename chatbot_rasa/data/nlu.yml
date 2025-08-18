@@ -8,6 +8,9 @@ nlu:
     - coucou
     - bonsoir
     - hello
+    - Bonne aprés midi
+    - comment tu vas ?
+
 
 - intent: remercier
   examples: |
@@ -36,20 +39,21 @@ nlu:
     - j'ai le [paludisme](maladie)
     - je souffre de [paludisme](maladie)
     - je pense avoir la [grippe](maladie)
+    - je suis malade
 
 - intent: ask_presentation
   examples: |
     - qui es-tu ?
     - présente-toi
     - parle-moi de toi
-    - fais une présentation
+    - fais une présentation de vous
 
 - intent: prendre_rendez_vous
   examples: |
-    - Je veux prendre un rendez-vous demain à 15h
-    - Peux-tu me réserver un rendez-vous mardi matin ?
-    - Fixe-moi un rendez-vous avec le docteur à 10h
-    - Rendez-vous vendredi à 14h
+    - Je veux un rendez-vous [demain](date) à [14h](heure)
+    - Prenez-moi un rendez-vous [18/08/2025](date) à [10:30](heure)
+    - Je veux un rendez-vous [vendredi](date) à [14h](heure)
+    - Prenons rendez-vous [demain](date) à [10h](heure)
     
 
 - intent: demander_rendez_vous
@@ -58,4 +62,4 @@ nlu:
     - Montre-moi mes rendez-vous
     - J'ai quels rendez-vous ?
     - Liste de mes rendez-vous
-    - Est-ce que j’ai des rendez-vous ?
+    - Est-ce que j'ai des rendez-vous ?

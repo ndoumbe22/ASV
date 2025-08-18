@@ -27,13 +27,23 @@
 #         return []
 
 import json
+import os 
 from typing import Any, Text, Dict, List
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 from rasa_sdk.events import SlotSet
 
+# Base des maladies connues avec prévention
+maladies_connues = {
+    "paludisme": ["utiliser des moustiquaires", "éviter les zones à risque", "prendre des répulsifs"],
+    "grippe": ["se laver les mains régulièrement", "éviter le contact avec les malades", "vaccination annuelle"],
+    "diabète": ["avoir une alimentation équilibrée", "faire du sport régulièrement", "surveiller sa glycémie"],
+    "covid": ["porter un masque dans les lieux publics", "se laver souvent les mains", "vaccination recommandée"],
+    "tuberculose": ["éviter les lieux confinés avec des malades", "se faire dépister", "vaccination BCG"]
+}
 
 class ActionRepondreMaladie(Action):
+
     def name(self) -> Text:
         return "action_repondre_maladie"
 
@@ -41,63 +51,23 @@ class ActionRepondreMaladie(Action):
             tracker: Tracker,
             domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
 
-        maladie_slot = tracker.get_slot("maladie")
-        user_text = tracker.latest_message.get('text', '').lower()
-
-        maladie = None
-        if maladie_slot:
-            maladie = maladie_slot.lower()
-        else:
-            if "paludisme" in user_text:
-                maladie = "paludisme"
-            elif "grippe" in user_text:
-                maladie = "grippe"
-            elif "diabete" in user_text or "diabète" in user_text:
-                maladie = "diabete"
-            elif "covid" in user_text:
-                maladie = "covid"
-            elif "tuberculose" in user_text:
-                maladie = "tuberculose"
-
-        if maladie == "paludisme":
-            dispatcher.utter_message(response="utter_symptome_paludisme")
-        elif maladie == "grippe":
-            dispatcher.utter_message(response="utter_symptome_grippe")
-        elif maladie == "diabete":
-            dispatcher.utter_message(response="utter_symptome_diabete")
-        elif maladie == "covid":
-            dispatcher.utter_message(response="utter_symptome_covid")
-        elif maladie == "tuberculose":
-            dispatcher.utter_message(response="utter_symptome_tuberculose")
-        elif maladie is None:
-            dispatcher.utter_message(response="utter_symptome_generique")
-        else:
-            dispatcher.utter_message(response="utter_symptome_autre")
-
-        return []
-    
-class ActionRepondreSymptome(Action):
-
-    def name(self) -> Text:
-        return "action_repondre_symptome"
-
-    def run(self, dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
-
-        maladie = tracker.get_slot("maladie")
+        maladie = next(tracker.get_latest_entity_values("maladie"), None)
 
         if maladie:
-            if maladie.lower() == "grippe":
-                dispatcher.utter_message(text="Les symptômes de la grippe incluent : fièvre, toux, maux de tête, fatigue, courbatures.")
-            elif maladie.lower() == "paludisme":
-                dispatcher.utter_message(text="Les symptômes du paludisme incluent : fièvre élevée, frissons, sueurs, maux de tête, nausées.")
+            maladie = maladie.lower()
+            if maladie in maladies_connues:
+                preventions = ", ".join(maladies_connues[maladie])
+                dispatcher.utter_message(text=f"Pour {maladie}, il est conseillé de consulter un médecin. "
+                                              f"Voici quelques mesures de prévention : {preventions}.")
             else:
-                dispatcher.utter_message(text=f"Je n'ai pas encore d'information sur la maladie {maladie}.")
+                dispatcher.utter_message(text="Je n'ai pas encore d'informations sur cette maladie. "
+                                              "Je suis encore en apprentissage et je prendrai en compte cette nouvelle information pour l'avenir.")
         else:
-            dispatcher.utter_message(text="Pouvez-vous préciser la maladie ?")
+            dispatcher.utter_message(text="Je n'ai pas encore d'informations sur cette maladie. "
+                                              "Je suis encore en apprentissage et je prendrai en compte cette nouvelle information pour l'avenir.")
 
         return []
+
     
 
 class ActionPrendreRendezVous(Action):
@@ -108,19 +78,28 @@ class ActionPrendreRendezVous(Action):
                   tracker: Tracker,
                   domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
 
+        # Récupération des slots
         date = tracker.get_slot("date")
         heure = tracker.get_slot("heure")
-        user_id = tracker.sender_id  # Identifiant unique de l'utilisateur
+        user_id = tracker.sender_id
 
-        if not date or not heure:
-            dispatcher.utter_message(text="Pouvez-vous préciser la date et l’heure du rendez-vous ?")
+        # Si date ou heure manquante, on demande à l'utilisateur
+        if not date:
+            dispatcher.utter_message(text="Pouvez-vous préciser la date du rendez-vous ?")
+            return []
+        if not heure:
+            dispatcher.utter_message(text="Pouvez-vous préciser l’heure du rendez-vous ?")
             return []
 
         # Lecture du fichier JSON
-        try:
-            with open("rendez_vous.json", "r", encoding="utf-8") as f:
-                rendez_vous = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+        rendez_vous_file = "rendez_vous.json"
+        if os.path.exists(rendez_vous_file):
+            try:
+                with open(rendez_vous_file, "r", encoding="utf-8") as f:
+                    rendez_vous = json.load(f)
+            except json.JSONDecodeError:
+                rendez_vous = []
+        else:
             rendez_vous = []
 
         # Vérifier si un rendez-vous existe déjà pour ce user à cette date/heure
@@ -140,7 +119,7 @@ class ActionPrendreRendezVous(Action):
         rendez_vous.append(nouveau_rdv)
 
         # Sauvegarde
-        with open("rendez_vous.json", "w", encoding="utf-8") as f:
+        with open(rendez_vous_file, "w", encoding="utf-8") as f:
             json.dump(rendez_vous, f, ensure_ascii=False, indent=4)
 
         dispatcher.utter_message(
