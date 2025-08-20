@@ -3,30 +3,5 @@
         "user_id": "test_user1",
         "date": "2025-08-17",
         "heure": "04:00"
-    },
-    {
-        "user_id": "4a8398292dcf4d48a684088a37269481",
-        "date": "Rendez-vous vendredi à 14h",
-        "heure": "Rendez-vous vendredi à 14h"
-    },
-    {
-        "user_id": "4a8398292dcf4d48a684088a37269481",
-        "date": "Je veux prendre un rendez-vous",
-        "heure": "Je veux prendre un rendez-vous"
-    },
-    {
-        "user_id": "7a16951af9964f8b91d2459f74ecb2d1",
-        "date": "demain](date",
-        "heure": "[14h](heure"
-    },
-    {
-        "user_id": "7a16951af9964f8b91d2459f74ecb2d1",
-        "date": "[18/08/2025](date",
-        "heure": "[10:30](heure"
-    },
-    {
-        "user_id": "7a16951af9964f8b91d2459f74ecb2d1",
-        "date": "demain",
-        "heure": "Prenez-moi un rendez-vous pour demain"
     }
 ]

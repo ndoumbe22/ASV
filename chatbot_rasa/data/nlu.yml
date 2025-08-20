@@ -16,7 +16,7 @@ nlu:
   examples: |
     - merci
     - merci beaucoup
-    - c’est gentil
+    - c'est gentil
     - merci bien
 
 - intent: au_revoir
@@ -39,7 +39,7 @@ nlu:
     - j'ai le [paludisme](maladie)
     - je souffre de [paludisme](maladie)
     - je pense avoir la [grippe](maladie)
-    - je suis malade
+    - c'est quoi la malaria
 
 - intent: ask_presentation
   examples: |
@@ -63,3 +63,21 @@ nlu:
     - J'ai quels rendez-vous ?
     - Liste de mes rendez-vous
     - Est-ce que j'ai des rendez-vous ?
+
+
+- intent: info_application
+  examples: |
+    - Quel est le but de cette application ?
+    - Que peut faire ce chatbot ?
+    - Explique-moi l'objectif de l'application
+    - Quel est ton rôle dans ce système ?
+    - Quelle est l'utilité de ce projet ?
+
+
+- intent: inform_maladie
+  examples: |
+    - Je suis atteint de la diarrhée
+    - Je souffre de diarrhée
+    - J'ai la diarrhée
+    - Je suis malade de diarrhée
+    - je suis atteinte de la diarrhée

@@ -39,7 +39,8 @@ maladies_connues = {
     "grippe": ["se laver les mains régulièrement", "éviter le contact avec les malades", "vaccination annuelle"],
     "diabète": ["avoir une alimentation équilibrée", "faire du sport régulièrement", "surveiller sa glycémie"],
     "covid": ["porter un masque dans les lieux publics", "se laver souvent les mains", "vaccination recommandée"],
-    "tuberculose": ["éviter les lieux confinés avec des malades", "se faire dépister", "vaccination BCG"]
+    "tuberculose": ["éviter les lieux confinés avec des malades", "se faire dépister", "vaccination BCG"],
+    "diarrhée": ["Se laver les mains régulièrement avec de l'eau et du savon (surtout avant de manger et après être allé aux toilettes)", "Laver soigneusement les fruits et légumes avant de les consommer", "Boire de l'eau potable (préférer de l'eau filtrée, bouillie ou en bouteille scellée)", "Bien cuire les aliments (éviter les viandes/poissons crus ou insuffisamment cuits)", "Éviter les aliments mal conservés ou vendus dans de mauvaises conditions d'hygiène"]
 }
 
 class ActionRepondreMaladie(Action):
@@ -155,6 +156,21 @@ class ActionListerRendezVous(Action):
             rdv_text = "\n".join([f"- {rdv['date']} à {rdv['heure']}" for rdv in mes_rdv])
             dispatcher.utter_message(text=f"📅 Voici vos rendez-vous enregistrés :\n{rdv_text}")
 
+        return []
+    
+
+class ActionInfoApplication(Action):
+    def name(self):
+        return "action_info_application"
+
+    def run(self, dispatcher, tracker, domain):
+        dispatcher.utter_message(text=(
+            "📌 Cette application permet de :\n"
+            "- Gérer les maladies et leurs symptômes\n"
+            "- Enregistrer des rendez-vous médicaux\n"
+            "- Aider les utilisateurs avec des informations de santé\n"
+            "- Servir de support pour le personnel médical"
+        ))
         return []
 
 

@@ -8,6 +8,7 @@ intents:
   - ask_presentation
   - prendre_rendez_vous
   - demander_rendez_vous
+  - info_application
 
 entities:
   - maladie
@@ -69,9 +70,28 @@ responses:
     - text: "De quelle maladie voulez-vous connaître les symptômes ?"
 
   utter_confirmer_rendez_vous:
-    - text: "Je note, vous voulez un rendez-vous le {date} à {heure}, c'est bien ça ?"
+    - text: "De quelle maladie voulez-vous connaître les symptômes ?"
+
+  utter_symptome_diarrhée:
+    - text: >
+        Les symptômes de la diarrhée sont :  
+        - Selles fréquentes et liquides (plus de 3 fois par jour)  
+        - Douleurs ou crampes abdominales  
+        - Fièvre légère parfois  
+        - Nausées ou vomissements possibles  
+        - Urgence d'aller aux toilettes (envie pressante)  
+        - Fatigue et malaise général  
+        - Signes de déshydratation : bouche sèche, soif intense, urines peu abondantes ou foncées, étourdissements.
+
+  utter_info_application:
+    - text: "📌 Cette application permet de \n:
+            - Gérer les maladies et leurs symptômes \n
+            - Enregistrer des rendez-vous médicaux \n
+            - Aider les utilisateurs avec des informations de santé \n
+            - Servir de support pour le personnel médical"
 
 actions:
   - action_repondre_maladie
   - action_prendre_rendez_vous
   - action_lister_rendez_vous
+  - action_info_application

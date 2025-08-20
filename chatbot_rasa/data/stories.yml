@@ -30,3 +30,8 @@ stories:
   steps:
     - intent: prendre_rendez_vous
     - action: action_prendre_rendez_vous
+
+- story: utilisateur demande infos sur l'application
+  steps:
+    - intent: info_application
+    - action: utter_info_application

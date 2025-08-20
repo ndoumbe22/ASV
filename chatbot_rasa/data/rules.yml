@@ -26,3 +26,9 @@ rules:
   steps:
   - intent: demander_rendez_vous
   - action: action_lister_rendez_vous
+
+
+- rule: Répondre aux symptômes de la diarrhée
+  steps:
+    - intent: inform_maladie
+    - action: utter_symptome_diarrhée
