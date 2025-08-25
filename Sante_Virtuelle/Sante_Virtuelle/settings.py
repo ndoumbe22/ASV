@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'sante_app',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
@@ -77,8 +78,12 @@ WSGI_APPLICATION = 'Sante_Virtuelle.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgrsql',
+        'NAME': 'sante',
+        'USER': 'Mouha',
+        'PASSWORD': 'ndeye',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
