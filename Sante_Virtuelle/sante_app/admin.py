@@ -7,19 +7,17 @@ from .models import (
 )
 
 
-# -------------------- Patient --------------------
+
 @admin.register(Patient)
 class PatientAdmin(admin.ModelAdmin):
-    list_display = ("nom", "prenom", "email", "telephone")
-    search_fields = ("nom", "prenom", "email")
-    list_filter = ("adresse",)
-
+    list_display = ("user", "adresse")
+    search_fields = ("user__username", "user__email", "user__first_name", "user__last_name")
 
 # -------------------- Médecin --------------------
 @admin.register(Medecin)
 class MedecinAdmin(admin.ModelAdmin):
-    list_display = ("nom", "prenom", "specialite", "email", "disponibilite")
-    search_fields = ("nom", "prenom", "specialite", "email")
+    list_display = ("user", "specialite", "disponibilite")
+    search_fields = ("user__username", "user__email", "user__first_name", "user__last_name", "specialite")
     list_filter = ("specialite", "disponibilite")
 
 

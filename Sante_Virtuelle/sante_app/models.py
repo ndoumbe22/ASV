@@ -1,29 +1,44 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
-# -------------------- Patient --------------------
-class Patient(models.Model):
-    nom = models.CharField(max_length=100)
-    prenom = models.CharField(max_length=100)
-    adresse = models.TextField()
-    email = models.EmailField(unique=True)
-    telephone = models.CharField(max_length=20)
+class User(AbstractUser):
+    ROLES = (
+        ('admin', 'Administrateur'),
+        ('medecin', 'Médecin'),
+        ('patient', 'Patient'),
+    )
+    role = models.CharField(max_length=20, choices=ROLES, default='patient')
 
     def __str__(self):
-        return f"{self.prenom} {self.nom}"
+        return f"{self.username} ({self.role})"
+    
+    class Meta :
+        db_table = 'utilisateur'
 
+# -------------------- Patient --------------------
+class Patient(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='patient_profile')
+    adresse = models.TextField()
+
+    class Meta :
+        db_table = 'Patient'
+
+
+    def __str__(self):
+        return f"Patient: {self.user.first_name} {self.user.last_name}"
 
 # -------------------- Médecin --------------------
 class Medecin(models.Model):
-    nom = models.CharField(max_length=100)
-    prenom = models.CharField(max_length=100)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='medecin_profile')
     disponibilite = models.BooleanField(default=True)
-    email = models.EmailField(unique=True)
+
     specialite = models.CharField(max_length=100)
 
-    def __str__(self):
-        return f"Dr {self.prenom} {self.nom} ({self.specialite})"
+    class Meta :
+        db_table = 'Medecin'
 
+    def __str__(self):
+        return f"Dr. {self.user.first_name} {self.user.last_name} ({self.specialite})"
 
 # -------------------- Consultation --------------------
 class Consultation(models.Model):
@@ -32,9 +47,13 @@ class Consultation(models.Model):
     heure = models.TimeField()
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="consultations")
     medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name="consultations")
+    rendez_vous = models.OneToOneField('RendezVous', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         return f"Consultation {self.numero} - {self.patient}"
+    
+    class Meta :
+        db_table = 'Consultation'
 
 
 # -------------------- Rendez-vous --------------------
@@ -45,10 +64,13 @@ class RendezVous(models.Model):
     heure = models.TimeField()
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="rendezvous")
     medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name="rendezvous")
-    medicaments = models.ManyToManyField("Medicament", related_name="rendezvous", blank=True)
+
 
     def __str__(self):
         return f"RDV {self.numero} - {self.patient}"
+    
+    class Meta :
+        db_table = 'RendezVous'
 
 
 
@@ -64,6 +86,9 @@ class Pathologie(models.Model):
 
     def __str__(self):
         return self.nom
+    
+    class Meta :
+        db_table = 'Pathologie'
 
 
 # -------------------- Médicaments & Traitements --------------------
@@ -73,6 +98,9 @@ class Medicament(models.Model):
 
     def __str__(self):
         return self.nom
+    
+    class Meta :
+        db_table = 'Medicament'
 
 
 class Traitement(models.Model):
@@ -83,6 +111,9 @@ class Traitement(models.Model):
 
     def __str__(self):
         return f"Traitement {self.id_traitement} - {self.medicament.nom}"
+    
+    class Meta :
+        db_table = 'Traitement'
 
 
 # -------------------- Constantes & Mesures --------------------
@@ -91,6 +122,12 @@ class Constante(models.Model):
 
     def __str__(self):
         return self.nom_constante
+    
+    class Meta :
+        db_table = 'Constante'
+    
+
+    
 
 
 class Mesure(models.Model):
@@ -102,6 +139,9 @@ class Mesure(models.Model):
 
     def __str__(self):
         return f"{self.constante.nom_constante}: {self.valeur} {self.unite}"
+    
+    class Meta :
+        db_table = 'Mesure'
 
 
 # -------------------- Articles --------------------
@@ -114,8 +154,14 @@ class Article(models.Model):
 
     def __str__(self):
         return self.titre
+    
 
+    class Meta :
+        db_table = 'Article'
+    
 
+    
+    
 # -------------------- Structures & Services --------------------
 class StructureDeSante(models.Model):
     nom = models.CharField(max_length=150)
@@ -123,6 +169,9 @@ class StructureDeSante(models.Model):
 
     def __str__(self):
         return self.nom
+    
+    class Meta :
+        db_table = 'StructureDeSante'
 
 
 class Service(models.Model):
@@ -134,16 +183,7 @@ class Service(models.Model):
 
     def __str__(self):
         return self.nom_service
-
-
-
-class User(AbstractUser):
-    ROLES = (
-        ('admin', 'Administrateur'),
-        ('medecin', 'Médecin'),
-        ('patient', 'Patient'),
-    )
-    role = models.CharField(max_length=20, choices=ROLES, default='patient')
-
-    def __str__(self):
-        return f"{self.username} ({self.role})"
+    
+    class Meta :
+        db_table = 'Service'
+    

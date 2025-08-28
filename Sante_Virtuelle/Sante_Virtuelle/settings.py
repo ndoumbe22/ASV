@@ -78,10 +78,10 @@ WSGI_APPLICATION = 'Sante_Virtuelle.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgrsql',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'sante',
-        'USER': 'Mouha',
-        'PASSWORD': 'ndeye',
+        'USER': 'mouha',
+        'PASSWORD': 'ndeye123',
         'HOST': 'localhost',
         'PORT': '5432',
     }
