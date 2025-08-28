@@ -61,7 +61,7 @@ responses:
   utter_symptome_diabete:
     - text: "Le diabète peut provoquer soif excessive, urination fréquente, fatigue, perte de poids."
   utter_symptome_covid:
-    - text: "Les symptômes du COVID incluent toux, fièvre, fatigue, perte du goût ou de l’odorat."
+    - text: "Les symptômes du COVID incluent toux, fièvre, fatigue, perte du goût ou de l'odorat."
   utter_symptome_tuberculose:
     - text: "La tuberculose provoque toux persistante, fièvre, sueurs nocturnes, perte de poids."
   utter_symptome_autre:
