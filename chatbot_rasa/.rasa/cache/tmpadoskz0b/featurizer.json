@@ -1,0 +1,68 @@
+{
+  "type": "IntentMaxHistoryTrackerFeaturizer",
+  "state_featurizer": {
+    "action_texts": [],
+    "entity_tag_specs": [],
+    "feature_states": {
+      "intent": {
+        "ask_presentation": 0,
+        "au_revoir": 1,
+        "back": 2,
+        "demander_maladie": 3,
+        "demander_prevention": 4,
+        "demander_rappel_rendezvous": 5,
+        "demander_symptome": 6,
+        "demander_traitement": 7,
+        "nlu_fallback": 8,
+        "out_of_scope": 9,
+        "remercier": 10,
+        "restart": 11,
+        "saluer": 12,
+        "session_start": 13
+      },
+      "action_name": {
+        "action_listen": 0,
+        "action_restart": 1,
+        "action_session_start": 2,
+        "action_default_fallback": 3,
+        "action_deactivate_loop": 4,
+        "action_revert_fallback_events": 5,
+        "action_default_ask_affirmation": 6,
+        "action_default_ask_rephrase": 7,
+        "action_two_stage_fallback": 8,
+        "action_unlikely_intent": 9,
+        "action_back": 10,
+        "...": 11,
+        "action_extract_slots": 12,
+        "action_repondre_maladie": 13,
+        "action_repondre_symptome": 14,
+        "action_repondre_prevention": 15,
+        "action_repondre_traitement": 16,
+        "action_rappel_rendezvous": 17,
+        "utter_au_revoir": 18,
+        "utter_presentation": 19,
+        "utter_rappel_rendezvous": 20,
+        "utter_remercier": 21,
+        "utter_saluer": 22,
+        "utter_symptome_autre": 23,
+        "utter_symptome_covid": 24,
+        "utter_symptome_diabete": 25,
+        "utter_symptome_generique": 26,
+        "utter_symptome_grippe": 27,
+        "utter_symptome_paludisme": 28,
+        "utter_symptome_tuberculose": 29
+      },
+      "entities": {
+        "maladie": 0,
+        "symptome": 1
+      },
+      "slots": {
+        "maladie_0": 0,
+        "symptome_0": 1
+      },
+      "active_loop": {}
+    }
+  },
+  "remove_duplicates": true,
+  "max_history": 5
+}
