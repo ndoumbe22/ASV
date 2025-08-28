@@ -1,6 +1,0 @@
-[
-  {
-    "name": "maladie",
-    "pattern": "(\\bpaludisme\\b|\\bgrippe\\b|\\bdiabete\\b|\\bcovid\\b|\\btuberculose\\b)"
-  }
-]
