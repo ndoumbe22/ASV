@@ -25,3 +25,9 @@ Thumbs.db
 # Migrations compilées
 */migrations/*.pyc
 */migrations/__pycache__/
+
+# Ignorer les environnements virtuels
+venv/
+env/
+rasa_env/
+*/rasa_env/
