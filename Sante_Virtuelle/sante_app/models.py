@@ -129,7 +129,6 @@ class Constante(models.Model):
 
     
 
-
 class Mesure(models.Model):
     id_mesure = models.AutoField(primary_key=True)
     valeur = models.FloatField()

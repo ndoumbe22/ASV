@@ -38,7 +38,7 @@ class PatientViewSet(viewsets.ModelViewSet):
             if user.role == "admin":
                 return Patient.objects.all()
             elif user.role == "patient":
-                return Patient.objects.filter(id=user.id)  # patient voit seulement lui-même
+                return Patient.objects.filter(user=user)  # filtrer par relation OneToOneField
         return Patient.objects.none()
 
     def get_permissions(self):
@@ -61,7 +61,7 @@ class MedecinViewSet(viewsets.ModelViewSet):
             if user.role == "admin":
                 return Medecin.objects.all()
             elif user.role == "medecin":
-                return Medecin.objects.filter(id=user.id)  # médecin voit que lui-même
+                return Medecin.objects.filter(user=user)  # filtrer par relation OneToOneField
         return Medecin.objects.none()
 
     def get_permissions(self):
