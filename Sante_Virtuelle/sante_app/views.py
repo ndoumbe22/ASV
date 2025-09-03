@@ -233,3 +233,6 @@ def cliniques(request):
 
 def consultation(request):
     return render(request, "consultation.html")
+
+def qui_sommes_nous(request):
+    return render(request, "qui_sommes_nous.html")

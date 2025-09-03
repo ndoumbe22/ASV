@@ -42,4 +42,5 @@ urlpatterns = [
     path("dentistes/", views.dentistes, name="dentistes"),
     path("cliniques/", views.cliniques, name="cliniques"),
     path("consultation/", views.consultation, name="consultation"),
+    path("qui-sommes-nous/", views.qui_sommes_nous, name="qui_sommes_nous"),
 ]

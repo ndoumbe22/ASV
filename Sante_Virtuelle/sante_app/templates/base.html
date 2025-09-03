@@ -56,12 +56,120 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-dark text-white py-3 mt-5">
-        <div class="container text-center">
-            &copy; 2025 AssitoSanté - Tous droits réservés.
-        </div>
-    </footer>
+   <footer class="text-white pt-5" style="background-color:#103e6e; margin:0;">
+    <div class="container">
+        <div class="row">
+            <!-- Logo + description -->
+            <div class="col-lg-3 col-md-6 mb-4">
+                <div class="d-flex align-items-center mb-3">
+                    <img src="{% static 'image/logo.png' %}" alt="Logo de AssitoSanté" width="120" height="120" class="me-2">
+                </div>
+                <p>
+                    Plateforme de Santé Virtuelle Intégrée pour un accès simple, rapide et sécurisé aux soins.
+                </p>
+                <p><i class="bi bi-telephone me-2"></i> +221 33 123 45 67</p>
+                <p><i class="bi bi-envelope me-2"></i> contact@assitosante.com</p>
+                <div>
+                    <a href="#" class="text-white me-2"><i class="bi bi-facebook"></i></a>
+                    <a href="#" class="text-white me-2"><i class="bi bi-twitter"></i></a>
+                    <a href="#" class="text-white me-2"><i class="bi bi-linkedin"></i></a>
+                    <a href="#" class="text-white"><i class="bi bi-youtube"></i></a>
+                </div>
+            </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+            <!-- Horaires -->
+            <div class="col-lg-3 col-md-6 mb-4">
+                <h5 class="fw-bold">Horaires d'ouverture</h5>
+                <ul class="list-unstyled">
+                    <li>Lundi - Mardi : 9h - 17h</li>
+                    <li>Mercredi - Vendredi : 8h - 17h</li>
+                    <li>Samedi : 10h - 17h</li>
+                    <li>Dimanche : Urgences</li>
+                </ul>
+            </div>
+
+            <!-- Carte -->
+            <div class="col-lg-3 col-md-6 mb-4">
+                <h5 class="fw-bold">Nous localiser</h5>
+                <input type="text" id="search-location" class="form-control mb-2" placeholder="Entrez une position...">
+                <div id="map" style="height:200px; border-radius:10px;"></div>
+            </div>
+
+            <!-- Formulaire -->
+            <div class="col-lg-3 col-md-6 mb-4">
+                <h5 class="fw-bold">Laissez-nous un message</h5>
+                <form>
+                    <div class="mb-2">
+                        <input type="text" class="form-control" placeholder="Nom & Prénom" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="email" class="form-control" placeholder="Email" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="text" class="form-control" placeholder="Sujet">
+                    </div>
+                    <div class="mb-2">
+                        <textarea class="form-control" rows="3" placeholder="Message"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-light w-100">Envoyer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Copyright -->
+    <div class="bg-dark text-center py-3" style="margin:0;">
+        <small>&copy; 2025 AssitoSanté. Tous droits réservés. | 
+            <a href="{% url 'qui_sommes_nous' %}" class="text-white text-decoration-underline">Qui sommes-nous ?</a>
+        </small>
+    </div>
+</footer>
+
+
+<!-- Leaflet pour la carte -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+
+<script>
+    // Initialisation de la carte
+    var map = L.map('map').setView([14.6928, -17.4467], 12); // Dakar par défaut
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Marqueur initial
+    var marker = L.marker([14.6928, -17.4467]).addTo(map);
+
+    // Recherche avec Nominatim (géocodage)
+    document.getElementById("search-location").addEventListener("change", function(e){
+        let query = e.target.value;
+
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                if(data.length > 0){
+                    let place = data[0]; 
+                    let lat = parseFloat(place.lat);
+                    let lon = parseFloat(place.lon);
+
+                    map.setView([lat, lon], 14);
+                    marker.setLatLng([lat, lon]);
+                    marker.bindPopup(`<b>${place.display_name}</b>`).openPopup();
+                } else {
+                    alert("Aucun résultat trouvé pour : " + query);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert("Erreur lors de la recherche de la position.");
+            });
+    });
+</script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
