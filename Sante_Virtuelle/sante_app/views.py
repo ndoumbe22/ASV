@@ -24,6 +24,8 @@ from .permissions import (
     IsOwnerPatient, IsOwnerRendezVous, IsOwnerConsultation,
     IsAdminOrReadOnly
 )
+from django.shortcuts import render
+
 
 # --------------------
 # Patients
@@ -208,3 +210,26 @@ class ChatbotAPIView(APIView):
             return Response({"responses": response_data})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
+# Vue frontend 
+
+def accueil(request):
+    return render(request, "accueil.html")
+
+def medecins(request):
+    return render(request, "medecins.html")
+
+def pharmacies(request):
+    return render(request, "pharmacies.html")
+
+def hopitaux(request):
+    return render(request, "hopitaux.html")
+
+def dentistes(request):
+    return render(request, "dentistes.html")
+
+def cliniques(request):
+    return render(request, "cliniques.html")
+
+def consultation(request):
+    return render(request, "consultation.html")

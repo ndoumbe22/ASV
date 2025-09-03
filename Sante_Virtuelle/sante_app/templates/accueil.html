@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - AssitoSanté{% endblock %}
+
+{% block content %}
+    <!-- ====== Section Services ====== -->
+    <section class="py-5">
+        <div class="container text-center">
+            <h2 class="fw-bold mb-4">Nos Services</h2>
+            <div class="row">
+                <!-- Médecins -->
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-primary">Médecins</h5>
+                            <p class="card-text">Trouvez facilement un médecin disponible selon votre spécialité et vos besoins.</p>
+                            <a href="{% url 'medecins' %}" class="btn btn-primary">Voir plus</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pharmacies -->
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-success">Pharmacies</h5>
+                            <p class="card-text">Accédez aux pharmacies partenaires et trouvez vos médicaments en toute simplicité.</p>
+                            <a href="{% url 'pharmacies' %}" class="btn btn-success">Voir plus</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cliniques & Hôpitaux -->
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-danger">Cliniques & Hôpitaux</h5>
+                            <p class="card-text">Consultez la liste des cliniques et hôpitaux disponibles dans votre région.</p>
+                            <a href="{% url 'hopitaux' %}" class="btn btn-danger">Voir plus</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====== Section Témoignages ====== -->
+    <section class="bg-light py-5">
+        <div class="container text-center">
+            <h2 class="fw-bold mb-4">Témoignages</h2>
+            <div class="row">
+                <div class="col-md-4">
+                    <blockquote class="blockquote">
+                        <p>"AssitoSanté m’a permis de consulter un médecin rapidement, sans déplacement inutile !"</p>
+                        <footer class="blockquote-footer">Marie, Dakar</footer>
+                    </blockquote>
+                </div>
+                <div class="col-md-4">
+                    <blockquote class="blockquote">
+                        <p>"Un service moderne et pratique, je recommande vivement."</p>
+                        <footer class="blockquote-footer">Alioune, Thiès</footer>
+                    </blockquote>
+                </div>
+                <div class="col-md-4">
+                    <blockquote class="blockquote">
+                        <p>"J’ai pu trouver une pharmacie ouverte près de chez moi en urgence."</p>
+                        <footer class="blockquote-footer">Fatou, Saint-Louis</footer>
+                    </blockquote>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====== Section Call-to-Action ====== -->
+    <section class="py-5 text-center text-white bg-primary">
+        <div class="container">
+            <h2 class="fw-bold">Prêt à commencer votre parcours santé ?</h2>
+            <p class="lead">Prenez rendez-vous dès maintenant avec nos médecins certifiés.</p>
+            <a href="{% url 'consultation' %}" class="btn btn-light text-primary fw-bold">Prendre un RDV</a>
+        </div>
+    </section>
+{% endblock %}
