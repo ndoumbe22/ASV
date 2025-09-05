@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import User, Patient, Medecin, RendezVous, Consultation
+from .models import User, Patient, Medecin, RendezVous, Consultation, MessageContact
 
 
 # -------------------- Création d’utilisateur --------------------
@@ -46,3 +46,9 @@ class ConsultationForm(forms.ModelForm):
             "date": forms.DateInput(attrs={"type": "date"}),
             "heure": forms.TimeInput(attrs={"type": "time"}),
         }
+
+
+class MessageContactForm(forms.ModelForm):
+    class Meta:
+        model = MessageContact
+        fields = ['nom', 'email', 'sujet', 'message']

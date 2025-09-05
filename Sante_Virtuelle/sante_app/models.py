@@ -185,4 +185,15 @@ class Service(models.Model):
     
     class Meta :
         db_table = 'Service'
+
+# Le formulaire dans le footer
+class MessageContact(models.Model):
+    nom = models.CharField(max_length=150)
+    email = models.EmailField()
+    sujet = models.CharField(max_length=200)
+    message = models.TextField()
+    date_envoi = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.nom} - {self.sujet}"
     

@@ -6,6 +6,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 import requests
+from .forms import MessageContactForm
+from django.contrib import messages
 
 from .models import (
     Patient, Medecin, RendezVous, Consultation, Medicament,
@@ -24,7 +26,7 @@ from .permissions import (
     IsOwnerPatient, IsOwnerRendezVous, IsOwnerConsultation,
     IsAdminOrReadOnly
 )
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 
 
 # --------------------
@@ -236,3 +238,21 @@ def consultation(request):
 
 def qui_sommes_nous(request):
     return render(request, "qui_sommes_nous.html")
+
+def medecin_generaliste(request):
+    return render(request, "medecin_generaliste.html")
+
+def medecin_specialiste(request):
+    return render(request, "medecin_specialiste.html")
+
+
+def contact_footer(request):
+    if request.method == 'POST':
+        form = MessageContactForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Votre message a été bien envoyé ✅")
+            return redirect(request.META.get('HTTP_REFERER'))  # recharger la même page
+    else:
+        form = MessageContactForm()
+    return render(request, 'accueil.html', {'form': form})

@@ -43,4 +43,7 @@ urlpatterns = [
     path("cliniques/", views.cliniques, name="cliniques"),
     path("consultation/", views.consultation, name="consultation"),
     path("qui-sommes-nous/", views.qui_sommes_nous, name="qui_sommes_nous"),
+    path('contact-footer/', views.contact_footer, name='contact_footer'),
+    path('medecin_generaliste/', views.medecin_generaliste, name='medecin_generaliste'),
+    path('medecin_specialiste/', views.medecin_specialiste, name='medecin_specialiste'),
 ]

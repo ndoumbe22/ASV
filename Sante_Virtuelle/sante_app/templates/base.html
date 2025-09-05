@@ -16,16 +16,47 @@
                 <img src="{% static 'image/logo.png' %}" alt="" width="120" height="120" class="me-2">
             </div>
 
-            <nav>
-                <ul class="nav">
-                    <li class="nav-item"><a href="{% url 'accueil' %}" class="nav-link text-white">Accueil</a></li>
-                    <li class="nav-item"><a href="{% url 'medecins' %}" class="nav-link text-white">Médecins</a></li>
-                    <li class="nav-item"><a href="{% url 'pharmacies' %}" class="nav-link text-white">Pharmacies</a></li>
-                    <li class="nav-item"><a href="{% url 'dentistes' %}" class="nav-link text-white">Dentistes</a></li>
-                    <li class="nav-item"><a href="{% url 'cliniques' %}" class="nav-link text-white">Cliniques</a></li>
-                    <li class="nav-item"><a href="{% url 'hopitaux' %}" class="nav-link text-white">Hôpitaux</a></li>
-                </ul>
+            <nav class="navbar navbar-expand-lg navbar-dark ">
+                <!-- Liens du menu -->
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#">Accueil</a>
+                        </li>
+                        <!-- Dropdown Médecins -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="medecinDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Médecins
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="medecinDropdown">
+                                <li><a class="dropdown-item" href="{% url 'medecin_generaliste' %}">Médecins Généralistes</a></li>
+                                <li><a class="dropdown-item" href="{% url 'medecin_specialiste' %}">Spécialistes</a></li>
+                            </ul>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#">Pharmacies</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#">Hôpitaux</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#contact">Contact</a>
+                        </li>
+                    </ul>
+                </div>
             </nav>
+
+            <!-- Messages (alertes succès/erreur) -->
+            {% if messages %}
+            <div class="container mt-3">
+            {% for message in messages %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+               {{ message }}
+               <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+            </div>
+            {% endif %}
 
             <a href="{% url 'consultation' %}" class="btn fw-bold" style="background-color: #4f9cef; color: white;">Consultation</a>
         </div>
@@ -60,7 +91,7 @@
     <div class="container">
         <div class="row">
             <!-- Logo + description -->
-            <div class="col-lg-3 col-md-6 mb-4">
+            <div class="col-lg-3 col-md-6 mb-4" id="contact">
                 <div class="d-flex align-items-center mb-3">
                     <img src="{% static 'image/logo.png' %}" alt="Logo de AssitoSanté" width="120" height="120" class="me-2">
                 </div>
@@ -70,11 +101,20 @@
                 <p><i class="bi bi-telephone me-2"></i> +221 33 123 45 67</p>
                 <p><i class="bi bi-envelope me-2"></i> contact@assitosante.com</p>
                 <div>
-                    <a href="#" class="text-white me-2"><i class="bi bi-facebook"></i></a>
-                    <a href="#" class="text-white me-2"><i class="bi bi-twitter"></i></a>
-                    <a href="#" class="text-white me-2"><i class="bi bi-linkedin"></i></a>
-                    <a href="#" class="text-white"><i class="bi bi-youtube"></i></a>
+                    <a href="https://www.facebook.com/assitosante" target="_blank" class="text-white me-2">
+                    <i class="bi bi-facebook"></i>
+                    </a>
+                    <a href="https://twitter.com/assitosante" target="_blank" class="text-white me-2">
+                    <i class="bi bi-twitter"></i>
+                    </a>
+                    <a href="https://www.linkedin.com/company/assitosante" target="_blank" class="text-white me-2">
+                    <i class="bi bi-linkedin"></i>
+                    </a>
+                    <a href="https://www.youtube.com/@NdeyeNdoumbeNdiaye" target="_blank" class="text-white">
+                    <i class="bi bi-youtube"></i>
+                    </a>
                 </div>
+
             </div>
 
             <!-- Horaires -->
@@ -98,21 +138,23 @@
             <!-- Formulaire -->
             <div class="col-lg-3 col-md-6 mb-4">
                 <h5 class="fw-bold">Laissez-nous un message</h5>
-                <form>
+                <form method="post" action="{% url 'contact_footer' %}">
+                    {% csrf_token %}
                     <div class="mb-2">
-                        <input type="text" class="form-control" placeholder="Nom & Prénom" required>
+                        <input type="text" name="nom" class="form-control" placeholder="Nom & Prénom" required>
                     </div>
                     <div class="mb-2">
-                        <input type="email" class="form-control" placeholder="Email" required>
+                        <input type="email" name="email" class="form-control" placeholder="Email" required>
                     </div>
                     <div class="mb-2">
-                        <input type="text" class="form-control" placeholder="Sujet">
+                        <input type="text" name="sujet" class="form-control" placeholder="Sujet" required>
                     </div>
                     <div class="mb-2">
-                        <textarea class="form-control" rows="3" placeholder="Message"></textarea>
+                        <textarea name="message" class="form-control" rows="3" placeholder="Message" required></textarea>
                     </div>
                     <button type="submit" class="btn btn-light w-100">Envoyer</button>
                 </form>
+
             </div>
         </div>
     </div>
