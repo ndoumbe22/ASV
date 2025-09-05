@@ -35,5 +35,3 @@ rasa_env/
 # Les Fichiers frontend
 static/
 templates/
-views.py/
-urls.py/
