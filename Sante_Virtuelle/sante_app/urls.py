@@ -23,9 +23,7 @@ router.register(r'articles', views.ArticleViewSet)
 router.register(r'structures', views.StructureDeSanteViewSet)
 router.register(r'services', views.ServiceViewSet)
 
-# --------------------
-# URLs
-# --------------------
+
 urlpatterns = [
     # JWT Auth
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -35,5 +33,17 @@ urlpatterns = [
     path('api/', include(router.urls)),
 
     # Chatbot (protégé par JWT)
-    path("chatbot/", views.ChatbotAPIView.as_view(), name="chatbot-api"),
+    path("chatbot/", views.ChatbotAPIView.as_view(), name="chatbot"),
+    path('', views.accueil, name="accueil"),
+
+    path("medecins/", views.medecins, name="medecins"),
+    path("pharmacies/", views.pharmacies, name="pharmacies"),
+    path("hopitaux/", views.hopitaux, name="hopitaux"),
+    path("dentistes/", views.dentistes, name="dentistes"),
+    path("cliniques/", views.cliniques, name="cliniques"),
+    path("consultation/", views.consultation, name="consultation"),
+    path("qui-sommes-nous/", views.qui_sommes_nous, name="qui_sommes_nous"),
+    path('contact-footer/', views.contact_footer, name='contact_footer'),
+    path('medecin_generaliste/', views.medecin_generaliste, name='medecin_generaliste'),
+    path('medecin_specialiste/', views.medecin_specialiste, name='medecin_specialiste'),
 ]

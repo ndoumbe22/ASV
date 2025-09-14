@@ -3,18 +3,53 @@ from .models import (
     Patient, Medecin, Consultation, RendezVous,
     Pathologie, Medicament, Traitement,
     Constante, Mesure, Article,
-    StructureDeSante, Service
+    StructureDeSante, Service, User 
 )
 
+# -------------------- User --------------------
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'password')
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
+        return user
+
+# -------------------- Patient --------------------
 class PatientSerializer(serializers.ModelSerializer):
+    user = UserSerializer()  # Nested serializer
+
     class Meta:
         model = Patient
-        fields = "__all__"
+        fields = ('id', 'user', 'adresse')
 
+    def create(self, validated_data):
+        user_data = validated_data.pop('user')
+        user_data['role'] = 'patient'
+        user = UserSerializer.create(UserSerializer(), validated_data=user_data)
+        patient = Patient.objects.create(user=user, **validated_data)
+        return patient
+
+# -------------------- Medecin --------------------
 class MedecinSerializer(serializers.ModelSerializer):
+    user = UserSerializer()  # Nested serializer
+
     class Meta:
         model = Medecin
-        fields = "__all__"
+        fields = ('id', 'user', 'specialite', 'disponibilite')
+
+    def create(self, validated_data):
+        user_data = validated_data.pop('user')
+        user_data['role'] = 'medecin'
+        user = UserSerializer.create(UserSerializer(), validated_data=user_data)
+        medecin = Medecin.objects.create(user=user, **validated_data)
+        return medecin
 
 class ConsultationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -71,3 +106,5 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = "__all__"
+
+

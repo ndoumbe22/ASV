@@ -6,6 +6,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 import requests
+from .forms import MessageContactForm
+from django.contrib import messages
 
 from .models import (
     Patient, Medecin, RendezVous, Consultation, Medicament,
@@ -24,6 +26,8 @@ from .permissions import (
     IsOwnerPatient, IsOwnerRendezVous, IsOwnerConsultation,
     IsAdminOrReadOnly
 )
+from django.shortcuts import render, redirect
+
 
 # --------------------
 # Patients
@@ -38,7 +42,7 @@ class PatientViewSet(viewsets.ModelViewSet):
             if user.role == "admin":
                 return Patient.objects.all()
             elif user.role == "patient":
-                return Patient.objects.filter(id=user.id)  # patient voit seulement lui-même
+                return Patient.objects.filter(user=user)  # filtrer par relation OneToOneField
         return Patient.objects.none()
 
     def get_permissions(self):
@@ -61,7 +65,7 @@ class MedecinViewSet(viewsets.ModelViewSet):
             if user.role == "admin":
                 return Medecin.objects.all()
             elif user.role == "medecin":
-                return Medecin.objects.filter(id=user.id)  # médecin voit que lui-même
+                return Medecin.objects.filter(user=user)  # filtrer par relation OneToOneField
         return Medecin.objects.none()
 
     def get_permissions(self):
@@ -208,3 +212,47 @@ class ChatbotAPIView(APIView):
             return Response({"responses": response_data})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
+# Vue frontend 
+
+def accueil(request):
+    return render(request, "accueil.html")
+
+def medecins(request):
+    return render(request, "medecins.html")
+
+def pharmacies(request):
+    return render(request, "pharmacies.html")
+
+def hopitaux(request):
+    return render(request, "hopitaux.html")
+
+def dentistes(request):
+    return render(request, "dentistes.html")
+
+def cliniques(request):
+    return render(request, "cliniques.html")
+
+def consultation(request):
+    return render(request, "consultation.html")
+
+def qui_sommes_nous(request):
+    return render(request, "qui_sommes_nous.html")
+
+def medecin_generaliste(request):
+    return render(request, "medecin_generaliste.html")
+
+def medecin_specialiste(request):
+    return render(request, "medecin_specialiste.html")
+
+
+def contact_footer(request):
+    if request.method == 'POST':
+        form = MessageContactForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Votre message a été bien envoyé ✅")
+            return redirect(request.META.get('HTTP_REFERER'))  # recharger la même page
+    else:
+        form = MessageContactForm()
+    return render(request, 'accueil.html', {'form': form})
