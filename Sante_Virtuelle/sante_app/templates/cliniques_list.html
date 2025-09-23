@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Cliniques{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4">Liste des Cliniques</h2>
+
+    <input type="text" id="search-cliniques" class="form-control w-50 mb-3"
+           placeholder="Rechercher une clinique...">
+
+    <div class="row">
+        <div class="col-lg-7">
+            <table class="table table-bordered" id="table-cliniques">
+                <thead class="table-success">
+                    <tr>
+                        <th>Nom</th>
+                        <th>Adresse</th>
+                        <th>Téléphone</th>
+                        <th>Email</th>
+                        <th>Site web</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for clinique in cliniques %}
+                    <tr>
+                        <td>{{ clinique.nom }}</td>
+                        <td>{{ clinique.adresse }}</td>
+                        <td>{{ clinique.telephone|default:"-" }}</td>
+                        <td>{{ clinique.email|default:"-" }}</td>
+                        <td><a href="{{ clinique.site_web }}" target="_blank">{{ clinique.site_web }}</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5">Aucune clinique trouvée.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="col-lg-4">
+            <img src="{% static 'image/clinique.jpg' %}" 
+                 class="rounded shadow mb-3" 
+                 style="width:520px; height:300px;" 
+                 alt="Clinique">
+            <input type="text" id="search-map-cliniques" class="form-control mb-2 w-75" placeholder="Localiser une clinique">
+            <div id="map-cliniques" style="height:260px;width:520px; border-radius:10px;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- Recherche instantanée ---
+document.getElementById("search-cliniques").addEventListener("keyup", function() {
+    let filter = this.value.toLowerCase();
+    document.querySelectorAll("#table-cliniques tbody tr").forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
+    });
+});
+
+// --- Carte Leaflet ---
+document.addEventListener("DOMContentLoaded", function() {
+    var map = L.map('map-cliniques').setView([14.6928, -17.4467], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    var marker = L.marker([14.6928, -17.4467]).addTo(map);
+
+    document.getElementById("search-map-cliniques").addEventListener("change", function(e){
+        let query = e.target.value;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                if(data.length > 0){
+                    let lat = parseFloat(data[0].lat);
+                    let lon = parseFloat(data[0].lon);
+                    map.setView([lat, lon], 14);
+                    marker.setLatLng([lat, lon]);
+                } else {
+                    alert("Aucun résultat trouvé.");
+                }
+            });
+    });
+});
+</script>
+{% endblock %}

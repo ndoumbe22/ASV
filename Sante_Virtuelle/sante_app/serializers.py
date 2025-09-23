@@ -1,10 +1,13 @@
 from rest_framework import serializers
+from django.contrib.auth.hashers import make_password
 from .models import (
     Patient, Medecin, Consultation, RendezVous,
     Pathologie, Medicament, Traitement,
     Constante, Mesure, Article,
-    StructureDeSante, Service, User 
+    StructureDeSante, Service, User , Clinique, Dentiste, Hopital, Pharmacie, ContactFooter
 )
+
+from django.contrib.auth import get_user_model
 
 # -------------------- User --------------------
 class UserSerializer(serializers.ModelSerializer):
@@ -12,14 +15,24 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'password')
+        fields = '__all__'
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+        role = validated_data.get("role", "patient")
+
         user = User(**validated_data)
         user.set_password(password)
         user.save()
+
+        # Créer automatiquement un Patient ou un Médecin lié
+        if role == "patient":
+            Patient.objects.create(user=user, adresse=user.adresse)
+        elif role == "medecin":
+            Medecin.objects.create(user=user, specialite="Généraliste")  # spécialité par défaut
+
         return user
+
 
 # -------------------- Patient --------------------
 class PatientSerializer(serializers.ModelSerializer):
@@ -27,7 +40,7 @@ class PatientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Patient
-        fields = ('id', 'user', 'adresse')
+        fields = '__all__'
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
@@ -42,7 +55,7 @@ class MedecinSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Medecin
-        fields = ('id', 'user', 'specialite', 'disponibilite')
+        fields = '__all__'
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
@@ -106,5 +119,58 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = "__all__"
+
+
+class CliniqueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Clinique
+        fields = '__all__'
+
+class DentisteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dentiste
+        fields = '__all__'
+
+
+class HopitalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hopital
+        fields = '__all__'
+
+class PharmacieSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Pharmacie
+        fields = '__all__'
+
+class ContactFooterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactFooter
+        fields = "__all__"
+
+
+
+User = get_user_model()
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "password", "first_name", "last_name", "email", "telephone", "adresse", "role"]
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data["username"],
+            password=validated_data["password"],
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            email=validated_data.get("email", ""),
+            telephone=validated_data.get("telephone", ""),
+            adresse=validated_data.get("adresse", ""),
+            role=validated_data.get("role", "patient"),
+        )
+        return user
+
+
 
 

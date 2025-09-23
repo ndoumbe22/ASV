@@ -9,6 +9,9 @@ intents:
   - prendre_rendez_vous
   - demander_rendez_vous
   - info_application
+  - fallback
+  - donner_symptome
+  - demander_medicament
 
 entities:
   - maladie
@@ -44,13 +47,24 @@ responses:
     - text: "Salut 👋, que puis-je faire pour vous aujourd'hui ?"
 
   utter_remercier:
-    - text: "Avec plaisir !"
+    - text: "Avec plaisir, c'est mon rôle 😊"
     - text: "Je suis là pour vous aider 😊"
 
   utter_au_revoir:
     - text: "Au revoir, prenez soin de vous."
     - text: "Bonne journée et à bientôt !"
 
+  utter_demander_maladie:
+    - text: "Je peux vous donner des infos médicales générales, mais cela ne remplace pas un vrai médecin. De quelle maladie voulez-vous parler ?"
+
+  utter_donner_symptome:
+    - text: "Merci pour vos symptômes. Voulez-vous que je vous propose un rendez-vous avec un médecin ?"
+
+  utter_demander_medicament:
+    - text: "Je peux vous indiquer des médicaments courants, mais je vous conseille de consulter un médecin pour une prescription adaptée."
+    - text: "Je peux suggérer du paracétamol pour les douleurs et la fièvre. Mais consultez un médecin avant de prendre un traitement." 
+
+    
   utter_presentation:
     - text: "Je suis un assistant de santé virtuel, conçu pour répondre à vos questions médicales et vous accompagner dans la gestion de votre santé."
 
@@ -90,8 +104,13 @@ responses:
             - Aider les utilisateurs avec des informations de santé \n
             - Servir de support pour le personnel médical"
 
+  utter_fallback:
+    - text: "Désolé, je n'ai pas compris 😅. Pouvez-vous reformuler ?"
+
 actions:
   - action_repondre_maladie
   - action_prendre_rendez_vous
   - action_lister_rendez_vous
   - action_info_application
+  - action_donner_symptome
+  - action_demander_medicament

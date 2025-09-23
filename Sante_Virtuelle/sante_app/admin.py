@@ -5,7 +5,7 @@ from .models import (
     Patient, Medecin, Consultation, RendezVous,
     Pathologie, Medicament, Traitement,
     Constante, Mesure, Article,
-    StructureDeSante, Service, User
+    StructureDeSante, Service, User, Hopital,Clinique,Dentiste,Pharmacie,ContactFooter
 )
 
 # -------------------- Patient --------------------
@@ -29,11 +29,29 @@ class PatientAdmin(admin.ModelAdmin):
 
 
 # -------------------- Médecin --------------------
+class GeneralisteSpecialisteFilter(admin.SimpleListFilter):
+    title = "Type de médecin"
+    parameter_name = "type_medecin"
+
+    def lookups(self, request, model_admin):
+        return [
+            ('generaliste', "Généralistes"),
+            ('specialiste', "Spécialistes"),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value() == 'generaliste':
+            return queryset.filter(specialite__iexact="Généraliste")
+        if self.value() == 'specialiste':
+            return queryset.exclude(specialite__iexact="Généraliste")
+        return queryset
+
+
 @admin.register(Medecin)
 class MedecinAdmin(admin.ModelAdmin):
     list_display = ("user", "get_first_name", "get_last_name", "user_email", "specialite", "disponibilite")
     search_fields = ("user__username", "user__email", "user__first_name", "user__last_name", "specialite")
-    list_filter = ("specialite", "disponibilite")
+    list_filter = ("specialite", "disponibilite", GeneralisteSpecialisteFilter)
     list_select_related = ("user",)
 
     def get_first_name(self, obj):
@@ -148,3 +166,35 @@ class UserAdmin(BaseUserAdmin):
     )
     search_fields = ('email', 'username', 'first_name', 'last_name')
     ordering = ('username',)
+
+
+@admin.register(Hopital)
+class HopitalAdmin(admin.ModelAdmin):
+    list_display = ("nom", "adresse", "telephone", "email", "site_web")
+    search_fields = ("nom", "adresse")
+    list_filter = ("adresse",)
+
+
+@admin.register(Clinique)
+class CliniqueAdmin(admin.ModelAdmin):
+    list_display = ("nom", "adresse", "telephone", "email")
+    
+
+
+@admin.register(Dentiste)
+class DentisteAdmin(admin.ModelAdmin):
+    list_display = ("nom", "adresse", "cabinet", "telephone", "email")
+    search_fields = ("nom", "cabinet")
+    list_filter = ("cabinet",)
+
+
+@admin.register(Pharmacie)
+class PharmacieAdmin(admin.ModelAdmin):
+    list_display = ("nom", "adresse", "telephone", "email", "ouvert_24h")
+    search_fields = ("nom", "adresse")
+    list_filter = ("ouvert_24h",)
+
+@admin.register(ContactFooter)
+class ContactFooterAdmin(admin.ModelAdmin):
+    list_display = ("nom", "email", "sujet", "date_envoi")
+    search_fields = ("nom", "email", "sujet")

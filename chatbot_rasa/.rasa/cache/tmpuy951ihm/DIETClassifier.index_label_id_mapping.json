@@ -1,0 +1,14 @@
+{
+  "0": "ask_presentation",
+  "1": "au_revoir",
+  "2": "demander_maladie",
+  "3": "demander_medicament",
+  "4": "demander_rendez_vous",
+  "5": "donner_symptome",
+  "6": "fallback",
+  "7": "info_application",
+  "8": "inform_maladie",
+  "9": "prendre_rendez_vous",
+  "10": "remercier",
+  "11": "saluer"
+}

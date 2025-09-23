@@ -175,3 +175,29 @@ class ActionInfoApplication(Action):
 
 
 
+class ActionDonnerSymptome(Action):
+    def name(self) -> Text:
+        return "action_donner_symptome"
+
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+
+        # Ici tu pourrais enregistrer les symptômes ou proposer un diagnostic
+        dispatcher.utter_message(text="Merci pour vos symptômes. Voulez-vous que je propose un rendez-vous avec un médecin ?")
+        return []
+
+
+class ActionDemanderMedicament(Action):
+    def name(self) -> Text:
+        return "action_demander_medicament"
+
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+
+        # Ici tu pourrais appeler une base de données ou API
+        dispatcher.utter_message(text="Je peux suggérer du paracétamol pour les douleurs et la fièvre. Mais consultez un médecin avant de prendre un traitement.")
+        return []
+
+

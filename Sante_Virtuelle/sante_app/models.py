@@ -7,8 +7,9 @@ class User(AbstractUser):
         ('medecin', 'Médecin'),
         ('patient', 'Patient'),
     )
-    role = models.CharField(max_length=20, choices=ROLES, default='patient')
-
+    role = models.CharField(max_length=20, choices=ROLES, default="patient")
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    adresse = models.CharField(max_length=255, blank=True, null=True)
     def __str__(self):
         return f"{self.username} ({self.role})"
     
@@ -127,7 +128,6 @@ class Constante(models.Model):
         db_table = 'Constante'
     
 
-    
 
 class Mesure(models.Model):
     id_mesure = models.AutoField(primary_key=True)
@@ -159,8 +159,6 @@ class Article(models.Model):
         db_table = 'Article'
     
 
-    
-    
 # -------------------- Structures & Services --------------------
 class StructureDeSante(models.Model):
     nom = models.CharField(max_length=150)
@@ -186,6 +184,7 @@ class Service(models.Model):
     class Meta :
         db_table = 'Service'
 
+
 # Le formulaire dans le footer
 class MessageContact(models.Model):
     nom = models.CharField(max_length=150)
@@ -197,3 +196,57 @@ class MessageContact(models.Model):
     def __str__(self):
         return f"{self.nom} - {self.sujet}"
     
+
+class Hopital(models.Model):
+    nom = models.CharField(max_length=200)
+    adresse = models.CharField(max_length=255)
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    site_web = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return self.nom
+
+
+class Clinique(models.Model):
+    nom = models.CharField(max_length=200)
+    adresse = models.CharField(max_length=255)
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+
+    def __str__(self):
+        return self.nom
+
+
+class Dentiste(models.Model):
+    nom = models.CharField(max_length=200)
+    adresse = models.CharField(max_length=255)
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    cabinet = models.CharField(max_length=150, blank=True, null=True)
+
+    def __str__(self):
+        return self.nom
+
+
+
+class Pharmacie(models.Model):
+    nom = models.CharField(max_length=200)
+    adresse = models.CharField(max_length=255)
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    ouvert_24h = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.nom
+    
+
+class ContactFooter(models.Model):
+    nom = models.CharField(max_length=150)
+    email = models.EmailField()
+    sujet = models.CharField(max_length=200)
+    message = models.TextField()
+    date_envoi = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.nom} - {self.sujet}"

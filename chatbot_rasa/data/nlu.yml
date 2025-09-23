@@ -18,6 +18,7 @@ nlu:
     - merci beaucoup
     - c'est gentil
     - merci bien
+    - je vous remercie
 
 - intent: au_revoir
   examples: |
@@ -25,6 +26,7 @@ nlu:
     - à plus tard
     - bye
     - bonne journée
+    - à bientôt
 
 - intent: demander_maladie
   examples: |
@@ -40,6 +42,9 @@ nlu:
     - je souffre de [paludisme](maladie)
     - je pense avoir la [grippe](maladie)
     - c'est quoi la malaria
+    - donne moi des infos sur l'hypertension
+    - comment reconnaitre la tuberculose ?
+    - quels sont les symptômes du cancer ?
 
 - intent: ask_presentation
   examples: |
@@ -56,6 +61,16 @@ nlu:
     - Prenons rendez-vous [demain](date) à [10h](heure)
     
 
+- intent: donner_symptome
+  examples: |
+    - j'ai mal à la tête
+    - je tousse beaucoup
+    - j'ai de la fièvre
+    - j'ai mal au ventre
+    - je ressens des vertiges
+    - j'ai mal à la gorge
+    - je suis fatigué
+
 - intent: demander_rendez_vous
   examples: |
     - Quels sont mes rendez-vous ?
@@ -63,6 +78,24 @@ nlu:
     - J'ai quels rendez-vous ?
     - Liste de mes rendez-vous
     - Est-ce que j'ai des rendez-vous ?
+
+
+- intent: demander_medicament
+  examples: |
+    - quel médicament pour le paludisme ?
+    - donne moi un traitement contre la grippe
+    - que prendre pour le mal de tête ?
+    - est-ce que le paracétamol aide pour la fièvre ?
+    - un médicament contre la toux ?
+
+- intent: prendre_rendez_vous
+  examples: |
+    - je veux prendre un rendez-vous
+    - est-ce que je peux consulter un médecin ?
+    - comment réserver une consultation ?
+    - j'aimerais voir un docteur
+    - je voudrais un rendez-vous demain
+    - fixer un rendez-vous médical
 
 
 - intent: info_application
@@ -81,3 +114,12 @@ nlu:
     - J'ai la diarrhée
     - Je suis malade de diarrhée
     - je suis atteinte de la diarrhée
+
+
+- intent: fallback
+  examples: |
+    - fgdhfjdhf
+    - kjshd ksjdh
+    - lorem ipsum
+    - ???
+    - je ne sais pas quoi dire

@@ -1,0 +1,77 @@
+{
+  "type": "IntentMaxHistoryTrackerFeaturizer",
+  "state_featurizer": {
+    "action_texts": [],
+    "entity_tag_specs": [],
+    "feature_states": {
+      "intent": {
+        "ask_presentation": 0,
+        "au_revoir": 1,
+        "back": 2,
+        "demander_maladie": 3,
+        "demander_medicament": 4,
+        "demander_rendez_vous": 5,
+        "donner_symptome": 6,
+        "fallback": 7,
+        "info_application": 8,
+        "nlu_fallback": 9,
+        "out_of_scope": 10,
+        "prendre_rendez_vous": 11,
+        "remercier": 12,
+        "restart": 13,
+        "saluer": 14,
+        "session_start": 15
+      },
+      "action_name": {
+        "action_listen": 0,
+        "action_restart": 1,
+        "action_session_start": 2,
+        "action_default_fallback": 3,
+        "action_deactivate_loop": 4,
+        "action_revert_fallback_events": 5,
+        "action_default_ask_affirmation": 6,
+        "action_default_ask_rephrase": 7,
+        "action_two_stage_fallback": 8,
+        "action_unlikely_intent": 9,
+        "action_back": 10,
+        "...": 11,
+        "action_extract_slots": 12,
+        "action_repondre_maladie": 13,
+        "action_prendre_rendez_vous": 14,
+        "action_lister_rendez_vous": 15,
+        "action_info_application": 16,
+        "action_donner_symptome": 17,
+        "action_demander_medicament": 18,
+        "utter_au_revoir": 19,
+        "utter_confirmer_rendez_vous": 20,
+        "utter_demander_maladie": 21,
+        "utter_demander_medicament": 22,
+        "utter_donner_symptome": 23,
+        "utter_fallback": 24,
+        "utter_info_application": 25,
+        "utter_presentation": 26,
+        "utter_remercier": 27,
+        "utter_saluer": 28,
+        "utter_symptome_autre": 29,
+        "utter_symptome_covid": 30,
+        "utter_symptome_diabete": 31,
+        "utter_symptome_diarrhée": 32,
+        "utter_symptome_generique": 33,
+        "utter_symptome_grippe": 34,
+        "utter_symptome_paludisme": 35,
+        "utter_symptome_tuberculose": 36
+      },
+      "entities": {
+        "date": 0,
+        "heure": 1,
+        "maladie": 2
+      },
+      "slots": {
+        "maladie_0": 0
+      },
+      "active_loop": {}
+    }
+  },
+  "remove_duplicates": true,
+  "max_history": 5
+}

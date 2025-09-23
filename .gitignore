@@ -32,6 +32,3 @@ env/
 rasa_env/
 */rasa_env/
 
-# Les Fichiers frontend
-static/
-templates/

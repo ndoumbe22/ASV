@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,11 +8,17 @@ import json
 import requests
 from .forms import MessageContactForm
 from django.contrib import messages
+from .serializers import CliniqueSerializer, DentisteSerializer, HopitalSerializer, PharmacieSerializer
+from django.contrib.auth.models import User
+from rest_framework.permissions import AllowAny
+
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes
 
 from .models import (
     Patient, Medecin, RendezVous, Consultation, Medicament,
     Pathologie, Traitement, Constante, Mesure, Article,
-    StructureDeSante, Service
+    StructureDeSante, Service, Hopital, Clinique, Dentiste,Pharmacie
 )
 from .serializers import (
     PatientSerializer, MedecinSerializer, RendezVousSerializer,
@@ -29,6 +35,25 @@ from .permissions import (
 from django.shortcuts import render, redirect
 
 
+from rest_framework import viewsets
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from .models import (
+    Patient, Medecin, RendezVous, Consultation, Medicament,
+    Pathologie, Traitement, Constante, Mesure, Article,
+    StructureDeSante, Service, ContactFooter
+)
+from .serializers import (
+    PatientSerializer, MedecinSerializer, RendezVousSerializer,
+    ConsultationSerializer, MedicamentSerializer,
+    PathologieSerializer, TraitementSerializer, ConstanteSerializer,
+    MesureSerializer, ArticleSerializer, StructureDeSanteSerializer,
+    ServiceSerializer, ContactFooterSerializer
+)
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate, get_user_model
+from .serializers import RegisterSerializer
+
 # --------------------
 # Patients
 # --------------------
@@ -37,19 +62,12 @@ class PatientViewSet(viewsets.ModelViewSet):
     serializer_class = PatientSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_authenticated:
-            if user.role == "admin":
-                return Patient.objects.all()
-            elif user.role == "patient":
-                return Patient.objects.filter(user=user)  # filtrer par relation OneToOneField
-        return Patient.objects.none()
+        return Patient.objects.all()
 
     def get_permissions(self):
-        if self.action in ['create']:
-            return [IsAdmin()]  # Seul l'admin peut créer un patient
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsOwnerPatient() | IsAdmin()]
+        # rendre accessible en lecture seule publiquement
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
         return [IsAuthenticated()]
 
 # --------------------
@@ -60,17 +78,11 @@ class MedecinViewSet(viewsets.ModelViewSet):
     serializer_class = MedecinSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_authenticated:
-            if user.role == "admin":
-                return Medecin.objects.all()
-            elif user.role == "medecin":
-                return Medecin.objects.filter(user=user)  # filtrer par relation OneToOneField
-        return Medecin.objects.none()
+        return Medecin.objects.all()
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsAdmin()]
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
         return [IsAuthenticated()]
 
 # --------------------
@@ -81,23 +93,11 @@ class RendezVousViewSet(viewsets.ModelViewSet):
     serializer_class = RendezVousSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_authenticated:
-            if user.role == "admin":
-                return RendezVous.objects.all()
-            elif user.role == "medecin":
-                return RendezVous.objects.filter(medecin=user)
-            elif user.role == "patient":
-                return RendezVous.objects.filter(patient=user)
-        return RendezVous.objects.none()
+        return RendezVous.objects.all()
 
     def get_permissions(self):
-        if self.action in ['create']:
-            return [IsPatient()]
-        elif self.action in ['update', 'partial_update']:
-            return [IsMedecin() | IsAdmin()]
-        elif self.action in ['destroy']:
-            return [IsAdmin()]
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
         return [IsAuthenticated()]
 
 # --------------------
@@ -108,22 +108,12 @@ class ConsultationViewSet(viewsets.ModelViewSet):
     serializer_class = ConsultationSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_authenticated:
-            if user.role == "admin":
-                return Consultation.objects.all()
-            elif user.role == "medecin":
-                return Consultation.objects.filter(medecin=user)
-            elif user.role == "patient":
-                return Consultation.objects.filter(patient=user)
-        return Consultation.objects.none()
+        return Consultation.objects.all()
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return [IsMedecin() | IsAdmin()]
-        elif self.action in ['destroy']:
-            return [IsAdmin()]
-        return [IsAuthenticated(), IsOwnerConsultation()]
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Médicaments
@@ -131,7 +121,14 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 class MedicamentViewSet(viewsets.ModelViewSet):
     queryset = Medicament.objects.all()
     serializer_class = MedicamentSerializer
-    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        return Medicament.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Pathologies
@@ -139,7 +136,14 @@ class MedicamentViewSet(viewsets.ModelViewSet):
 class PathologieViewSet(viewsets.ModelViewSet):
     queryset = Pathologie.objects.all()
     serializer_class = PathologieSerializer
-    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        return Pathologie.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Traitements
@@ -147,7 +151,14 @@ class PathologieViewSet(viewsets.ModelViewSet):
 class TraitementViewSet(viewsets.ModelViewSet):
     queryset = Traitement.objects.all()
     serializer_class = TraitementSerializer
-    permission_classes = [IsMedecin | IsAdmin]
+
+    def get_queryset(self):
+        return Traitement.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Constantes
@@ -155,7 +166,14 @@ class TraitementViewSet(viewsets.ModelViewSet):
 class ConstanteViewSet(viewsets.ModelViewSet):
     queryset = Constante.objects.all()
     serializer_class = ConstanteSerializer
-    permission_classes = [IsMedecin | IsAdmin]
+
+    def get_queryset(self):
+        return Constante.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Mesures
@@ -163,7 +181,14 @@ class ConstanteViewSet(viewsets.ModelViewSet):
 class MesureViewSet(viewsets.ModelViewSet):
     queryset = Mesure.objects.all()
     serializer_class = MesureSerializer
-    permission_classes = [IsMedecin | IsAdmin]
+
+    def get_queryset(self):
+        return Mesure.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Articles
@@ -171,7 +196,14 @@ class MesureViewSet(viewsets.ModelViewSet):
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
-    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        return Article.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Structures de santé
@@ -179,7 +211,14 @@ class ArticleViewSet(viewsets.ModelViewSet):
 class StructureDeSanteViewSet(viewsets.ModelViewSet):
     queryset = StructureDeSante.objects.all()
     serializer_class = StructureDeSanteSerializer
-    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        return StructureDeSante.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 # --------------------
 # Services
@@ -187,7 +226,45 @@ class StructureDeSanteViewSet(viewsets.ModelViewSet):
 class ServiceViewSet(viewsets.ModelViewSet):
     queryset = Service.objects.all()
     serializer_class = ServiceSerializer
-    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        return Service.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+class CliniqueViewSet(viewsets.ModelViewSet):
+    queryset = Clinique.objects.all()
+    serializer_class = CliniqueSerializer
+    permission_classes = [AllowAny]
+
+
+class DentisteViewSet(viewsets.ModelViewSet):
+    queryset = Dentiste.objects.all()
+    serializer_class = DentisteSerializer
+    permission_classes = [AllowAny]
+
+
+class HopitalViewSet(viewsets.ModelViewSet):
+    queryset = Hopital.objects.all()
+    serializer_class = HopitalSerializer
+    permission_classes = [AllowAny]
+
+
+class PharmacieViewSet(viewsets.ModelViewSet):
+    queryset = Pharmacie.objects.all()
+    serializer_class = PharmacieSerializer
+    permission_classes = [AllowAny]
+
+
+class ContactFooterViewSet(viewsets.ModelViewSet):
+    queryset = ContactFooter.objects.all()
+    serializer_class = ContactFooterSerializer
+    permission_classes = [AllowAny]
+
+
 
 # --------------------
 # Chatbot (Rasa)
@@ -236,6 +313,9 @@ def cliniques(request):
 def consultation(request):
     return render(request, "consultation.html")
 
+def rendez_vous(request):
+    return render(request, "rendez_vous.html")
+
 def qui_sommes_nous(request):
     return render(request, "qui_sommes_nous.html")
 
@@ -245,14 +325,121 @@ def medecin_generaliste(request):
 def medecin_specialiste(request):
     return render(request, "medecin_specialiste.html")
 
+def connexion(request):
+    return render(request, "connexion.html")
 
-def contact_footer(request):
-    if request.method == 'POST':
-        form = MessageContactForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Votre message a été bien envoyé ✅")
-            return redirect(request.META.get('HTTP_REFERER'))  # recharger la même page
+
+
+
+def hopitaux_list(request):
+    hopitaux = Hopital.objects.all()
+    return render(request, "hopitaux_list.html", {"hopitaux": hopitaux})
+
+
+def cliniques_list(request):
+    cliniques = Clinique.objects.all()
+    return render(request, "cliniques_list.html", {"cliniques": cliniques})
+
+def dentistes_list(request):
+    dentistes = Dentiste.objects.all()
+    return render(request, "dentistes_list.html", {"dentistes": dentistes})
+
+def pharmacies_list(request):
+    pharmacies = Pharmacie.objects.all()
+    return render(request, "pharmacies_list.html", {"pharmacies": pharmacies})
+
+
+# Les formulaires de recherche pour les listes 
+
+def pharmacies_list(request):
+    query = request.GET.get("q")
+    if query:
+        pharmacies = Pharmacie.objects.filter(nom__icontains=query)
     else:
-        form = MessageContactForm()
-    return render(request, 'accueil.html', {'form': form})
+        pharmacies = Pharmacie.objects.all()
+    return render(request, "pharmacies_list.html", {"pharmacies": pharmacies})
+
+
+def hopitaux_list(request):
+    query = request.GET.get("q")
+    if query:
+        hopitaux = Hopital.objects.filter(nom__icontains=query)
+    else:
+        hopitaux = Hopital.objects.all()
+    return render(request, "hopitaux_list.html", {"hopitaux": hopitaux})
+
+
+def cliniques_list(request):
+    query = request.GET.get("q")
+    if query:
+        cliniques = Clinique.objects.filter(nom__icontains=query)
+    else:
+        cliniques = Clinique.objects.all()
+    return render(request, "cliniques_list.html", {"cliniques": cliniques})
+
+
+def dentistes_list(request):
+    query = request.GET.get("q")
+    if query:
+        dentistes = Dentiste.objects.filter(nom__icontains=query)
+    else:
+        dentistes = Dentiste.objects.all()
+    return render(request, "dentistes_list.html", {"dentistes": dentistes})
+
+
+User = get_user_model()
+
+# Inscription
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        data = request.data.copy()
+
+        # Empêcher l'inscription en tant qu'admin via frontend
+        if data.get("role") == "admin":
+            return Response(
+                {"error": "Vous ne pouvez pas vous inscrire en tant qu'administrateur."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Par défaut "patient" si non spécifié
+        if not data.get("role"):
+            data["role"] = "patient"
+
+        serializer = RegisterSerializer(data=data)
+        if serializer.is_valid():
+            user = serializer.save()  # 🔹 Profil Patient/Medecin créé automatiquement par signals
+            return Response({"message": "Utilisateur créé avec succès"}, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# --------------------
+# Connexion
+# --------------------
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(username=username, password=password)
+        if user is not None:
+            # Détection automatique admin
+            role = user.role
+            if user.is_superuser or user.is_staff:
+                role = "admin"
+
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "role": role,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            })
+
+        return Response({"error": "Identifiants invalides"}, status=status.HTTP_401_UNAUTHORIZED)

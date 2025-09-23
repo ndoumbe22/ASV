@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Accueil - AssistoSanté{% endblock %}
+
+{% block content %}
+
+<!-- Section principale sous le header -->
+<section  class="position-relative overflow-hidden"
+         style="min-height: calc(100vh - 140px); width: 1257px; margin-top: -50px; margin-left: -70px; margin-right: 50px; padding: 40px 0;">
+
+  <!-- Vidéo de fond -->
+  <video autoplay muted loop playsinline 
+         class="position-absolute top-0 start-0 w-100 h-100" 
+         style="object-fit: cover; z-index: -1;">
+    <source src="{% static 'videos/medical_bg.mp4' %}" type="video/mp4">
+    Votre navigateur ne supporte pas la vidéo.
+  </video>
+
+  <!-- Container fluide (pleine largeur, sans marges) -->
+  <div class="container-fluid h-100">
+    <div class="row align-items-center h-100">
+      
+      <!-- Colonne gauche : Texte -->
+      <div class="col-lg-6 text-white px-5">
+        <!-- Barre de recherche -->
+        <div class="input-group mb-4">
+          <input type="text" class="form-control form-control-lg" 
+                 placeholder="RECHERCHEZ ICI..." aria-label="Recherche" 
+                 style="font-size: 15px;">
+          <button class="btn btn-danger btn-lg" type="button" style="padding: 5px;">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+
+        <!-- Titre et texte -->
+        <h1 class="fw-bold mb-4">AssistoSanté : votre partenaire santé virtuel</h1>
+        <p class="lead mb-4">
+          Notre mission est de promouvoir la santé et le bien-être grâce à une plateforme qui facilite l’accès aux soins de qualité, aux professionnels de santé et aux services médicaux, partout et à tout moment.
+        </p>
+        <p class="mb-4">
+          Avec AssistoSanté, trouvez rapidement un médecin, une pharmacie, une clinique ou encore accédez à nos services de téléconsultation.
+        </p>
+      </div>
+
+      <!-- Colonne droite : Carousel -->
+      <div class="col-lg-6 px-5">
+        <div id="carouselAccueil" class="carousel slide shadow-lg rounded" 
+             data-bs-ride="carousel" 
+             style="border-radius: 100px; border: 8px solid aliceblue; background-color: aliceblue;">
+          
+          <div class="carousel-inner">
+            <div class="carousel-item active">
+              <img src="{% static 'image/medecin.jpg' %}" class="d-block w-100" alt="Médecin généraliste">
+              <div class="carousel-caption d-block">
+                <h5 class="bg-danger text-white px-3 py-1 rounded">Médecin généraliste</h5>
+              </div>
+            </div>
+            <div class="carousel-item">
+              <img src="{% static 'image/hopital2.jpg' %}" class="d-block w-100" alt="Hôpitaux modernes">
+              <div class="carousel-caption d-block">
+                <h5 class="bg-danger text-white px-3 py-1 rounded">Hôpitaux modernes</h5>
+              </div>
+            </div>
+            <div class="carousel-item">
+              <img src="{% static 'image/pharmacie2.jpg' %}" class="d-block w-100" alt="Pharmacies de proximité">
+              <div class="carousel-caption d-block">
+                <h5 class="bg-danger text-white px-3 py-1 rounded">Pharmacies de proximité</h5>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contrôles -->
+          <button class="carousel-control-prev" type="button" data-bs-target="#carouselAccueil" data-bs-slide="prev">
+            <span class="carousel-control-prev-icon"></span>
+          </button>
+          <button class="carousel-control-next" type="button" data-bs-target="#carouselAccueil" data-bs-slide="next">
+            <span class="carousel-control-next-icon"></span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</section>
+
+{% endblock %}

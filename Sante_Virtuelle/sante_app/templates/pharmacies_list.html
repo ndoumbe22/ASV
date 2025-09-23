@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Pharmacies{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4">Liste des Pharmacies</h2>
+
+    <input type="text" id="search-pharmacies" class="form-control w-50 mb-3"
+           placeholder="Rechercher une pharmacie...">
+
+    <div class="row">
+        <div class="col-lg-7">
+            <table class="table table-bordered" id="table-pharmacies">
+                <thead class="table-info">
+                    <tr>
+                        <th>Nom</th>
+                        <th>Adresse</th>
+                        <th>Téléphone</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pharmacie in pharmacies %}
+                    <tr>
+                        <td>{{ pharmacie.nom }}</td>
+                        <td>{{ pharmacie.adresse }}</td>
+                        <td>{{ pharmacie.telephone|default:"-" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3">Aucune pharmacie trouvée.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="col-lg-4">
+            <img src="{% static 'image/pharmacie.jpg' %}" 
+                 class="rounded shadow mb-3" 
+                 style="width:520px; height:300px;" 
+                 alt="Pharmacie">
+            <input type="text" id="search-map-pharmacies" class="form-control mb-2 w-75" placeholder="Localiser une pharmacie">
+            <div id="map-pharmacies" style="height:260px;width:520px; border-radius:10px;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("search-pharmacies").addEventListener("keyup", function() {
+    let filter = this.value.toLowerCase();
+    document.querySelectorAll("#table-pharmacies tbody tr").forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
+    });
+});
+
+document.addEventListener("DOMContentLoaded", function() {
+    var map = L.map('map-pharmacies').setView([14.6928, -17.4467], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    var marker = L.marker([14.6928, -17.4467]).addTo(map);
+
+    document.getElementById("search-map-pharmacies").addEventListener("change", function(e){
+        let query = e.target.value;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                if(data.length > 0){
+                    let lat = parseFloat(data[0].lat);
+                    let lon = parseFloat(data[0].lon);
+                    map.setView([lat, lon], 14);
+                    marker.setLatLng([lat, lon]);
+                } else {
+                    alert("Aucun résultat trouvé.");
+                }
+            });
+    });
+});
+</script>
+{% endblock %}

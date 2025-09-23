@@ -5,6 +5,8 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+from .views import CliniqueViewSet, DentisteViewSet, HopitalViewSet, PharmacieViewSet, ContactFooterViewSet, RegisterView, LoginView
+
 
 # --------------------
 # Routes API principales
@@ -22,6 +24,11 @@ router.register(r'mesures', views.MesureViewSet)
 router.register(r'articles', views.ArticleViewSet)
 router.register(r'structures', views.StructureDeSanteViewSet)
 router.register(r'services', views.ServiceViewSet)
+router.register(r'cliniques', CliniqueViewSet)
+router.register(r'dentistes', DentisteViewSet)
+router.register(r'hopitaux', HopitalViewSet)
+router.register(r'pharmacies', PharmacieViewSet)
+router.register(r'contact_footer', ContactFooterViewSet)
 
 
 urlpatterns = [
@@ -36,14 +43,23 @@ urlpatterns = [
     path("chatbot/", views.ChatbotAPIView.as_view(), name="chatbot"),
     path('', views.accueil, name="accueil"),
 
-    path("medecins/", views.medecins, name="medecins"),
-    path("pharmacies/", views.pharmacies, name="pharmacies"),
-    path("hopitaux/", views.hopitaux, name="hopitaux"),
-    path("dentistes/", views.dentistes, name="dentistes"),
-    path("cliniques/", views.cliniques, name="cliniques"),
+
     path("consultation/", views.consultation, name="consultation"),
+    path("connecter/", views.connexion, name="connecter"),
+    path("rendez_vous/", views.rendez_vous, name="rendez_vous"),
     path("qui-sommes-nous/", views.qui_sommes_nous, name="qui_sommes_nous"),
-    path('contact-footer/', views.contact_footer, name='contact_footer'),
+
     path('medecin_generaliste/', views.medecin_generaliste, name='medecin_generaliste'),
     path('medecin_specialiste/', views.medecin_specialiste, name='medecin_specialiste'),
+    path("medecins/", views.medecins, name="medecins"),
+
+    path("hopitaux/", views.hopitaux_list, name="hopitaux_list"),
+    path("cliniques/", views.cliniques_list, name="cliniques_list"),
+    path("dentistes/", views.dentistes_list, name="dentistes_list"),
+    path("pharmacies/", views.pharmacies_list, name="pharmacies_list"),
+
+    path("register/", RegisterView.as_view(), name="register"),
+    path("login/", LoginView.as_view(), name="login"),
+
+    
 ]
