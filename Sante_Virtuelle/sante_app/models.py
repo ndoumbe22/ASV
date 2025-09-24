@@ -59,6 +59,7 @@ class Consultation(models.Model):
 
 # -------------------- Rendez-vous --------------------
 class RendezVous(models.Model):
+    numero = models.AutoField(primary_key=True)
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rdv_patient")
     medecin = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rdv_medecin")
     date = models.DateField()
