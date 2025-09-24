@@ -70,14 +70,12 @@ class ConsultationSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 class RendezVousSerializer(serializers.ModelSerializer):
-    medicaments = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Medicament.objects.all()
-    )
+    medecin_nom = serializers.CharField(source="medecin.nom", read_only=True)
+    patient_nom = serializers.CharField(source="patient.nom", read_only=True)
 
     class Meta:
         model = RendezVous
-        fields = "__all__"
+        fields = ["id", "date", "heure", "description", "statut", "medecin_nom", "patient_nom"]
 
 
 class PathologieSerializer(serializers.ModelSerializer):
@@ -91,9 +89,13 @@ class MedicamentSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 class TraitementSerializer(serializers.ModelSerializer):
+    medicament_nom = serializers.CharField(source="medicament.nom", read_only=True)
+    medicament_dosage = serializers.CharField(source="medicament.dosage", read_only=True)
+    consultation_date = serializers.DateTimeField(source="consultation.date", read_only=True)
+
     class Meta:
         model = Traitement
-        fields = "__all__"
+        fields = ["id", "medicament_nom", "medicament_dosage", "posologie", "consultation_date"]
 
 class ConstanteSerializer(serializers.ModelSerializer):
     class Meta:

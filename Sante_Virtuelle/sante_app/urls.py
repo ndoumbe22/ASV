@@ -35,6 +35,10 @@ urlpatterns = [
     # JWT Auth
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path("api/appointments/upcoming/", views.upcoming_appointments, name="upcoming_appointments"),
+    path("api/medications/", views.patient_medications, name="patient_medications"),
+    path("api/appointments/<int:pk>/cancel/", views.cancel_appointment, name="cancel_appointment"),
+    path("api/appointments/<int:pk>/reschedule/", views.reschedule_appointment, name="reschedule_appointment"),
 
     # API Routes
     path('api/', include(router.urls)),

@@ -8,7 +8,7 @@ import json
 import requests
 from .forms import MessageContactForm
 from django.contrib import messages
-from .serializers import CliniqueSerializer, DentisteSerializer, HopitalSerializer, PharmacieSerializer
+from .serializers import CliniqueSerializer, DentisteSerializer, HopitalSerializer, PharmacieSerializer, RendezVousSerializer, TraitementSerializer
 from django.contrib.auth.models import User
 from rest_framework.permissions import AllowAny
 
@@ -53,6 +53,8 @@ from .serializers import (
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from .serializers import RegisterSerializer
+from django.utils.timezone import now
+from django.shortcuts import get_object_or_404
 
 # --------------------
 # Patients
@@ -443,3 +445,59 @@ class LoginView(APIView):
             })
 
         return Response({"error": "Identifiants invalides"}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def upcoming_appointments(request):
+    patient = request.user  # on suppose que user = patient
+    today = now().date()
+
+    rdvs = RendezVous.objects.filter(
+        patient=patient,
+        date__gte=today
+    ).order_by("date", "heure")
+
+    serializer = RendezVousSerializer(rdvs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def patient_medications(request):
+    patient = request.user  # on suppose que user = patient
+
+    traitements = Traitement.objects.filter(
+        consultation__patient=patient
+    ).order_by("-consultation__date")
+
+    serializer = TraitementSerializer(traitements, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cancel_appointment(request, pk):
+    rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+    rdv.statut = "CANCELLED"
+    rdv.save()
+    return Response({"message": "Rendez-vous annulé avec succès"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reschedule_appointment(request, pk):
+    rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+    new_date = request.data.get("date")
+    new_heure = request.data.get("heure")
+
+    if not new_date or not new_heure:
+        return Response({"error": "Veuillez fournir une nouvelle date et heure"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    rdv.date = new_date
+    rdv.heure = new_heure
+    rdv.statut = "RESCHEDULED"
+    rdv.save()
+    return Response({"message": "Rendez-vous reprogrammé avec succès"}, status=status.HTTP_200_OK)

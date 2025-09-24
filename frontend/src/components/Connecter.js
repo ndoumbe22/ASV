@@ -13,7 +13,7 @@ function Connecter() {
     email: "",
     telephone: "",
     adresse: "",
-    role: "patient", // ✅ rôle par défaut
+    role: "patient", // rôle par défaut
   });
 
   const navigate = useNavigate();
@@ -32,11 +32,13 @@ function Connecter() {
           password: formData.password,
         });
 
-        const { access, role } = res.data;
+        const { access, role, first_name, last_name } = res.data; // 🔹 Récupérer prénom/nom depuis l'API
         localStorage.setItem("token", access);
         localStorage.setItem("role", role);
+        localStorage.setItem("first_name", first_name); // 🔹 Sauvegarde
+        localStorage.setItem("last_name", last_name);   // 🔹 Sauvegarde
 
-        // 🔹 Redirection selon le rôle
+        // Redirection selon le rôle
         if (role === "patient") navigate("/interface_patient");
         else if (role === "medecin") navigate("/interface_medecin");
         else if (role === "admin") navigate("/interface_admin");
@@ -112,7 +114,7 @@ function Connecter() {
               required
             />
 
-            {/* 🔹 Champ rôle visible uniquement en inscription */}
+
             <select
               name="role"
               className="form-control mb-3"

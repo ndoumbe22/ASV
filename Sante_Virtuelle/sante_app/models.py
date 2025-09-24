@@ -59,16 +59,22 @@ class Consultation(models.Model):
 
 # -------------------- Rendez-vous --------------------
 class RendezVous(models.Model):
-    numero = models.AutoField(primary_key=True)
-    description = models.TextField()
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rdv_patient")
+    medecin = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rdv_medecin")
     date = models.DateField()
     heure = models.TimeField()
-    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="rendezvous")
-    medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name="rendezvous")
+    description = models.TextField(blank=True, null=True)
 
+    STATUT_CHOICES = [
+        ("CONFIRMED", "Confirmé"),
+        ("CANCELLED", "Annulé"),
+        ("RESCHEDULED", "Reprogrammé"),
+        ("PENDING", "En attente"),
+    ]
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="PENDING")
 
     def __str__(self):
-        return f"RDV {self.numero} - {self.patient}"
+        return f"{self.patient.username} - {self.date} {self.heure}"
     
     class Meta :
         db_table = 'RendezVous'
