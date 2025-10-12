@@ -1,134 +1,97 @@
-import React, { useEffect, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import React, { useState, useEffect } from "react";
+import { doctorAPI } from "../services/api";
 
 function MedecinGeneraliste() {
-  const [search, setSearch] = useState("");
-  const [medecins, setMedecins] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [filteredDoctors, setFilteredDoctors] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // --- Récupération des médecins depuis l'API Django ---
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/medecins/")
-      .then((res) => res.json())
-      .then((data) => {
-    const generalistes = data.filter((m) => {
-    const specialite = m.specialite
-      .toLowerCase()
-      .normalize("NFD") // décompose les lettres accentuées
-      .replace(/[\u0300-\u036f]/g, ""); // supprime les accents
-    return specialite === "generaliste";
-  });
-  setMedecins(generalistes);
-})
-
-      .catch((err) => console.error("Erreur API :", err));
+    fetchDoctors();
   }, []);
 
-  // --- Initialisation de la carte Leaflet ---
   useEffect(() => {
-    const map = L.map("map-generalistes").setView([14.6928, -17.4467], 12);
+    const filtered = doctors.filter(
+      (doctor) =>
+        doctor.user.first_name
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        doctor.user.last_name
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        (doctor.specialite &&
+          doctor.specialite.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+    setFilteredDoctors(filtered);
+  }, [searchTerm, doctors]);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-    }).addTo(map);
-
-    const marker = L.marker([14.6928, -17.4467]).addTo(map);
-
-    const input = document.getElementById("search-map-generalistes");
-    if (input) {
-      input.addEventListener("change", (e) => {
-        const query = e.target.value;
-        fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            query
-          )}`
-        )
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.length > 0) {
-              const lat = parseFloat(data[0].lat);
-              const lon = parseFloat(data[0].lon);
-              map.setView([lat, lon], 14);
-              marker.setLatLng([lat, lon]);
-            } else {
-              alert("Aucun résultat trouvé.");
-            }
-          });
-      });
+  const fetchDoctors = async () => {
+    try {
+      const response = await doctorAPI.getDoctors();
+      // Filter for general practitioners only
+      const generalists = response.data.filter(
+        (doctor) =>
+          !doctor.specialite ||
+          doctor.specialite.toLowerCase() === "generaliste" ||
+          doctor.specialite.toLowerCase() === "médecin généraliste"
+      );
+      setDoctors(generalists);
+      setFilteredDoctors(generalists);
+    } catch (error) {
+      console.error("Error fetching doctors:", error);
     }
-
-    return () => {
-      map.remove();
-    };
-  }, []);
+  };
 
   return (
     <div className="container mt-5">
-      <h2 className="mb-4">Liste des Médecins Généralistes</h2>
+      <h2 className="mb-4">Médecins Généralistes</h2>
 
-      <input
-        type="text"
-        className="form-control w-50 mb-3"
-        placeholder="Rechercher un médecin..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      <div className="row">
-        {/* Table des médecins */}
-        <div className="col-lg-7">
-          <table className="table table-bordered">
-            <thead className="table-success">
-              <tr>
-                <th>Nom</th>
-                <th>Email</th>
-                <th>Spécialité</th>
-              </tr>
-            </thead>
-            <tbody>
-              {medecins
-                .filter((m) =>
-                  m.user.first_name.toLowerCase().includes(search.toLowerCase()) ||
-                  m.user.last_name.toLowerCase().includes(search.toLowerCase())
-                )
-                .map((medecin) => (
-                  <tr key={medecin.id}>
-                    <td>{`Dr. ${medecin.user.first_name} ${medecin.user.last_name}`}</td>
-                    <td>{medecin.user.email || "-"}</td>
-                    <td>{medecin.specialite}</td>
-                  </tr>
-                ))}
-              {medecins.filter((m) =>
-                m.user.first_name.toLowerCase().includes(search.toLowerCase()) ||
-                m.user.last_name.toLowerCase().includes(search.toLowerCase())
-              ).length === 0 && (
-                <tr>
-                  <td colSpan="5">Aucun médecin généraliste trouvé.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Carte + Recherche géographique */}
-        <div className="col-lg-4">
-          <img
-            src="/images/medecin.jpg"
-            className="rounded shadow mb-3"
-            style={{ width: "520px", height: "300px" }}
-            alt="Médecin"
-          />
+      <div className="row mb-4">
+        <div className="col-md-6">
           <input
             type="text"
-            id="search-map-generalistes"
-            className="form-control mb-2 w-75"
-            placeholder="Localiser un médecin"
+            className="form-control"
+            placeholder="Rechercher un médecin..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div
-            id="map-generalistes"
-            style={{ height: "260px", width: "520px", borderRadius: "10px" }}
-          ></div>
         </div>
+      </div>
+
+      <div className="row">
+        {filteredDoctors.length > 0 ? (
+          filteredDoctors.map((doctor) => (
+            <div className="col-lg-4 col-md-6 mb-4" key={doctor.id}>
+              <div className="card h-100">
+                <div className="card-body">
+                  <h5 className="card-title">
+                    Dr. {doctor.user.first_name} {doctor.user.last_name}
+                  </h5>
+                  {doctor.specialite && (
+                    <p className="card-text">
+                      <strong>Spécialité:</strong> {doctor.specialite}
+                    </p>
+                  )}
+                  <p className="card-text">
+                    <strong>Disponibilité:</strong>{" "}
+                    {doctor.disponibilite ? (
+                      <span className="text-success">Disponible</span>
+                    ) : (
+                      <span className="text-danger">Indisponible</span>
+                    )}
+                  </p>
+                  <button className="btn btn-primary">
+                    Prendre Rendez-vous
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="col-12">
+            <p className="text-center">Aucun médecin généraliste trouvé.</p>
+          </div>
+        )}
       </div>
     </div>
   );

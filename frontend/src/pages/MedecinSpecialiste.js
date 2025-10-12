@@ -1,134 +1,127 @@
-import React, { useEffect, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import React, { useState, useEffect } from "react";
+import { doctorAPI } from "../services/api";
 
 function MedecinSpecialiste() {
-  const [search, setSearch] = useState("");
-  const [medecins, setMedecins] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [filteredDoctors, setFilteredDoctors] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [specialtyFilter, setSpecialtyFilter] = useState("");
 
-  // --- Récupération des médecins depuis l'API Django ---
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/medecins/") // adapte l'URL si besoin
-      .then((res) => res.json())
-      .then((data) => {
-    const specialistes = data.filter((m) => {
-    const specialite = m.specialite
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
-    return specialite !== "generaliste"; // donc tout sauf "generaliste"
-  });
-  setMedecins(specialistes);
-})
-
-      .catch((err) => console.error("Erreur API :", err));
+    fetchDoctors();
   }, []);
 
-  // --- Initialisation de la carte Leaflet ---
   useEffect(() => {
-    const map = L.map("map-medecins").setView([14.6928, -17.4467], 12);
+    let filtered = doctors;
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-    }).addTo(map);
-
-    const marker = L.marker([14.6928, -17.4467]).addTo(map);
-
-    const input = document.getElementById("search-map-medecins");
-    if (input) {
-      input.addEventListener("change", (e) => {
-        const query = e.target.value;
-        fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            query
-          )}`
-        )
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.length > 0) {
-              const lat = parseFloat(data[0].lat);
-              const lon = parseFloat(data[0].lon);
-              map.setView([lat, lon], 14);
-              marker.setLatLng([lat, lon]);
-            } else {
-              alert("Aucun résultat trouvé.");
-            }
-          });
-      });
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (doctor) =>
+          doctor.user.first_name
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          doctor.user.last_name
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          doctor.specialite.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
 
-    return () => {
-      map.remove();
-    };
-  }, []);
+    if (specialtyFilter) {
+      filtered = filtered.filter(
+        (doctor) =>
+          doctor.specialite.toLowerCase() === specialtyFilter.toLowerCase()
+      );
+    }
+
+    setFilteredDoctors(filtered);
+  }, [searchTerm, specialtyFilter, doctors]);
+
+  const fetchDoctors = async () => {
+    try {
+      const response = await doctorAPI.getDoctors();
+      // Filter for specialists only
+      const specialists = response.data.filter(
+        (doctor) =>
+          doctor.specialite && doctor.specialite.toLowerCase() !== "generaliste"
+      );
+      setDoctors(specialists);
+      setFilteredDoctors(specialists);
+    } catch (error) {
+      console.error("Error fetching doctors:", error);
+    }
+  };
+
+  // Get unique specialties for filter dropdown
+  const getSpecialties = () => {
+    const specialties = [...new Set(doctors.map((doc) => doc.specialite))];
+    return specialties.filter(
+      (spec) => spec && spec.toLowerCase() !== "generaliste"
+    );
+  };
 
   return (
     <div className="container mt-5">
-      <h2 className="mb-4">Liste des Médecins Spécialistes</h2>
+      <h2 className="mb-4">Médecins Spécialistes</h2>
 
-      <input
-        type="text"
-        className="form-control w-50 mb-3"
-        placeholder="Rechercher un médecin..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      <div className="row">
-        {/* Table des médecins */}
-        <div className="col-lg-7">
-          <table className="table table-bordered">
-            <thead className="table-warning">
-              <tr>
-                <th>Nom</th>
-                <th>Email</th>
-                <th>Spécialité</th>
-              </tr>
-            </thead>
-            <tbody>
-              {medecins
-                .filter((m) =>
-                  m.user.first_name.toLowerCase().includes(search.toLowerCase()) ||
-                  m.user.last_name.toLowerCase().includes(search.toLowerCase())
-                )
-                .map((medecin) => (
-                  <tr key={medecin.id}>
-                    <td>{`Dr. ${medecin.user.first_name} ${medecin.user.last_name}`}</td>
-                    <td>{medecin.user.email || "-"}</td>
-                    <td>{medecin.specialite}</td>
-                  </tr>
-                ))}
-              {medecins.filter((m) =>
-                m.user.first_name.toLowerCase().includes(search.toLowerCase()) ||
-                m.user.last_name.toLowerCase().includes(search.toLowerCase())
-              ).length === 0 && (
-                <tr>
-                  <td colSpan="5">Aucun médecin spécialiste trouvé.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Carte + Recherche géographique */}
-        <div className="col-lg-4">
-          <img
-            src="/images/medecin.jpg"
-            className="rounded shadow mb-3"
-            style={{ width: "520px", height: "300px" }}
-            alt="Médecin"
-          />
+      <div className="row mb-4">
+        <div className="col-md-6">
           <input
             type="text"
-            id="search-map-medecins"
-            className="form-control mb-2 w-75"
-            placeholder="Localiser un médecin"
+            className="form-control"
+            placeholder="Rechercher un médecin..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div
-            id="map-medecins"
-            style={{ height: "260px", width: "520px", borderRadius: "10px" }}
-          ></div>
         </div>
+        <div className="col-md-6">
+          <select
+            className="form-control"
+            value={specialtyFilter}
+            onChange={(e) => setSpecialtyFilter(e.target.value)}
+          >
+            <option value="">Toutes les spécialités</option>
+            {getSpecialties().map((specialty, index) => (
+              <option key={index} value={specialty}>
+                {specialty}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="row">
+        {filteredDoctors.length > 0 ? (
+          filteredDoctors.map((doctor) => (
+            <div className="col-lg-4 col-md-6 mb-4" key={doctor.id}>
+              <div className="card h-100">
+                <div className="card-body">
+                  <h5 className="card-title">
+                    Dr. {doctor.user.first_name} {doctor.user.last_name}
+                  </h5>
+                  <p className="card-text">
+                    <strong>Spécialité:</strong> {doctor.specialite}
+                  </p>
+                  <p className="card-text">
+                    <strong>Disponibilité:</strong>{" "}
+                    {doctor.disponibilite ? (
+                      <span className="text-success">Disponible</span>
+                    ) : (
+                      <span className="text-danger">Indisponible</span>
+                    )}
+                  </p>
+                  <button className="btn btn-primary">
+                    Prendre Rendez-vous
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="col-12">
+            <p className="text-center">Aucun médecin spécialiste trouvé.</p>
+          </div>
+        )}
       </div>
     </div>
   );

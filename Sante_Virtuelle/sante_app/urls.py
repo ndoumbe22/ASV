@@ -33,37 +33,69 @@ router.register(r'contact_footer', ContactFooterViewSet)
 
 urlpatterns = [
     # JWT Auth
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path("api/appointments/upcoming/", views.upcoming_appointments, name="upcoming_appointments"),
-    path("api/medications/", views.patient_medications, name="patient_medications"),
-    path("api/appointments/<int:pk>/cancel/", views.cancel_appointment, name="cancel_appointment"),
-    path("api/appointments/<int:pk>/reschedule/", views.reschedule_appointment, name="reschedule_appointment"),
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path("appointments/upcoming/", views.upcoming_appointments, name="upcoming_appointments"),
+    path("medications/", views.patient_medications, name="patient_medications"),
+    path("appointments/<int:pk>/cancel/", views.cancel_appointment, name="cancel_appointment"),
+    path("appointments/<int:pk>/reschedule/", views.reschedule_appointment, name="reschedule_appointment"),
 
-    # API Routes
-    path('api/', include(router.urls)),
+    # API Routes (removed the 'api/' prefix since it's already included in the main urls.py)
+    path('', include(router.urls)),
 
     # Chatbot (protégé par JWT)
     path("chatbot/", views.ChatbotAPIView.as_view(), name="chatbot"),
-    path('', views.accueil, name="accueil"),
+    path("chatbot/history/", views.ChatbotAPIView.as_view(), name="chatbot_history"),
 
+    # Medication Reminders
+    path("medication-reminders/", views.medication_reminders, name="medication_reminders"),
+    path("medication-reminders/<int:pk>/", views.medication_reminder_detail, name="medication_reminder_detail"),
+    path("medication-history/", views.medication_history, name="medication_history"),
+    path("medication-history/<int:pk>/mark-taken/", views.mark_medication_taken, name="mark_medication_taken"),
 
-    path("consultation/", views.consultation, name="consultation"),
-    path("connecter/", views.connexion, name="connecter"),
-    path("rendez_vous/", views.rendez_vous, name="rendez_vous"),
-    path("qui-sommes-nous/", views.qui_sommes_nous, name="qui_sommes_nous"),
+    # Admin Dashboard
+    path('admin/statistics/', views.admin_statistics, name='admin-statistics'),
+    path('admin/users/', views.admin_users_list, name='admin-users-list'),
+    path('admin/users/<int:user_id>/toggle-status/', views.admin_toggle_user_status, name='admin-toggle-user'),
+    path('admin/users/<int:user_id>/delete/', views.admin_delete_user, name='admin-delete-user'),
 
-    path('medecin_generaliste/', views.medecin_generaliste, name='medecin_generaliste'),
-    path('medecin_specialiste/', views.medecin_specialiste, name='medecin_specialiste'),
-    path("medecins/", views.medecins, name="medecins"),
+    # Health Facilities for Geolocation
+    path('health-facilities/', views.health_facilities, name='health-facilities'),
 
-    path("hopitaux/", views.hopitaux_list, name="hopitaux_list"),
-    path("cliniques/", views.cliniques_list, name="cliniques_list"),
-    path("dentistes/", views.dentistes_list, name="dentistes_list"),
-    path("pharmacies/", views.pharmacies_list, name="pharmacies_list"),
+    # Auth routes
+    path('auth/register/', RegisterView.as_view(), name="register"),
+    path('auth/login/', LoginView.as_view(), name="login"),
 
-    path("register/", RegisterView.as_view(), name="register"),
-    path("login/", LoginView.as_view(), name="login"),
+    # === ARTICLES PUBLICS ===
+    path('api/articles/', views.articles_publics, name='articles-publics'),
+    path('api/articles/<slug:slug>/', views.article_detail_public, name='article-detail-public'),
 
+    # === ARTICLES MÉDECINS ===
+    path('api/medecin/articles/', views.articles_medecin, name='medecin-articles'),
+    path('api/medecin/articles/<int:pk>/', views.article_medecin_detail, name='medecin-article-detail'),
+    path('api/medecin/articles/<int:pk>/soumettre/', views.article_soumettre_validation, name='article-soumettre'),
+
+    # === ARTICLES ADMIN ===
+    path('api/admin/articles/', views.articles_admin_list, name='admin-articles-list'),
+    path('api/admin/articles/<int:pk>/', views.article_admin_detail, name='admin-article-detail'),
+    path('api/admin/articles/<int:pk>/valider/', views.article_valider, name='article-valider'),
+    path('api/admin/articles/<int:pk>/refuser/', views.article_refuser, name='article-refuser'),
+    path('api/admin/articles/<int:pk>/desactiver/', views.article_desactiver, name='article-desactiver'),
+    path('api/admin/articles/statistics/', views.articles_statistics, name='articles-statistics'),
     
+    # === URGENCES PATIENT ===
+    path('api/patient/urgences/', views.urgences_patient, name='patient-urgences'),
+
+    # === URGENCES MÉDECIN ===
+    path('api/medecin/urgences/', views.urgences_medecin, name='medecin-urgences'),
+    path('api/medecin/urgences/<int:pk>/prendre-en-charge/', views.urgence_prendre_en_charge, name='urgence-prendre-en-charge'),
+    path('api/medecin/urgences/<int:pk>/resoudre/', views.urgence_resoudre, name='urgence-resoudre'),
+    path('api/medecin/notifications-urgences/', views.notifications_urgences_medecin, name='notifications-urgences'),
+    path('api/medecin/notifications-urgences/<int:pk>/lue/', views.notification_marquer_lue, name='notification-lue'),
+
+    # === URGENCES ADMIN ===
+    path('api/admin/urgences/dashboard/', views.urgences_admin_dashboard, name='admin-urgences-dashboard'),
+    
+    # === EXPORT DONNÉES RGPD ===
+    path('export-mes-donnees/', views.export_mes_donnees, name='export-donnees'),
 ]

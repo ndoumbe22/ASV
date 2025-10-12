@@ -1,79 +1,176 @@
-// src/components/Accueil.js
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import api from "../services/api";
 
 function Accueil() {
-  // Cartes des services
-  const serviceCards = [
+  const [stats, setStats] = useState([
+    { title: "Médecins", value: "0", icon: "bi bi-person-fill" },
+    { title: "Patients", value: "0", icon: "bi bi-people-fill" },
+    { title: "Cliniques", value: "0", icon: "bi bi-hospital-fill" },
+    { title: "Pharmacies", value: "0", icon: "bi bi-capsule" },
+  ]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Services data (static as these are features, not dynamic counts)
+  const services = [
     {
-      title: 'Annuaire Médical',
-      description: "AssitoSanté rassemble un grand nombre d'acteurs clés de la santé.",
-      icon: 'bi-book-half'
+      title: "Recherche de Médecins",
+      description:
+        "Trouvez facilement des médecins généralistes et spécialistes près de chez vous.",
+      icon: "bi bi-search",
     },
     {
-      title: 'Orientation',
-      description: 'Trouver votre praticien facilement avec un système de géolocalisation intégré.',
-      icon: 'bi-geo-alt-fill'
+      title: "Téléconsultation",
+      description:
+        "Consultez des professionnels de santé à distance en toute sécurité.",
+      icon: "bi bi-laptop",
     },
     {
-      title: 'Rendez-vous',
-      description: 'Demander un rendez-vous auprès de votre médecin.',
-      icon: 'bi-clock-fill'
+      title: "Prise de Rendez-vous",
+      description:
+        "Prenez des rendez-vous en ligne avec les praticiens de votre choix.",
+      icon: "bi bi-calendar-check",
     },
     {
-      title: 'Consultation',
-      description: 'Consultez un professionnel de santé à distance, partout et à tout moment.',
-      icon: 'bi-chat-dots-fill'
+      title: "Suivi Médical",
+      description:
+        "Accédez à vos dossiers médicaux et suivez votre état de santé.",
+      icon: "bi bi-file-medical",
     },
-    {
-      title: 'Chatbot',
-      description: 'Obtenez des conseils médicaux instantanés grâce à notre assistant virtuel.',
-      icon: 'bi-robot'
-    }
   ];
 
-  // Données pour les compteurs
-  const stats = [
-    { label: "Médecins inscrits", value: 3, icon: "bi-person-badge" },
-    { label: "Patients actifs", value: 0, icon: "bi-people-fill" },
-    { label: "Consultations en ligne", value: 0, icon: "bi-laptop" },
-    { label: "Pharmacies partenaires", value: 7, icon: "bi-capsule" },
+  // Mock data for testimonials (static as these are user testimonials)
+  const testimonials = [
+    {
+      name: "Awa Diop",
+      role: "Patient",
+      content:
+        "AssitoSanté m'a permis de trouver rapidement un médecin spécialiste. L'interface est intuitive et les services sont excellents!",
+      rating: 5,
+    },
+    {
+      name: "Dr. Samba Ndiaye",
+      role: "Médecin Généraliste",
+      content:
+        "Cette plateforme facilite vraiment mon travail quotidien. Je peux mieux organiser mes rendez-vous et suivre mes patients.",
+      rating: 5,
+    },
+    {
+      name: "Fatou Fall",
+      role: "Patient",
+      content:
+        "Grâce à AssitoSanté, j'ai pu consulter un spécialiste sans attendre des heures. Un vrai soulagement pour les personnes âgées comme ma mère.",
+      rating: 4,
+    },
   ];
 
-  const [counts, setCounts] = useState(stats.map(() => 0));
-
-  // Animation des compteurs
+  // Function to fetch real statistics
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCounts((prevCounts) =>
-        prevCounts.map((count, i) =>
-          count < stats[i].value ? count + Math.ceil(stats[i].value / 100) : stats[i].value
-        )
-      );
-    }, 30);
-    return () => clearInterval(interval);
-  }, [stats]);
+    const fetchStatistics = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  // Récupération des témoignages depuis l'API contact_footer
-  const [temoignages, setTemoignages] = useState([]);
+        console.log("Fetching statistics...");
 
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/contact_footer/") // URL complète vers le ViewSet
-      .then((res) => res.json())
-      .then((data) => setTemoignages(data))
-      .catch((err) => console.error("Erreur récupération témoignages:", err));
+        // Fetch counts for each entity using direct API calls
+        const [patientsCount, doctorsCount, clinicsCount, pharmaciesCount] =
+          await Promise.all([
+            // Get patients count
+            api
+              .get("patients/")
+              .then((res) => res.data.length)
+              .catch((err) => {
+                console.error("Error fetching patients count:", err);
+                return 0;
+              }),
+            // Get doctors count
+            api
+              .get("medecins/")
+              .then((res) => res.data.length)
+              .catch((err) => {
+                console.error("Error fetching doctors count:", err);
+                return 0;
+              }),
+            // Get clinics count
+            api
+              .get("cliniques/")
+              .then((res) => res.data.length)
+              .catch((err) => {
+                console.error("Error fetching clinics count:", err);
+                return 0;
+              }),
+            // Get pharmacies count
+            api
+              .get("pharmacies/")
+              .then((res) => res.data.length)
+              .catch((err) => {
+                console.error("Error fetching pharmacies count:", err);
+                return 0;
+              }),
+          ]);
+
+        console.log("Counts:", {
+          patientsCount,
+          doctorsCount,
+          clinicsCount,
+          pharmaciesCount,
+        });
+
+        // Update stats with real counts
+        setStats([
+          { title: "Médecins", value: doctorsCount.toString(), icon: "bi bi-person-fill" },
+          { title: "Patients", value: patientsCount.toString(), icon: "bi bi-people-fill" },
+          { title: "Cliniques", value: clinicsCount.toString(), icon: "bi bi-hospital-fill" },
+          {
+            title: "Pharmacies",
+            value: pharmaciesCount.toString(),
+            icon: "bi bi-capsule",
+          },
+        ]);
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Erreur lors du chargement des statistiques:", error);
+        setError(
+          "Impossible de charger les statistiques. Affichage des données de démonstration."
+        );
+
+        // Fallback to mock data in case of error
+        setStats([
+          { title: "Médecins", value: "150+", icon: "bi bi-person-fill" },
+          { title: "Patients", value: "5000+", icon: "bi bi-people-fill" },
+          { title: "Cliniques", value: "25+", icon: "bi bi-hospital-fill" },
+          { title: "Pharmacies", value: "100+", icon: "bi bi-capsule" },
+        ]);
+
+        setLoading(false);
+      }
+    };
+
+    fetchStatistics();
   }, []);
+
+  // Function to render star ratings
+  const renderStars = (rating) => {
+    return [...Array(5)].map((_, i) => (
+      <span key={i} style={{ color: i < rating ? "#ffc107" : "#ddd" }}>
+        ★
+      </span>
+    ));
+  };
 
   return (
     <>
-      {/* Section Accueil */}
+      {/* Section principale sous le header */}
       <section
         className="position-relative overflow-hidden"
         style={{
           minHeight: "calc(100vh - 140px)",
-          width: "112.5%",
-          marginTop: "-50px",
+          width: "100%",
+          marginTop: "0px",
           padding: "40px 0",
-          marginLeft: "-70px",
         }}
       >
         {/* Vidéo de fond */}
@@ -89,9 +186,30 @@ function Accueil() {
           Votre navigateur ne supporte pas la vidéo.
         </video>
 
+        {/* Container fluide (pleine largeur, sans marges) */}
         <div className="container-fluid h-100">
           <div className="row align-items-center h-100">
+            {/* Colonne gauche : Texte */}
             <div className="col-lg-6 text-white px-5">
+              {/* Barre de recherche */}
+              <div className="input-group mb-4">
+                <input
+                  type="text"
+                  className="form-control form-control-lg"
+                  placeholder="RECHERCHEZ ICI..."
+                  aria-label="Recherche"
+                  style={{ fontSize: "15px" }}
+                />
+                <button
+                  className="btn btn-danger btn-lg"
+                  type="button"
+                  style={{ padding: "5px" }}
+                >
+                  <i className="bi bi-search"></i>
+                </button>
+              </div>
+
+              {/* Titre et texte */}
               <h1 className="fw-bold mb-4">
                 AssistoSanté : votre partenaire santé virtuel
               </h1>
@@ -103,10 +221,12 @@ function Accueil() {
               </p>
               <p className="mb-4">
                 Avec AssistoSanté, trouvez rapidement un médecin, une pharmacie,
-                une clinique ou encore accédez à nos services de téléconsultation.
+                une clinique ou encore accédez à nos services de
+                téléconsultation.
               </p>
             </div>
 
+            {/* Colonne droite : Carousel */}
             <div className="col-lg-6 px-5">
               <div
                 id="carouselAccueil"
@@ -157,6 +277,7 @@ function Accueil() {
                   </div>
                 </div>
 
+                {/* Contrôles */}
                 <button
                   className="carousel-control-prev"
                   type="button"
@@ -179,48 +300,40 @@ function Accueil() {
         </div>
       </section>
 
-      {/* Nos Services */}
-      <section
-        className="d-flex align-items-center justify-content-center"
-        style={{
-          backgroundColor: "#f8f9fa",
-          padding: "60px 0",
-          width: "115%",
-          marginLeft: "-70px",
-        }}
-      >
-        <h2 className="fw-bold text-center">Nos Services</h2>
-      </section>
-
-      <section
-        className="py-5"
-        style={{
-          backgroundColor: "#f2f2f2",
-          paddingLeft: "20px",
-          width: "115%",
-          marginLeft: "-70px",
-        }}
-      >
+      {/* Section des statistiques */}
+      <section className="py-5" style={{ backgroundColor: "#f8f9fa" }}>
         <div className="container">
-          <div className="row justify-content-center">
-            {serviceCards.map((card, index) => (
-              <div key={index} className="col-lg-2 col-md-4 col-sm-6 mb-4">
-                <div
-                  className="card h-100 border-0 shadow-lg text-center p-4"
-                  style={{
-                    borderRadius: "15px",
-                    backgroundColor: "rgba(255, 255, 255, 0.2)",
-                    backdropFilter: "blur(5px)",
-                    width: "210px",
-                  }}
-                >
+          <div className="row">
+            <div className="col-12 text-center mb-5">
+              <h2 className="fw-bold">Notre Plateforme en Chiffres</h2>
+              <p className="text-muted">
+                Découvrez l'impact de notre plateforme sur la communauté
+                médicale
+              </p>
+              {error && <div className="alert alert-warning mt-3">{error}</div>}
+            </div>
+          </div>
+          <div className="row g-4">
+            {stats.map((stat, index) => (
+              <div key={index} className="col-lg-3 col-md-6">
+                <div className="card h-100 shadow-sm border-0 text-center">
                   <div className="card-body">
-                    <i
-                      className={`bi ${card.icon} text-primary`}
-                      style={{ fontSize: "3rem" }}
-                    ></i>
-                    <h5 className="card-title mt-3">{card.title}</h5>
-                    <p className="card-text text-secondary">{card.description}</p>
+                    <div className="display-4 mb-3">
+                      <i className={stat.icon}></i>
+                    </div>
+                    <h3 className="fw-bold text-primary">
+                      {loading ? (
+                        <div
+                          className="spinner-border spinner-border-sm"
+                          role="status"
+                        >
+                          <span className="visually-hidden">Loading...</span>
+                        </div>
+                      ) : (
+                        stat.value
+                      )}
+                    </h3>
+                    <p className="text-muted mb-0">{stat.title}</p>
                   </div>
                 </div>
               </div>
@@ -229,95 +342,114 @@ function Accueil() {
         </div>
       </section>
 
-      {/* Statistiques */}
-      <section
-        className="py-5 text-white"
-        style={{
-          backgroundColor: "#4b97e9",
-          width: "115%",
-          marginLeft: "-70px",
-        }}
-      >
+      {/* Section des services */}
+      <section className="py-5">
         <div className="container">
-          <div className="row text-center">
-            {stats.map((stat, i) => (
-              <div key={i} className="col-lg-3 col-md-6 mb-4">
-                <i className={`bi ${stat.icon}`} style={{ fontSize: "3rem" }}></i>
-                <h2 className="fw-bold mt-2">{counts[i]}</h2>
-                <p>{stat.label}</p>
+          <div className="row">
+            <div className="col-12 text-center mb-5">
+              <h2 className="fw-bold">Nos Services</h2>
+              <p className="text-muted">
+                Découvrez l'ensemble des services que nous offrons pour
+                améliorer votre accès aux soins
+              </p>
+            </div>
+          </div>
+          <div className="row g-4">
+            {services.map((service, index) => (
+              <div key={index} className="col-lg-3 col-md-6">
+                <div className="card h-100 shadow-sm border-0">
+                  <div className="card-body text-center">
+                    <div className="display-4 mb-3">
+                      <i className={service.icon}></i>
+                    </div>
+                    <h5 className="fw-bold mb-3">{service.title}</h5>
+                    <p className="text-muted">{service.description}</p>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Section Témoignages */}
-      <section
-  className="py-5 position-relative"
-  style={{
-    backgroundColor: "#f8f9fa",
-    width: "115%",
-    marginLeft: "-70px",
-  }}
->
-  <div className="container text-center position-relative">
-    <p className="text-primary fw-bold">Témoignages</p>
-    <h2 className="fw-bold mb-5">Ce que nos patients disent</h2>
-
-    {temoignages.length === 0 ? (
-      <p>Aucun témoignage disponible pour le moment.</p>
-    ) : (
-      <div className="position-relative d-flex justify-content-center align-items-center">
-        {/* Image centrale */}
-        <div
-          className="rounded-circle shadow"
-          style={{
-            width: "200px",
-            height: "200px",
-            overflow: "hidden",
-            zIndex: 1,
-          }}
-        >
-          <img
-            src="/images/central_image.jpg" // Remplacer par ton image
-            alt="Patient central"
-            className="w-100 h-100"
-            style={{ objectFit: "cover" }}
-          />
-        </div>
-
-        {/* Témoignages autour */}
-        {temoignages.slice(0, 4).map((t, index) => {
-          // Positions autour de l'image centrale
-          const positions = [
-            { top: "-40px", left: "300px" },
-            { top: "-40px", right: "300px" },
-            { bottom: "-40px", left: "300px" },
-            { bottom: "-40px", right: "300px" },
-          ];
-          const pos = positions[index] || { top: "0", left: "0" };
-
-          return (
-            <div
-              key={index}
-              className="position-absolute shadow rounded bg-white p-3 text-start"
-              style={{
-                width: "180px",
-                zIndex: 2,
-                ...pos,
-              }}
-            >
-              <p className="mb-2">"{t.message}"</p>
-              <span className="fw-bold text-primary">{t.nom}</span>
-              <br />
-              <small className="text-muted">{t.sujet}</small>
+      {/* Section des témoignages */}
+      <section className="py-5" style={{ backgroundColor: "#f8f9fa" }}>
+        <div className="container">
+          <div className="row">
+            <div className="col-12 text-center mb-5">
+              <h2 className="fw-bold">Témoignages</h2>
+              <p className="text-muted">
+                Découvrez ce que nos utilisateurs disent de notre plateforme
+              </p>
             </div>
-          );
-        })}
-      </div>
-    )}
-  </div>
-</section>
+          </div>
+          <div className="row g-4">
+            {testimonials.map((testimonial, index) => (
+              <div key={index} className="col-lg-4 col-md-6">
+                <div className="card h-100 shadow-sm border-0">
+                  <div className="card-body">
+                    <div className="mb-3">
+                      {renderStars(testimonial.rating)}
+                    </div>
+                    <p className="card-text mb-4">"{testimonial.content}"</p>
+                    <div className="d-flex align-items-center">
+                      <div className="ms-3">
+                        <h6 className="mb-0">{testimonial.name}</h6>
+                        <small className="text-muted">{testimonial.role}</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <style>
+        {`
+          /* Ensure carousel images display properly */
+          .carousel-inner img {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            border-radius: 20px;
+          }
+          
+          /* Fix for video background */
+          .position-relative {
+            position: relative !important;
+          }
+          
+          .position-absolute {
+            position: absolute !important;
+          }
+          
+          /* Card hover effect */
+          .card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+          }
+          
+          .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+          }
+          
+          /* Ensure Bootstrap Icons are loaded */
+          .bi::before {
+            display: inline-block;
+            font-family: "bootstrap-icons" !important;
+            font-style: normal;
+            font-weight: normal !important;
+            font-variant: normal;
+            text-transform: none;
+            line-height: 1;
+            vertical-align: -.125em;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          }
+        `}
+      </style>
     </>
   );
 }

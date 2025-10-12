@@ -5,7 +5,9 @@ from .models import (
     Patient, Medecin, Consultation, RendezVous,
     Pathologie, Medicament, Traitement,
     Constante, Mesure, Article,
-    StructureDeSante, Service, User, Hopital,Clinique,Dentiste,Pharmacie,ContactFooter
+    StructureDeSante, Service, User, Hopital,Clinique,Dentiste,Pharmacie,ContactFooter,
+    ChatbotConversation, RappelMedicament, HistoriquePriseMedicament,
+    Urgence, NotificationUrgence, AuditLog  # Added AuditLog
 )
 
 # -------------------- Patient --------------------
@@ -126,10 +128,11 @@ class MesureAdmin(admin.ModelAdmin):
 # -------------------- Articles --------------------
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
-    list_display = ("titre", "date_de_publication", "medecin")
-    search_fields = ("titre", "contenu", "medecin__user__first_name", "medecin__user__last_name")
-    list_filter = ("date_de_publication",)
-    list_select_related = ("medecin__user",)
+    list_display = ['titre', 'auteur', 'categorie', 'statut', 'vues', 'date_publication']
+    list_filter = ['statut', 'categorie', 'date_publication']
+    search_fields = ['titre', 'contenu', 'tags']
+    prepopulated_fields = {'slug': ('titre',)}
+    readonly_fields = ['vues', 'date_publication', 'date_modification']
 
 
 # -------------------- Structures de Santé --------------------
@@ -198,3 +201,60 @@ class PharmacieAdmin(admin.ModelAdmin):
 class ContactFooterAdmin(admin.ModelAdmin):
     list_display = ("nom", "email", "sujet", "date_envoi")
     search_fields = ("nom", "email", "sujet")
+
+
+# Add admin registrations for new models
+@admin.register(ChatbotConversation)
+class ChatbotConversationAdmin(admin.ModelAdmin):
+    list_display = ("patient", "message_user", "message_bot", "timestamp", "sentiment")
+    search_fields = ("message_user", "message_bot", "patient__user__username")
+    list_filter = ("timestamp", "sentiment")
+    readonly_fields = ("timestamp",)
+
+
+@admin.register(RappelMedicament)
+class RappelMedicamentAdmin(admin.ModelAdmin):
+    list_display = ("patient", "medicament", "frequence", "heure_rappel", "date_debut", "date_fin", "actif")
+    search_fields = ("medicament", "patient__user__username")
+    list_filter = ("frequence", "actif", "date_debut", "heure_rappel")
+    # Remove readonly_fields as 'created_at' doesn't exist in the model
+
+
+@admin.register(HistoriquePriseMedicament)
+class HistoriquePriseMedicamentAdmin(admin.ModelAdmin):
+    list_display = ("rappel", "date_prise", "prise_effectuee")
+    search_fields = ("rappel__medicament", "rappel__patient__user__username")
+    list_filter = ("date_prise", "prise_effectuee")
+    readonly_fields = ("date_prise",)
+
+
+# -------------------- Audit Logs --------------------
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ("user", "action", "model_name", "object_id", "timestamp")
+    list_filter = ("action", "model_name", "timestamp")
+    search_fields = ("user__username", "model_name", "details")
+    readonly_fields = ("timestamp", "ip_address", "user_agent")
+    
+    def has_add_permission(self, request):
+        return False  # Empêcher l'ajout manuel de logs
+    
+    def has_change_permission(self, request, obj=None):
+        return False  # Empêcher la modification de logs
+
+
+# -------------------- Urgences --------------------
+@admin.register(Urgence)
+class UrgenceAdmin(admin.ModelAdmin):
+    list_display = ("type_urgence", "patient", "priorite", "statut", "date_creation")
+    list_filter = ("priorite", "statut", "date_creation")
+    search_fields = ("type_urgence", "description", "patient__user__username")
+    readonly_fields = ("date_creation", "date_modification", "score_urgence")
+
+
+@admin.register(NotificationUrgence)
+class NotificationUrgenceAdmin(admin.ModelAdmin):
+    list_display = ("urgence", "medecin", "lue", "date_envoi")
+    list_filter = ("lue", "date_envoi")
+    search_fields = ("urgence__type_urgence", "medecin__user__username")
+    readonly_fields = ("date_envoi",)

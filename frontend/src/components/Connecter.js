@@ -1,163 +1,199 @@
-// src/components/Connecter.js
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { useNavigate, Link } from "react-router-dom";
+import { authAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import "./Auth.css";
 
 function Connecter() {
-  const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: "",
     password: "",
-    first_name: "",
-    last_name: "",
-    email: "",
-    telephone: "",
-    adresse: "",
-    role: "patient", // rôle par défaut
   });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setError(""); // Clear error when user types
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
+
     try {
-      if (isLogin) {
-        // Connexion
-        const res = await axios.post("http://127.0.0.1:8000/login/", {
-          username: formData.username,
-          password: formData.password,
-        });
+      const res = await authAPI.login({
+        username: formData.username,
+        password: formData.password,
+      });
 
-        const { access, role, first_name, last_name } = res.data; // 🔹 Récupérer prénom/nom depuis l'API
-        localStorage.setItem("token", access);
-        localStorage.setItem("role", role);
-        localStorage.setItem("first_name", first_name); // 🔹 Sauvegarde
-        localStorage.setItem("last_name", last_name);   // 🔹 Sauvegarde
+      console.log("Login response:", res.data);
 
-        // Redirection selon le rôle
-        if (role === "patient") navigate("/interface_patient");
-        else if (role === "medecin") navigate("/interface_medecin");
-        else if (role === "admin") navigate("/interface_admin");
-        else navigate("/"); // fallback
+      if (!res.data || !res.data.access) {
+        throw new Error("Réponse invalide du serveur");
+      }
+
+      // Use the login function from AuthContext
+      login(res.data.user, {
+        access: res.data.access,
+        refresh: res.data.refresh,
+      });
+
+      // Redirect based on role
+      const role = res.data.user.role || "patient";
+      if (role === "patient") {
+        navigate("/interface_patient");
+      } else if (role === "medecin") {
+        navigate("/interface_medecin");
+      } else if (role === "admin") {
+        navigate("/interface_admin");
       } else {
-        // Inscription
-        await axios.post("http://127.0.0.1:8000/register/", formData);
-        alert("✅ Compte créé avec succès ! Vous pouvez maintenant vous connecter.");
-        setIsLogin(true);
+        navigate("/");
       }
     } catch (error) {
-      console.error(error);
-      alert(
-        "❌ Erreur : " +
-          (error.response?.data?.detail ||
-            error.response?.data?.error ||
-            JSON.stringify(error.response?.data) ||
-            "Vérifiez vos informations.")
-      );
+      console.error("Authentication error:", error);
+
+      let errorMessage = "Une erreur est survenue. Veuillez réessayer.";
+
+      if (error.response) {
+        const errorData = error.response.data;
+
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (error.response.status === 401) {
+          errorMessage = "Identifiants incorrects";
+        } else if (error.response.status === 500) {
+          errorMessage = "Erreur serveur. Veuillez réessayer plus tard.";
+        }
+      } else if (error.request) {
+        errorMessage =
+          "Impossible de contacter le serveur. Vérifiez votre connexion.";
+      }
+
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container my-5">
-      <h2 className="text-center mb-4">{isLogin ? "Connexion" : "Inscription"}</h2>
+    <div className="auth-container">
+      <div className="auth-card">
+        <div className="auth-header">
+          <div className="auth-icon">
+            <i className="bi bi-shield-lock"></i>
+          </div>
+          <h2 className="auth-title">Connexion</h2>
+          <p className="auth-subtitle">Accédez à votre espace santé</p>
+        </div>
 
-      <form onSubmit={handleSubmit} className="w-50 mx-auto">
-        {!isLogin && (
-          <>
-            <input
-              type="text"
-              name="first_name"
-              placeholder="Nom"
-              className="form-control mb-3"
-              value={formData.first_name}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="text"
-              name="last_name"
-              placeholder="Prénom"
-              className="form-control mb-3"
-              value={formData.last_name}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="email"
-              name="email"
-              placeholder="Email"
-              className="form-control mb-3"
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="text"
-              name="telephone"
-              placeholder="Téléphone"
-              className="form-control mb-3"
-              value={formData.telephone}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="text"
-              name="adresse"
-              placeholder="Adresse"
-              className="form-control mb-3"
-              value={formData.adresse}
-              onChange={handleChange}
-              required
-            />
-
-
-            <select
-              name="role"
-              className="form-control mb-3"
-              value={formData.role}
-              onChange={handleChange}
-              required
-            >
-              <option value="patient">Patient</option>
-              <option value="medecin">Médecin</option>
-            </select>
-          </>
+        {error && (
+          <div className="alert alert-danger-custom" role="alert">
+            <i className="bi bi-exclamation-circle me-2"></i>
+            {error}
+          </div>
         )}
 
-        <input
-          type="text"
-          name="username"
-          placeholder="Nom d'utilisateur"
-          className="form-control mb-3"
-          value={formData.username}
-          onChange={handleChange}
-          required
-        />
-        <input
-          type="password"
-          name="password"
-          placeholder="Mot de passe"
-          className="form-control mb-3"
-          value={formData.password}
-          onChange={handleChange}
-          required
-        />
+        <form onSubmit={handleSubmit} className="auth-form">
+          <div className="form-group-custom">
+            <label htmlFor="username" className="form-label-custom">
+              <i className="bi bi-person me-2"></i>
+              Nom d'utilisateur
+            </label>
+            <input
+              type="text"
+              id="username"
+              name="username"
+              className="form-control-custom"
+              placeholder="Entrez votre nom d'utilisateur"
+              value={formData.username}
+              onChange={handleChange}
+              required
+              autoFocus
+            />
+          </div>
 
-        <button type="submit" className="btn btn-primary w-100">
-          {isLogin ? "Se connecter" : "S'inscrire"}
-        </button>
-      </form>
+          <div className="form-group-custom">
+            <label htmlFor="password" className="form-label-custom">
+              <i className="bi bi-lock me-2"></i>
+              Mot de passe
+            </label>
+            <div className="password-input-wrapper">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                name="password"
+                className="form-control-custom"
+                placeholder="Entrez votre mot de passe"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                <i className={`bi bi-eye${showPassword ? "-slash" : ""}`}></i>
+              </button>
+            </div>
+          </div>
 
-      <p className="text-center mt-3">
-        {isLogin ? "Pas encore de compte ?" : "Déjà inscrit ?"}{" "}
-        <button className="btn btn-link" onClick={() => setIsLogin(!isLogin)}>
-          {isLogin ? "S'inscrire" : "Se connecter"}
-        </button>
-      </p>
+          <div className="form-options">
+            <div className="form-check">
+              <input
+                type="checkbox"
+                className="form-check-input"
+                id="rememberMe"
+              />
+              <label className="form-check-label" htmlFor="rememberMe">
+                Se souvenir de moi
+              </label>
+            </div>
+            <Link to="/forgot-password" className="forgot-password-link">
+              Mot de passe oublié ?
+            </Link>
+          </div>
+
+          <button
+            type="submit"
+            className="btn-submit-custom"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2"></span>
+                Connexion en cours...
+              </>
+            ) : (
+              <>
+                <i className="bi bi-box-arrow-in-right me-2"></i>
+                Se connecter
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="auth-footer">
+          <p>
+            Pas encore de compte ?{" "}
+            <Link to="/inscrire" className="auth-link">
+              S'inscrire
+            </Link>
+          </p>
+        </div>
+      </div>
+
+      <div className="auth-background">
+        <div className="floating-shape shape-1"></div>
+        <div className="floating-shape shape-2"></div>
+        <div className="floating-shape shape-3"></div>
+      </div>
     </div>
   );
 }

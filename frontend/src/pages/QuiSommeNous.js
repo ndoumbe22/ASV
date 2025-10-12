@@ -1,36 +1,89 @@
-// src/pages/QuiSommesNous.js
 import React from "react";
 
 function QuiSommeNous() {
   return (
-    <div className="container my-5">
-      <h1 className="fw-bold text-center mb-4">Qui sommes-nous ?</h1>
-      <p className="lead text-center">
-        AssitoSanté est une plateforme de santé virtuelle intégrée qui facilite
-        l’accès aux soins pour tous.  
-        Nous mettons en relation les patients avec les médecins, cliniques,
-        pharmacies et hôpitaux à travers une solution moderne, rapide et
-        sécurisée.
-      </p>
+    <div className="container mt-5">
+      <div className="row">
+        <div className="col-lg-8 mx-auto">
+          <h1 className="text-center mb-5">Qui sommes-nous ?</h1>
 
-      <div className="row mt-5">
-        <div className="col-md-6">
-          <h3 className="fw-bold">Notre Mission</h3>
-          <p>
-            Offrir aux patients une solution simple pour prendre rendez-vous,
-            consulter un médecin à distance, accéder à leur dossier médical et
-            bénéficier de conseils personnalisés grâce à notre chatbot
-            intelligent.
-          </p>
-        </div>
-        <div className="col-md-6">
-          <h3 className="fw-bold">Nos Valeurs</h3>
-          <ul>
-            <li>Accessibilité aux soins pour tous</li>
-            <li>Fiabilité et sécurité des données</li>
-            <li>Innovation grâce aux technologies modernes</li>
-            <li>Transparence et accompagnement personnalisé</li>
-          </ul>
+          <div className="card mb-4">
+            <div className="card-body">
+              <h3 className="card-title">Notre Mission</h3>
+              <p className="card-text">
+                AssitoSanté est une plateforme de santé virtuelle intégrée qui
+                vise à faciliter l'accès aux soins de santé pour tous. Notre
+                mission est de connecter les patients avec les professionnels de
+                santé qualifiés, les établissements médicaux et les services de
+                santé essentiels dans un environnement numérique sécurisé et
+                convivial.
+              </p>
+            </div>
+          </div>
+
+          <div className="card mb-4">
+            <div className="card-body">
+              <h3 className="card-title">Notre Vision</h3>
+              <p className="card-text">
+                Nous aspirons à créer un écosystème de santé numérique où chaque
+                individu peut accéder facilement à des soins de qualité, où les
+                professionnels de santé peuvent optimiser leur pratique, et où
+                la gestion de la santé devient proactive plutôt que réactive.
+              </p>
+            </div>
+          </div>
+
+          <div className="card mb-4">
+            <div className="card-body">
+              <h3 className="card-title">Nos Valeurs</h3>
+              <ul className="card-text">
+                <li>
+                  <strong>Accessibilité :</strong> Rendre les soins de santé
+                  accessibles à tous, où qu'ils soient.
+                </li>
+                <li>
+                  <strong>Qualité :</strong> Garantir des services de santé de
+                  haute qualité.
+                </li>
+                <li>
+                  <strong>Innovation :</strong> Utiliser les dernières
+                  technologies pour améliorer l'expérience de santé.
+                </li>
+                <li>
+                  <strong>Sécurité :</strong> Protéger la confidentialité et la
+                  sécurité des données des patients.
+                </li>
+                <li>
+                  <strong>Empathie :</strong> Placer le patient au centre de
+                  tout ce que nous faisons.
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card mb-4">
+            <div className="card-body">
+              <h3 className="card-title">Nos Services</h3>
+              <p className="card-text">
+                Notre plateforme offre une gamme complète de services de santé,
+                y compris la recherche de médecins, la prise de rendez-vous en
+                ligne, les consultations à distance, le suivi des traitements,
+                l'accès aux dossiers médicaux et bien plus encore.
+              </p>
+            </div>
+          </div>
+
+          <div className="card mb-4">
+            <div className="card-body">
+              <h3 className="card-title">Notre Équipe</h3>
+              <p className="card-text">
+                Nous sommes une équipe passionnée de professionnels de la santé,
+                de développeurs, de designers et d'experts en technologie, tous
+                unis par la mission de transformer l'expérience de santé grâce à
+                l'innovation numérique.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

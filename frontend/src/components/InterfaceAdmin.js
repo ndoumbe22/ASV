@@ -1,4 +1,4 @@
-// src/components/InterfacePatient.js
+// src/components/InterfaceAdmin.js
 import React from "react";
 
 function InterfaceAdmin() {

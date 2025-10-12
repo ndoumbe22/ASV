@@ -10,6 +10,6 @@ User = get_user_model()
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         if instance.role == "patient":
-            Patient.objects.get_or_create(user=instance, adresse=instance.adresse)
+            Patient.objects.get_or_create(user=instance)
         elif instance.role == "medecin":
             Medecin.objects.get_or_create(user=instance, specialite="Généraliste")

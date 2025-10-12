@@ -15,7 +15,6 @@ import {
 import { MdFeedback } from "react-icons/md";
 import { IoMdNotificationsOutline } from "react-icons/io";
 import { BsSun, BsMoon } from "react-icons/bs";
-import "../assets/css/base.css";
 
 function PatientInterface({ user }) {
   const [theme, setTheme] = useState("light");
@@ -86,9 +85,13 @@ function PatientInterface({ user }) {
   // 🔹 Annuler un rendez-vous
   const cancelAppointment = async (id) => {
     try {
-      await axios.post(`/api/appointments/${id}/cancel/`, {}, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
+      await axios.post(
+        `/api/appointments/${id}/cancel/`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        }
+      );
       setRendezvous((prev) =>
         prev.map((rdv) =>
           rdv.id === id ? { ...rdv, statut: "CANCELLED" } : rdv
@@ -138,7 +141,13 @@ function PatientInterface({ user }) {
       {/* ===== Sidebar ===== */}
       <aside style={{ width: "250px", padding: "20px" }}>
         <div className="d-flex align-items-center mb-4">
-          <img src="/images/logo.png" alt="Logo" width="120" height="120" className="me-2" />
+          <img
+            src="/images/logo.png"
+            alt="Logo"
+            width="120"
+            height="120"
+            className="me-2"
+          />
         </div>
 
         <ul className="nav flex-column">
@@ -243,8 +252,13 @@ function PatientInterface({ user }) {
 
           {/* Icônes + Profil */}
           <div className="d-flex align-items-center">
-            <div style={iconStyle}><FaCog size={16} /></div>
-            <div style={{ ...iconStyle, position: "relative" }}><FaComments size={16} /><span style={badgeStyle}></span></div>
+            <div style={iconStyle}>
+              <FaCog size={16} />
+            </div>
+            <div style={{ ...iconStyle, position: "relative" }}>
+              <FaComments size={16} />
+              <span style={badgeStyle}></span>
+            </div>
             <div
               style={{ ...iconStyle, position: "relative" }}
               onClick={toggleNotifications}
@@ -266,12 +280,23 @@ function PatientInterface({ user }) {
                     zIndex: 10,
                   }}
                 >
-                  <div style={{ padding: "10px", maxHeight: "200px", overflowY: "auto" }}>
+                  <div
+                    style={{
+                      padding: "10px",
+                      maxHeight: "200px",
+                      overflowY: "auto",
+                    }}
+                  >
                     {notifications.length === 0 ? (
                       <p className="text-muted">Aucune notification</p>
                     ) : (
                       notifications.map((note, idx) => (
-                        <p key={idx} style={{ margin: "0 0 10px 0", fontSize: "14px" }}>🔔 {note}</p>
+                        <p
+                          key={idx}
+                          style={{ margin: "0 0 10px 0", fontSize: "14px" }}
+                        >
+                          🔔 {note}
+                        </p>
                       ))
                     )}
                   </div>
@@ -299,14 +324,30 @@ function PatientInterface({ user }) {
                 <img
                   src={user.profileImage}
                   alt="Profil"
-                  style={{ width: "40px", height: "40px", borderRadius: "50%", objectFit: "cover", marginRight: "10px" }}
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    marginRight: "10px",
+                  }}
                 />
               ) : (
-                <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "#ddd", marginRight: "10px" }}></div>
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "50%",
+                    backgroundColor: "#ddd",
+                    marginRight: "10px",
+                  }}
+                ></div>
               )}
               <div>
                 <strong>{fullName || "Patient"}</strong>
-                <p className="m-0 text-muted" style={{ fontSize: "12px" }}>{user?.role || "Patient"}</p>
+                <p className="m-0 text-muted" style={{ fontSize: "12px" }}>
+                  {user?.role || "Patient"}
+                </p>
               </div>
             </div>
           </div>
@@ -315,7 +356,10 @@ function PatientInterface({ user }) {
         {/* ===== Titre Dashboard ===== */}
         <div className="mb-4">
           <h5>
-            <span style={{ color: "gray" }}> Tableau de Bord Patient &gt; </span>
+            <span style={{ color: "gray" }}>
+              {" "}
+              Tableau de Bord Patient &gt;{" "}
+            </span>
             <strong>Dashboard</strong>
           </h5>
         </div>
@@ -327,30 +371,68 @@ function PatientInterface({ user }) {
           ) : (
             filteredRdv.map((rdv) => (
               <div key={rdv.id} className="col-md-6">
-                <div className="card shadow-sm p-3" style={{ backgroundColor: getStatusBg(rdv.statut) }}>
+                <div
+                  className="card shadow-sm p-3"
+                  style={{ backgroundColor: getStatusBg(rdv.statut) }}
+                >
                   <div className="d-flex justify-content-between align-items-start">
                     {/* Info rendez-vous */}
                     <div>
-                      <h6 className="mb-1"><strong>{rdv.date}</strong> - {rdv.heure}</h6>
-                      <p className="mb-1"><FaUserMd className="me-1 text-primary" />{rdv.medecin_nom}</p>
-                      <p className="mb-1"><em>{rdv.description}</em></p>
-                      <p className="mb-1" style={{ fontSize: "13px", color: "#6c757d" }}>
+                      <h6 className="mb-1">
+                        <strong>{rdv.date}</strong> - {rdv.heure}
+                      </h6>
+                      <p className="mb-1">
+                        <FaUserMd className="me-1 text-primary" />
+                        {rdv.medecin_nom}
+                      </p>
+                      <p className="mb-1">
+                        <em>{rdv.description}</em>
+                      </p>
+                      <p
+                        className="mb-1"
+                        style={{ fontSize: "13px", color: "#6c757d" }}
+                      >
                         Statut :{" "}
-                        {rdv.statut === "CONFIRMED" && <span style={{ color: "green" }}>✔ Confirmé</span>}
-                        {rdv.statut === "RESCHEDULED" && <span style={{ color: "#ff9800" }}>↻ Reprogrammé</span>}
-                        {rdv.statut === "CANCELLED" && <span style={{ color: "red" }}>✖ Annulé</span>}
+                        {rdv.statut === "CONFIRMED" && (
+                          <span style={{ color: "green" }}>✔ Confirmé</span>
+                        )}
+                        {rdv.statut === "RESCHEDULED" && (
+                          <span style={{ color: "#ff9800" }}>
+                            ↻ Reprogrammé
+                          </span>
+                        )}
+                        {rdv.statut === "CANCELLED" && (
+                          <span style={{ color: "red" }}>✖ Annulé</span>
+                        )}
                       </p>
                     </div>
 
                     {/* Boutons d’action */}
                     <div className="d-flex flex-column align-items-end">
                       {rdv.statut === "CONFIRMED" && (
-                        <button className="btn btn-success btn-sm mb-2" onClick={() => alert(`Joining session for appointment ${rdv.id}`)}>Join Session</button>
+                        <button
+                          className="btn btn-success btn-sm mb-2"
+                          onClick={() =>
+                            alert(`Joining session for appointment ${rdv.id}`)
+                          }
+                        >
+                          Join Session
+                        </button>
                       )}
                       {rdv.statut !== "CANCELLED" && (
-                        <button className="btn btn-danger btn-sm mb-2" onClick={() => cancelAppointment(rdv.id)}>Annuler</button>
+                        <button
+                          className="btn btn-danger btn-sm mb-2"
+                          onClick={() => cancelAppointment(rdv.id)}
+                        >
+                          Annuler
+                        </button>
                       )}
-                      <button className="btn btn-warning btn-sm" onClick={() => rescheduleAppointment(rdv.id)}>Reprogrammer</button>
+                      <button
+                        className="btn btn-warning btn-sm"
+                        onClick={() => rescheduleAppointment(rdv.id)}
+                      >
+                        Reprogrammer
+                      </button>
                     </div>
                   </div>
                 </div>

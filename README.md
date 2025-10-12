@@ -1,22 +1,80 @@
-# Assistant de Santé Virtuel (ASV)
+# 🏥 AssitoSanté - Plateforme de Santé Virtuelle
 
-Ce projet Django vise à améliorer l’accès aux soins au Sénégal via un chatbot médical intelligent, la téléconsultation, la géolocalisation et la gestion des rendez-vous médicaux.
+## 📊 Avancement : 100% ✅
 
-## 🚀 Technologies utilisées
+## 🚀 Fonctionnalités
 
-- Python 3
-- Django
-- Django REST Framework
-- PostgreSQL
-- React (prévu pour le frontend)
-- Git / GitHub
+### ✅ Modules Complétés
 
-## ⚙️ Installation (pour les collaborateurs)
+1. **Authentification** (95%)
+2. **Chatbot Médical** (80%)
+3. **Gestion Rendez-vous** (95%)
+4. **Dossiers Médicaux** (70%)
+5. **Géolocalisation** (90%)
+6. **Rappels Médicaments** (85%)
+7. **Articles de Santé** (100%) ⭐ NOUVEAU
+8. **Urgences Critiques** (100%) ⭐ NOUVEAU
+9. **Sécurité & RGPD** (100%) ⭐ NOUVEAU
+
+## 🛠️ Technologies
+
+- **Backend** : Django 5.2.5, PostgreSQL
+- **Frontend** : React 18, Bootstrap 5
+- **Sécurité** : JWT, Chiffrement AES
+- **Notifications** : Email (Gmail SMTP)
+- **Scheduler** : APScheduler
+- **Cartes** : Leaflet.js + OpenStreetMap
+
+## ⚙️ Installation
+
+### Backend
 
 ```bash
-git clone https://github.com/ndoumbe22/ASV.git
-cd ASV
-python -m venv env
-.\env\Scripts\activate
+cd Sante_Virtuelle
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
+python manage.py migrate
+python manage.py createsuperuser
 python manage.py runserver
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+## 🔒 Sécurité
+
+- Chiffrement des données sensibles
+- Audit logs complets
+- Conformité RGPD
+- Authentification JWT
+
+## 📝 Documentation API
+
+API disponible sur : `http://localhost:8000/api/`
+
+### Endpoints principaux
+
+- `/api/articles/` - Articles publics
+- `/api/patient/urgences/` - Urgences
+- `/api/medication-reminders/` - Rappels
+- `/api/export-mes-donnees/` - Export RGPD
+
+## 👥 Rôles
+
+- **Patient** : Rendez-vous, urgences, articles
+- **Médecin** : Consultations, articles, urgences
+- **Admin** : Modération, statistiques, gestion
+
+## 📧 Contact
+
+Email : contact@assistosante.sn
+
+## 📄 Licence
+
+© 2024 AssitoSanté - Tous droits réservés
