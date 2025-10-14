@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import Chatbot from "./Chatbot"; // Import the Chatbot component
 import Footer from "./Footer"; // Import the Footer component
+import ThemeSwitcher from "./ThemeSwitcher"; // Import Theme Switcher
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
 

@@ -14,6 +14,6 @@ class SanteAppConfig(AppConfig):
         # Start the scheduler
         try:
             scheduler.start()
-            logger.info("Medication reminder scheduler started successfully")
+            logger.info("Scheduler started successfully with medication and appointment reminders")
         except Exception as e:
-            logger.error(f"Failed to start medication reminder scheduler: {e}")
+            logger.error(f"Failed to start scheduler: {e}")

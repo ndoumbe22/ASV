@@ -5,7 +5,7 @@ from .models import (
     Pathologie, Traitement, Constante, Mesure, Article,
     StructureDeSante, Service, Clinique, Dentiste, Hopital, Pharmacie,
     ContactFooter, ChatbotConversation, RappelMedicament, HistoriquePriseMedicament,
-    Urgence, NotificationUrgence  # Added Urgence models
+    Urgence, NotificationUrgence, MedicalDocument, Rating  # Added Rating
 )
 
 User = get_user_model()
@@ -53,12 +53,15 @@ class ConsultationSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 class RendezVousSerializer(serializers.ModelSerializer):
-    medecin_nom = serializers.CharField(source="medecin.nom", read_only=True)
-    patient_nom = serializers.CharField(source="patient.nom", read_only=True)
+    medecin_nom = serializers.CharField(source="medecin.get_full_name", read_only=True)
+    patient_nom = serializers.CharField(source="patient.get_full_name", read_only=True)
+    original_date = serializers.DateField(read_only=True)
+    original_heure = serializers.TimeField(read_only=True)
 
     class Meta:
         model = RendezVous
-        fields = ["id", "date", "heure", "description", "statut", "medecin_nom", "patient_nom"]
+        fields = ["id", "date", "heure", "description", "statut", "medecin_nom", "patient_nom", 
+                  "original_date", "original_heure", "date_creation", "date_modification"]
 
 
 class PathologieSerializer(serializers.ModelSerializer):
@@ -223,12 +226,40 @@ class HistoriquePriseMedicamentSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    confirmPassword = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
-        fields = ["id", "username", "password", "first_name", "last_name", "email", "telephone", "adresse", "role"]
+        fields = ["id", "username", "password", "confirmPassword", "first_name", "last_name", "email", "telephone", "adresse", "role"]
+
+    def validate(self, attrs):
+        # Check if passwords match
+        password = attrs.get('password')
+        confirm_password = attrs.get('confirmPassword')
+        
+        if password and confirm_password and password != confirm_password:
+            raise serializers.ValidationError("Les mots de passe ne correspondent pas")
+        
+        # Check password strength
+        if password and len(password) < 8:
+            raise serializers.ValidationError("Le mot de passe doit contenir au moins 8 caractères")
+        
+        # Check if username is unique
+        username = attrs.get('username')
+        if username and User.objects.filter(username=username).exists():
+            raise serializers.ValidationError("Ce nom d'utilisateur est déjà utilisé")
+        
+        # Check if email is unique
+        email = attrs.get('email')
+        if email and User.objects.filter(email=email).exists():
+            raise serializers.ValidationError("Cet email est déjà utilisé")
+            
+        return attrs
 
     def create(self, validated_data):
+        # Remove confirmPassword from validated_data as it's not a model field
+        validated_data.pop('confirmPassword', None)
+        
         user = User.objects.create_user(
             username=validated_data["username"],
             password=validated_data["password"],
@@ -276,3 +307,49 @@ class NotificationUrgenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationUrgence
         fields = '__all__'
+
+class MedicalDocumentSerializer(serializers.ModelSerializer):
+    uploaded_by_name = serializers.CharField(source='uploaded_by.get_full_name', read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MedicalDocument
+        fields = '__all__'
+        read_only_fields = ['uploaded_by', 'uploaded_at']
+
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None
+
+
+class RatingSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les évaluations des médecins"""
+    patient_name = serializers.SerializerMethodField()
+    medecin_name = serializers.SerializerMethodField()
+    rendez_vous_date = serializers.DateField(source='rendez_vous.date', read_only=True)
+    
+    class Meta:
+        model = Rating
+        fields = ['id', 'patient', 'patient_name', 'medecin', 'medecin_name', 'rendez_vous', 
+                  'rendez_vous_date', 'note', 'commentaire', 'date_creation', 'date_modification']
+        read_only_fields = ['patient', 'date_creation', 'date_modification']
+        
+    def get_patient_name(self, obj):
+        return f"{obj.patient.user.first_name} {obj.patient.user.last_name}"
+        
+    def get_medecin_name(self, obj):
+        return f"Dr. {obj.medecin.user.first_name} {obj.medecin.user.last_name}"
+        
+    def create(self, validated_data):
+        # Automatically set the patient to the current user
+        validated_data['patient'] = self.context['request'].user.patient_profile
+        return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # Prevent changing the patient, medecin, or rendez_vous
+        validated_data.pop('patient', None)
+        validated_data.pop('medecin', None)
+        validated_data.pop('rendez_vous', None)
+        return super().update(instance, validated_data)

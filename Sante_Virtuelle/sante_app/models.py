@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.text import slugify
+from django.utils import timezone
 # Importer les fonctions de chiffrement
 from .encryption import encrypt_field, decrypt_field
 
@@ -13,6 +14,12 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLES, default="patient")
     telephone = models.CharField(max_length=20, blank=True, null=True)
     adresse = models.CharField(max_length=255, blank=True, null=True)
+    
+    def get_full_name(self):
+        """Return the full name of the user."""
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name if full_name else self.username
+    
     def __str__(self):
         return f"{self.username} ({self.role})"
     
@@ -94,15 +101,33 @@ class RendezVous(models.Model):
         ("CANCELLED", "Annulé"),
         ("RESCHEDULED", "Reprogrammé"),
         ("PENDING", "En attente"),
+        ("TERMINE", "Terminé"),
     ]
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="PENDING")
+    
+    # Track rescheduling history
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    # Original appointment details for rescheduling tracking
+    original_date = models.DateField(null=True, blank=True)
+    original_heure = models.TimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # If this is the first time saving and it's being rescheduled, store original details
+        if self.statut == "RESCHEDULED" and not self.original_date and self.numero:
+            # Get the original appointment details
+            original = RendezVous.objects.get(numero=self.numero)
+            if not self.original_date:
+                self.original_date = original.date
+                self.original_heure = original.heure
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.patient.username} - {self.date} {self.heure}"
     
     class Meta :
         db_table = 'RendezVous'
-
 
 
 # -------------------- Pathologie --------------------
@@ -567,3 +592,41 @@ class NotificationUrgence(models.Model):
 
     def __str__(self):
         return f"Notification pour Dr. {self.medecin.user.username} - {self.urgence.type_urgence}"
+
+# -------------------- Medical Documents --------------------
+class MedicalDocument(models.Model):
+    """Documents médicaux partagés"""
+    rendez_vous = models.ForeignKey(RendezVous, on_delete=models.CASCADE, related_name='documents')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    file = models.FileField(upload_to='medical_documents/%Y/%m/')
+    document_type = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.document_type} - {self.rendez_vous}"
+
+    class Meta:
+        db_table = 'MedicalDocument'
+        ordering = ['-uploaded_at']
+
+# -------------------- Ratings & Reviews --------------------
+class Rating(models.Model):
+    """Évaluations des médecins par les patients"""
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='ratings')
+    medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name='ratings')
+    rendez_vous = models.OneToOneField(RendezVous, on_delete=models.CASCADE, related_name='rating')
+    note = models.IntegerField(choices=[(i, i) for i in range(1, 6)], verbose_name="Note (1-5)")
+    commentaire = models.TextField(blank=True, verbose_name="Commentaire")
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('patient', 'rendez_vous')
+        ordering = ['-date_creation']
+        verbose_name = "Évaluation"
+        verbose_name_plural = "Évaluations"
+        db_table = 'Rating'
+
+    def __str__(self):
+        return f"Évaluation de {self.patient.user.username} pour Dr. {self.medecin.user.username} - {self.note}/5"

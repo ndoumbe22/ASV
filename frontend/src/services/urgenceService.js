@@ -8,8 +8,8 @@ const getAuthHeader = () => {
 };
 
 export const urgenceService = {
-  // PATIENT
-  getMyUrgences: async () => {
+  // Patient urgences
+  getPatientUrgences: async () => {
     const response = await axios.get(`${API_URL}patient/urgences/`, {
       headers: getAuthHeader(),
     });
@@ -20,16 +20,6 @@ export const urgenceService = {
     const response = await axios.post(
       `${API_URL}patient/urgences/`,
       urgenceData,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  // MÉDECIN
-  getUrgencesMedecin: async (filters = {}) => {
-    const params = new URLSearchParams(filters).toString();
-    const response = await axios.get(
-      `${API_URL}medecin/urgences/${params ? "?" + params : ""}`,
       {
         headers: getAuthHeader(),
       }
@@ -37,25 +27,41 @@ export const urgenceService = {
     return response.data;
   },
 
-  prendreEnCharge: async (id) => {
+  // Medecin urgences
+  getMedecinUrgences: async (status = "en_attente") => {
+    const response = await axios.get(
+      `${API_URL}medecin/urgences/?statut=${status}`,
+      {
+        headers: getAuthHeader(),
+      }
+    );
+    return response.data;
+  },
+
+  takeChargeUrgence: async (urgenceId) => {
     const response = await axios.post(
-      `${API_URL}medecin/urgences/${id}/prendre-en-charge/`,
+      `${API_URL}medecin/urgences/${urgenceId}/prendre-en-charge/`,
       {},
-      { headers: getAuthHeader() }
+      {
+        headers: getAuthHeader(),
+      }
     );
     return response.data;
   },
 
-  resoudreUrgence: async (id, notes) => {
+  resolveUrgence: async (urgenceId, data) => {
     const response = await axios.put(
-      `${API_URL}medecin/urgences/${id}/resoudre/`,
-      { notes },
-      { headers: getAuthHeader() }
+      `${API_URL}medecin/urgences/${urgenceId}/resoudre/`,
+      data,
+      {
+        headers: getAuthHeader(),
+      }
     );
     return response.data;
   },
 
-  getNotifications: async () => {
+  // Notifications
+  getMedecinNotifications: async () => {
     const response = await axios.get(
       `${API_URL}medecin/notifications-urgences/`,
       {
@@ -65,19 +71,25 @@ export const urgenceService = {
     return response.data;
   },
 
-  marquerNotificationLue: async (id) => {
-    await axios.post(
-      `${API_URL}medecin/notifications-urgences/${id}/lue/`,
+  markNotificationAsRead: async (notificationId) => {
+    const response = await axios.put(
+      `${API_URL}medecin/notifications-urgences/${notificationId}/lue/`,
       {},
-      { headers: getAuthHeader() }
+      {
+        headers: getAuthHeader(),
+      }
     );
+    return response.data;
   },
 
-  // ADMIN
-  getDashboard: async () => {
-    const response = await axios.get(`${API_URL}admin/urgences/dashboard/`, {
-      headers: getAuthHeader(),
-    });
+  // Health facilities
+  getHealthFacilities: async () => {
+    const response = await axios.get(`${API_URL}health-facilities/`);
+    return response.data;
+  },
+  
+  getNearbyHealthFacilities: async (lat, lng, radius = 10) => {
+    const response = await axios.get(`${API_URL}health-facilities/nearby/?lat=${lat}&lng=${lng}&radius=${radius}`);
     return response.data;
   },
 };

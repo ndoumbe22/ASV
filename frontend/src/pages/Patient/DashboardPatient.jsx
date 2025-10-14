@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { patientAPI } from "../../services/api";
-import { FaCalendarCheck, FaUserMd, FaFileMedical, FaEnvelope, FaCog, FaSignOutAlt, FaUser, FaSearch, FaQrcode } from "react-icons/fa";
+import { FaCalendarCheck, FaUserMd, FaFileMedical, FaEnvelope, FaCog, FaSignOutAlt, FaUser, FaSearch, FaQrcode, FaBell, FaMapMarkerAlt } from "react-icons/fa";
 import { MdFeedback } from "react-icons/md";
 import { IoMdNotificationsOutline } from "react-icons/io";
 import QRCode from "react-qr-code";
 
 function DashboardPatient() {
+  const navigate = useNavigate();
   const [theme, setTheme] = useState("light");
   const [fullName, setFullName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [patientData, setPatientData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [appointments, setAppointments] = useState([]); // Added appointments state
 
   // 🔔 Notifications
   const [notifications, setNotifications] = useState([
@@ -41,6 +44,33 @@ function DashboardPatient() {
     };
 
     fetchPatientData();
+  }, []);
+
+  // Charger les rendez-vous du patient
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      try {
+        const response = await patientAPI.getAppointments();
+        setAppointments(response.data);
+        
+        // Add appointment notifications
+        const appointmentNotifications = response.data
+          .filter(app => app.statut === "CONFIRMED" || app.statut === "CANCELLED")
+          .map(app => {
+            if (app.statut === "CONFIRMED") {
+              return `✅ Votre rendez-vous avec ${app.medecin_nom} le ${app.date} à ${app.heure} a été confirmé.`;
+            } else {
+              return `❌ Votre rendez-vous avec ${app.medecin_nom} le ${app.date} à ${app.heure} a été annulé.`;
+            }
+          });
+        
+        setNotifications(prev => [...appointmentNotifications, ...prev]);
+      } catch (err) {
+        console.error("Erreur lors du chargement des rendez-vous :", err);
+      }
+    };
+
+    fetchAppointments();
   }, []);
 
   // Charger le thème sauvegardé
@@ -95,42 +125,66 @@ function DashboardPatient() {
 
         <ul className="nav flex-column">
           <li className="nav-item mb-3">
-            <a href="/patient/dashboard" className="nav-link text-white active">
+            <Link to="/patient/dashboard" className="nav-link text-white active">
               <FaUser className="me-2" /> Tab_Bord
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/patient/rendez-vous" className="nav-link text-white">
+            <Link to="/patient/rendez-vous" className="nav-link text-white">
               <FaCalendarCheck className="me-2" /> Rendez-Vous
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/patient/prise-rendez-vous" className="nav-link text-white">
+            <Link to="/patient/prise-rendez-vous" className="nav-link text-white">
               <FaCalendarCheck className="me-2" /> Prise De Rendez-vous
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/patient/dossier-medical" className="nav-link text-white">
+            <Link to="/patient/dossier-medical" className="nav-link text-white">
               <FaFileMedical className="me-2" /> Dossier Medical
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/patient/profile" className="nav-link text-white">
+            <Link to="/patient/document-partage" className="nav-link text-white">
+              <FaFileMedical className="me-2" /> Documents Partagés
+            </Link>
+          </li>
+          <li className="nav-item mb-3">
+            <Link to="/patient/profile" className="nav-link text-white">
               <FaUser className="me-2" /> Profile
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/patient/boite-email" className="nav-link text-white">
+            <Link to="/patient/boite-email" className="nav-link text-white">
               <FaEnvelope className="me-2" /> Boite Email
-            </a>
+            </Link>
+          </li>
+          <li className="nav-item mb-3">
+            <Link to="/patient/medication-reminders" className="nav-link text-white">
+              <FaBell className="me-2" /> Rappels Médicaments
+            </Link>
+          </li>
+          <li className="nav-item mb-3">
+            <Link to="/patient/localiser-centres" className="nav-link text-white">
+              <FaMapMarkerAlt className="me-2" /> Localiser Centres
+            </Link>
           </li>
         </ul>
         <hr style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
 
         <div className="mt-auto pt-4">
-          <a href="/logout" className="nav-link text-white">
+          <button className="nav-link text-white btn btn-link" onClick={() => {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+            localStorage.removeItem("username");
+            localStorage.removeItem("first_name");
+            localStorage.removeItem("last_name");
+            localStorage.removeItem("role");
+            localStorage.removeItem("email");
+            navigate("/connecter");
+          }}>
             <FaSignOutAlt className="me-2" /> Deconnexion
-          </a>
+          </button>
         </div>
       </aside>
 
@@ -178,48 +232,41 @@ function DashboardPatient() {
             >
               <IoMdNotificationsOutline size={18} />
               {notifications.length > 0 && <span style={badgeStyle}></span>}
+            </div>
 
-              {showNotifications && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "40px",
-                    right: "0",
-                    width: "300px",
-                    background: "white",
-                    border: "1px solid #ddd",
-                    borderRadius: "8px",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                    zIndex: 10,
-                  }}
-                >
-                  <div style={{ padding: "10px", maxHeight: "200px", overflowY: "auto" }}>
-                    {notifications.length === 0 ? (
-                      <p className="text-muted">Aucune notification</p>
-                    ) : (
-                      notifications.map((note, idx) => (
-                        <p key={idx} style={{ margin: "0 0 10px 0", fontSize: "14px" }}>🔔 {note}</p>
-                      ))
-                    )}
-                  </div>
-                  {notifications.length > 0 && (
-                    <button
-                      onClick={clearNotifications}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        padding: "8px",
-                        background: "#f5f6fa",
-                        borderTop: "1px solid #ddd",
-                        cursor: "pointer",
-                      }}
-                    >
+            {showNotifications && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "40px",
+                  right: "0",
+                  width: "300px",
+                  background: "white",
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  zIndex: 10,
+                }}
+              >
+                <div style={{ padding: "10px", maxHeight: "300px", overflowY: "auto" }}>
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <h6>Notifications</h6>
+                    <button className="btn btn-sm btn-outline-secondary" onClick={clearNotifications}>
                       Tout effacer
                     </button>
+                  </div>
+                  {notifications.length === 0 ? (
+                    <p className="text-muted">Aucune notification</p>
+                  ) : (
+                    notifications.map((note, idx) => (
+                      <div key={idx} className="border-bottom pb-2 mb-2">
+                        <p className="m-0" style={{ fontSize: "14px" }}>🔔 {note}</p>
+                      </div>
+                    ))
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="d-flex align-items-center">
               <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "#ddd", marginRight: "10px" }}></div>
@@ -235,6 +282,36 @@ function DashboardPatient() {
         <div className="mb-4">
           <h2>Bienvenue, {fullName || "Patient"}</h2>
           <p>Sélectionnez une catégorie ci-dessous pour commencer</p>
+        </div>
+
+        {/* ===== Rendez-vous récents ===== */}
+        <div className="mb-4">
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h4>Rendez-vous à venir</h4>
+            <Link to="/patient/rendez-vous" className="btn btn-outline-success btn-sm">
+              Voir tous
+            </Link>
+          </div>
+          {appointments.filter(app => app.statut === "CONFIRMED").slice(0, 3).length > 0 ? (
+            <div className="row">
+              {appointments.filter(app => app.statut === "CONFIRMED").slice(0, 3).map((app, index) => (
+                <div key={index} className="col-md-4 mb-3">
+                  <div className="card shadow-sm p-3" style={{ backgroundColor: "#d4edda" }}>
+                    <h6 className="mb-1"><strong>{app.date}</strong> - {app.heure}</h6>
+                    <p className="mb-1"><FaUserMd className="me-1 text-primary" /> {app.medecin_nom}</p>
+                    <p className="mb-0" style={{ fontSize: "13px", color: "green" }}>✔ Confirmé</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="card shadow-sm p-4 text-center">
+              <p>Vous n'avez aucun rendez-vous confirmé à venir.</p>
+              <Link to="/patient/prise-rendez-vous" className="btn btn-success">
+                Prendre un rendez-vous
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* ===== Spécialités médicales ===== */}

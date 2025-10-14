@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { doctorAPI, appointmentAPI } from "../../services/api";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { doctorAPI, appointmentAPI, specialtyAPI } from "../../services/api";
 import { FaUserMd, FaCalendarAlt, FaClock, FaStethoscope } from "react-icons/fa";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 
 function PriseDeRendezVous() {
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1); // 1: Spécialité, 2: Médecin, 3: Date, 4: Confirmation
   const [specialites, setSpecialites] = useState([]);
   const [medecins, setMedecins] = useState([]);
@@ -18,30 +22,31 @@ function PriseDeRendezVous() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/connecter");
+    }
+  }, [isAuthenticated, navigate]);
+
   // Charger les spécialités depuis l'API
   useEffect(() => {
     const fetchSpecialites = async () => {
       try {
-        // Pour l'instant, utilisons des spécialités statiques
-        // Dans une vraie application, cela viendrait de l'API
-        setSpecialites([
-          "Médecine Générale",
-          "Cardiologie",
-          "Dermatologie",
-          "Gynécologie",
-          "Pédiatrie",
-          "Orthopédie",
-          "Ophtalmologie",
-          "Neurologie"
-        ]);
+        const response = await specialtyAPI.getSpecialties();
+        // Extract specialty names from the response
+        const specialtyNames = response.data.map(spec => spec.nom);
+        setSpecialites(specialtyNames);
       } catch (err) {
         setError("Erreur lors du chargement des spécialités");
         console.error("Erreur lors du chargement des spécialités :", err);
       }
     };
 
-    fetchSpecialites();
-  }, []);
+    if (isAuthenticated) {
+      fetchSpecialites();
+    }
+  }, [isAuthenticated]);
 
   // Charger les médecins quand une spécialité est sélectionnée
   useEffect(() => {
@@ -104,7 +109,7 @@ function PriseDeRendezVous() {
       setLoading(true);
       // Create appointment
       const appointmentData = {
-        patient: 1, // This should be the actual patient ID
+        patient: user.id, // Using actual patient ID from auth context
         medecin: selectedMedecin.id,
         date: selectedDate.toISOString().split('T')[0],
         heure: selectedSlot,
@@ -130,6 +135,25 @@ function PriseDeRendezVous() {
     setMotif("");
     setSuccess(false);
   };
+
+  // Show login message if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="container-fluid">
+        <div className="row justify-content-center">
+          <div className="col-md-8">
+            <div className="card shadow-sm p-5 text-center">
+              <h2>🔐 Authentification requise</h2>
+              <p>Vous devez être connecté pour prendre un rendez-vous.</p>
+              <button className="btn btn-success" onClick={() => navigate("/connecter")}>
+                Se connecter
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -224,35 +248,43 @@ function PriseDeRendezVous() {
                 </div>
               ) : (
                 <div className="row">
-                  {medecins.map((medecin) => (
-                    <div key={medecin.id} className="col-md-6 col-lg-3 mb-4">
-                      <div 
-                        className="card shadow-sm p-3 text-center" 
-                        style={{ cursor: "pointer", transition: "all 0.3s" }}
-                        onClick={() => handleMedecinSelect(medecin)}
-                      >
-                        <div className="d-flex justify-content-center mb-2">
-                          {medecin.photo ? (
-                            <img src={medecin.photo} alt={medecin.nom} style={{ width: "80px", height: "80px", borderRadius: "50%" }} />
-                          ) : (
-                            <div style={{ width: "80px", height: "80px", borderRadius: "50%", backgroundColor: "#e9f5e9", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                              <FaUserMd size={40} color="#2E7D32" />
-                            </div>
-                          )}
-                        </div>
-                        <h6>{medecin.nom}</h6>
-                        <p className="text-muted">{medecin.specialite}</p>
-                        <div className="d-flex justify-content-center align-items-center">
-                          <span className="badge bg-success me-2">{medecin.note}</span>
-                          <div className="text-warning">
-                            {'★'.repeat(Math.floor(medecin.note))}
-                            {'☆'.repeat(5 - Math.floor(medecin.note))}
+                  {medecins.length > 0 ? (
+                    medecins.map((medecin) => (
+                      <div key={medecin.id} className="col-md-6 col-lg-3 mb-4">
+                        <div 
+                          className="card shadow-sm p-3 text-center" 
+                          style={{ cursor: "pointer", transition: "all 0.3s" }}
+                          onClick={() => handleMedecinSelect(medecin)}
+                        >
+                          <div className="d-flex justify-content-center mb-2">
+                            {medecin.photo ? (
+                              <img src={medecin.photo} alt={`${medecin.user.first_name} ${medecin.user.last_name}`} style={{ width: "80px", height: "80px", borderRadius: "50%" }} />
+                            ) : (
+                              <div style={{ width: "80px", height: "80px", borderRadius: "50%", backgroundColor: "#e9f5e9", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <FaUserMd size={40} color="#2E7D32" />
+                              </div>
+                            )}
                           </div>
+                          <h6>{medecin.user.first_name} {medecin.user.last_name}</h6>
+                          <p className="text-muted">{medecin.specialite}</p>
+                          <div className="d-flex justify-content-center align-items-center">
+                            <span className="badge bg-success me-2">{medecin.note || "5.0"}</span>
+                            <div className="text-warning">
+                              {'★'.repeat(Math.floor(medecin.note || 5))}
+                              {'☆'.repeat(5 - Math.floor(medecin.note || 5))}
+                            </div>
+                          </div>
+                          <button className="btn btn-success btn-sm mt-2">Choisir</button>
                         </div>
-                        <button className="btn btn-success btn-sm mt-2">Choisir</button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="col-12">
+                      <div className="alert alert-info">
+                        Aucun médecin disponible pour cette spécialité pour le moment.
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
@@ -264,7 +296,7 @@ function PriseDeRendezVous() {
                 <button className="btn btn-outline-secondary me-3" onClick={() => setStep(2)}>
                   ← Retour
                 </button>
-                <h3>Disponibilités de {selectedMedecin?.nom}</h3>
+                <h3>Disponibilités de {selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name}</h3>
               </div>
               
               <div className="row">
@@ -330,7 +362,7 @@ function PriseDeRendezVous() {
                     <h4>Récapitulatif</h4>
                     <div className="row mb-3">
                       <div className="col-4"><strong>Médecin:</strong></div>
-                      <div className="col-8">{selectedMedecin?.nom}</div>
+                      <div className="col-8">{selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name}</div>
                     </div>
                     <div className="row mb-3">
                       <div className="col-4"><strong>Spécialité:</strong></div>

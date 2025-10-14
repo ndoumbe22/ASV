@@ -19,14 +19,15 @@ from .models import (
     Patient, Medecin, RendezVous, Consultation, Medicament,
     Pathologie, Traitement, Constante, Mesure, Article,
     StructureDeSante, Service, Hopital, Clinique, Dentiste,Pharmacie,
-    ChatbotConversation, ContactFooter  # Added ContactFooter
+    ChatbotConversation, ContactFooter, MedicalDocument  # Added MedicalDocument
 )
 from .serializers import (
     PatientSerializer, MedecinSerializer, RendezVousSerializer,
     ConsultationSerializer, MedicamentSerializer,
     PathologieSerializer, TraitementSerializer, ConstanteSerializer,
     MesureSerializer, ArticleSerializer, StructureDeSanteSerializer,
-    ServiceSerializer, ContactFooterSerializer, ChatbotConversationSerializer  # Added ChatbotConversationSerializer
+    ServiceSerializer, ContactFooterSerializer, ChatbotConversationSerializer,
+    MedicalDocumentSerializer  # Added MedicalDocumentSerializer
 )
 
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -92,6 +93,17 @@ class RendezVousViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
         return [IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        # Save the appointment
+        appointment = serializer.save()
+        
+        # Send notification to the doctor
+        from .notifications import NotificationService
+        try:
+            NotificationService.send_appointment_request_notification(appointment)
+        except Exception as e:
+            print(f"Error sending appointment notification: {e}")
 
 # --------------------
 # Consultations
@@ -258,6 +270,45 @@ class ContactFooterViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
 
 
+# -------------------- Medical Documents --------------------
+class MedicalDocumentViewSet(viewsets.ModelViewSet):
+    queryset = MedicalDocument.objects.all()
+    serializer_class = MedicalDocumentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'medecin':
+            # Doctors can see documents for their appointments
+            return MedicalDocument.objects.filter(
+                rendez_vous__medecin=user
+            )
+        else:
+            # Patients can see documents they uploaded or that were shared with them
+            return MedicalDocument.objects.filter(
+                Q(uploaded_by=user) | Q(rendez_vous__patient=user)
+            )
+
+    def perform_create(self, serializer):
+        # Set the uploaded_by field to the current user
+        serializer.save(uploaded_by=self.request.user)
+        
+        # Send notification to the other party
+        document = serializer.instance
+        rendez_vous = document.rendez_vous
+        
+        if self.request.user == rendez_vous.patient:
+            # Patient uploaded document, notify doctor
+            recipient = rendez_vous.medecin
+        else:
+            # Doctor uploaded document, notify patient
+            recipient = rendez_vous.patient
+            
+        from .notifications import NotificationService
+        try:
+            NotificationService.send_document_shared_notification(document, recipient)
+        except Exception as e:
+            print(f"Error sending document notification: {e}")
 
 # --------------------
 # Chatbot (Rasa)
@@ -339,12 +390,28 @@ class RegisterView(APIView):
 
         serializer = RegisterSerializer(data=data)
         if serializer.is_valid():
-            user = serializer.save()  # 🔹 Profil Patient/Medecin créé automatiquement par signals
-            
-            # Send welcome email
-            NotificationService.send_welcome_email(user)
-            
-            return Response({"message": "Utilisateur créé avec succès"}, status=status.HTTP_201_CREATED)
+            try:
+                user = serializer.save()  # 🔹 Profil Patient/Medecin créé automatiquement par signals
+                
+                # Send welcome email
+                NotificationService.send_welcome_email(user)
+                
+                return Response({
+                    "message": "Utilisateur créé avec succès",
+                    "user": {
+                        "id": user.id,
+                        "username": user.username,
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "role": user.role
+                    }
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response(
+                    {"error": f"Erreur lors de la création de l'utilisateur: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -380,7 +447,7 @@ class LoginView(APIView):
             
             if not user.is_active:
                 return Response(
-                    {'error': 'Ce compte est désactivé'},
+                    {'error': 'Ce compte est désactivé. Veuillez contacter l\'administrateur.'},
                     status=status.HTTP_403_FORBIDDEN
                 )
             
@@ -412,6 +479,7 @@ class LoginView(APIView):
                     'first_name': getattr(user, 'first_name', ''),
                     'last_name': getattr(user, 'last_name', ''),
                     'role': getattr(user, 'role', 'patient'),
+                    'is_active': user.is_active,
                     'profile': profile_data
                 }
             }, status=status.HTTP_200_OK)
@@ -419,7 +487,7 @@ class LoginView(APIView):
         except Exception as e:
             logger.error(f"Erreur lors de la connexion: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'Erreur serveur lors de la connexion'},
+                {'error': 'Erreur serveur lors de la connexion. Veuillez réessayer plus tard.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -433,6 +501,8 @@ def upcoming_appointments(request):
     rdvs = RendezVous.objects.filter(
         patient=patient,
         date__gte=today
+    ).exclude(
+        statut__in=["CANCELLED", "TERMINE"]
     ).order_by("date", "heure")
 
     serializer = RendezVousSerializer(rdvs, many=True)
@@ -926,6 +996,122 @@ def admin_users_list(request):
     return Response(data)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_create_user(request):
+    """Créer un nouvel utilisateur par l'admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès non autorisé'}, status=403)
+
+    try:
+        # Create user with provided data
+        user_data = request.data.copy()
+        
+        # Check if username already exists
+        if User.objects.filter(username=user_data.get('username')).exists():
+            return Response({'error': 'Ce nom d\'utilisateur est déjà utilisé'}, status=400)
+            
+        # Check if email already exists
+        if User.objects.filter(email=user_data.get('email')).exists():
+            return Response({'error': 'Cet email est déjà utilisé'}, status=400)
+        
+        # Create user
+        user = User.objects.create_user(
+            username=user_data.get('username'),
+            password=user_data.get('password'),
+            email=user_data.get('email'),
+            first_name=user_data.get('first_name', ''),
+            last_name=user_data.get('last_name', ''),
+            role=user_data.get('role', 'patient'),
+            is_active=user_data.get('is_active', True)
+        )
+        
+        # Create profile based on role
+        if user.role == 'patient':
+            Patient.objects.get_or_create(user=user, defaults={'adresse': user_data.get('adresse', '')})
+        elif user.role == 'medecin':
+            Medecin.objects.get_or_create(user=user, defaults={
+                'specialite': user_data.get('specialite', 'Généraliste'),
+                'disponibilite': user_data.get('disponibilite', True)
+            })
+        
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': user.role,
+            'is_active': user.is_active,
+            'date_joined': user.date_joined
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': f'Erreur lors de la création de l\'utilisateur: {str(e)}'}, status=400)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def admin_update_user(request, user_id):
+    """Mettre à jour un utilisateur par l'admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès non autorisé'}, status=403)
+
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Prevent admin from modifying another admin
+        if user.role == 'admin' and user.id != request.user.id:
+            return Response({'error': 'Impossible de modifier un autre administrateur'}, status=400)
+        
+        # Update user fields
+        user_data = request.data
+        user.first_name = user_data.get('first_name', user.first_name)
+        user.last_name = user_data.get('last_name', user.last_name)
+        user.email = user_data.get('email', user.email)
+        user.username = user_data.get('username', user.username)
+        
+        # Only allow role change if it's not an admin
+        if user.role != 'admin':
+            user.role = user_data.get('role', user.role)
+        
+        # Update active status
+        user.is_active = user_data.get('is_active', user.is_active)
+        
+        # Save user
+        user.save()
+        
+        # Update profile based on role
+        if user.role == 'patient':
+            patient, created = Patient.objects.get_or_create(user=user)
+            if 'adresse' in user_data:
+                patient.adresse = user_data['adresse']
+                patient.save()
+        elif user.role == 'medecin':
+            medecin, created = Medecin.objects.get_or_create(user=user)
+            if 'specialite' in user_data:
+                medecin.specialite = user_data['specialite']
+            if 'disponibilite' in user_data:
+                medecin.disponibilite = user_data['disponibilite']
+            medecin.save()
+        
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': user.role,
+            'is_active': user.is_active,
+            'date_joined': user.date_joined
+        })
+        
+    except User.DoesNotExist:
+        return Response({'error': 'Utilisateur non trouvé'}, status=404)
+    except Exception as e:
+        return Response({'error': f'Erreur lors de la mise à jour de l\'utilisateur: {str(e)}'}, status=400)
+
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def admin_toggle_user_status(request, user_id):
@@ -1025,6 +1211,112 @@ def health_facilities(request):
             'horaires': getattr(dentiste, 'horaires', ''),
         })
 
+    return Response(facilities)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def nearby_health_facilities(request):
+    """Liste des centres de santé à proximité d'une position donnée"""
+    try:
+        lat = float(request.GET.get('lat', 14.6937))
+        lng = float(request.GET.get('lng', -17.444))
+        radius = float(request.GET.get('radius', 10))  # Rayon en km, par défaut 10km
+    except ValueError:
+        return Response({'error': 'Paramètres de localisation invalides'}, status=400)
+    
+    # Fonction pour calculer la distance entre deux points (formule de Haversine)
+    def calculate_distance(lat1, lon1, lat2, lon2):
+        from math import radians, cos, sin, asin, sqrt
+        # Convertir les degrés en radians
+        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+        
+        # Formule de Haversine
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        c = 2 * asin(sqrt(a))
+        r = 6371  # Rayon de la Terre en km
+        return c * r
+    
+    # Récupérer tous les centres de santé
+    facilities = []
+    
+    # Récupérer les hôpitaux
+    hopitaux = Hopital.objects.all()
+    for hopital in hopitaux:
+        if hopital.latitude and hopital.longitude:
+            distance = calculate_distance(lat, lng, float(hopital.latitude), float(hopital.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'hopital_{hopital.id}',
+                    'nom': hopital.nom,
+                    'type': 'hopital',
+                    'adresse': getattr(hopital, 'adresse', ''),
+                    'latitude': float(hopital.latitude),
+                    'longitude': float(hopital.longitude),
+                    'telephone': getattr(hopital, 'telephone', ''),
+                    'horaires': getattr(hopital, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    # Récupérer les cliniques
+    cliniques = Clinique.objects.all()
+    for clinique in cliniques:
+        if clinique.latitude and clinique.longitude:
+            distance = calculate_distance(lat, lng, float(clinique.latitude), float(clinique.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'clinique_{clinique.id}',
+                    'nom': clinique.nom,
+                    'type': 'clinique',
+                    'adresse': getattr(clinique, 'adresse', ''),
+                    'latitude': float(clinique.latitude),
+                    'longitude': float(clinique.longitude),
+                    'telephone': getattr(clinique, 'telephone', ''),
+                    'horaires': getattr(clinique, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    # Récupérer les pharmacies
+    pharmacies = Pharmacie.objects.all()
+    for pharmacie in pharmacies:
+        if pharmacie.latitude and pharmacie.longitude:
+            distance = calculate_distance(lat, lng, float(pharmacie.latitude), float(pharmacie.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'pharmacie_{pharmacie.id}',
+                    'nom': pharmacie.nom,
+                    'type': 'pharmacie',
+                    'adresse': getattr(pharmacie, 'adresse', ''),
+                    'latitude': float(pharmacie.latitude),
+                    'longitude': float(pharmacie.longitude),
+                    'telephone': getattr(pharmacie, 'telephone', ''),
+                    'horaires': getattr(pharmacie, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    # Récupérer les dentistes
+    dentistes = Dentiste.objects.all()
+    for dentiste in dentistes:
+        if dentiste.latitude and dentiste.longitude:
+            distance = calculate_distance(lat, lng, float(dentiste.latitude), float(dentiste.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'dentiste_{dentiste.id}',
+                    'nom': dentiste.nom,
+                    'type': 'dentiste',
+                    'adresse': getattr(dentiste, 'adresse', ''),
+                    'latitude': float(dentiste.latitude),
+                    'longitude': float(dentiste.longitude),
+                    'telephone': getattr(dentiste, 'telephone', ''),
+                    'horaires': getattr(dentiste, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+    
+    # Trier par distance
+    facilities.sort(key=lambda x: x['distance'])
+    
     return Response(facilities)
 
 # ========== URGENCES PATIENT ==========
@@ -1314,3 +1606,151 @@ def export_mes_donnees(request):
     response['Content-Disposition'] = f'attachment; filename="mes_donnees_assistosante.json"'
 
     return response
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def appointment_history(request):
+    """Get appointment history for the authenticated patient"""
+    patient = request.user
+    rdvs = RendezVous.objects.filter(
+        patient=patient
+    ).exclude(
+        statut="PENDING"
+    ).order_by("-date", "-heure")
+
+    serializer = RendezVousSerializer(rdvs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def propose_reschedule(request, pk):
+    """Patient proposes a new date/time for an appointment"""
+    try:
+        rdv = RendezVous.objects.get(pk=pk, patient=request.user)
+        
+        # Check if appointment can be rescheduled
+        if rdv.statut in ["CANCELLED"]:
+            return Response({"error": "Impossible de reprogrammer un rendez-vous annulé"}, status=400)
+        
+        # Get proposed new date and time
+        new_date = request.data.get("new_date")
+        new_heure = request.data.get("new_heure")
+        reason = request.data.get("reason", "")
+        
+        if not new_date or not new_heure:
+            return Response({"error": "Veuillez fournir une nouvelle date et heure"}, status=400)
+        
+        # Create a rescheduling request (doesn't change the original appointment yet)
+        # In a real implementation, you might want to create a separate model for rescheduling requests
+        # For now, we'll update the appointment with a special status
+        
+        # Store original details if not already stored
+        if not rdv.original_date:
+            rdv.original_date = rdv.date
+            rdv.original_heure = rdv.heure
+            
+        # Update with proposed new date/time
+        rdv.date = new_date
+        rdv.heure = new_heure
+        rdv.statut = "RESCHEDULED"
+        rdv.description = f"Demande de reprogrammation: {reason}" if reason else rdv.description
+        rdv.save()
+        
+        # Send notification to the doctor about the rescheduling request
+        NotificationService.send_reschedule_request(rdv)
+        
+        serializer = RendezVousSerializer(rdv)
+        return Response(serializer.data)
+        
+    except RendezVous.DoesNotExist:
+        return Response({"error": "Rendez-vous non trouvé"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+# -------------------- Ratings & Reviews --------------------
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def validate_appointment(request, pk):
+    """Valider un rendez-vous terminé et créer une évaluation"""
+    try:
+        patient = request.user.patient_profile
+        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+        
+        # Vérifier que le rendez-vous est terminé
+        if rdv.statut != "CONFIRMED":
+            return Response({"error": "Seuls les rendez-vous confirmés peuvent être validés"}, status=400)
+            
+        # Marquer le rendez-vous comme terminé
+        rdv.statut = "TERMINE"
+        rdv.save()
+        
+        # Créer ou mettre à jour l'évaluation
+        note = request.data.get('note')
+        commentaire = request.data.get('commentaire', '')
+        
+        if note is not None:
+            # Vérifier que la note est valide (1-5)
+            if not isinstance(note, int) or note < 1 or note > 5:
+                return Response({"error": "La note doit être un entier entre 1 et 5"}, status=400)
+                
+            # Créer ou mettre à jour l'évaluation
+            rating_data = {
+                'medecin': rdv.medecin.id,
+                'rendez_vous': rdv.id,
+                'note': note,
+                'commentaire': commentaire
+            }
+            
+            # Vérifier si une évaluation existe déjà
+            try:
+                rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
+                # Mettre à jour l'évaluation existante
+                for key, value in rating_data.items():
+                    setattr(rating, key, value)
+                rating.save()
+                serializer = RatingSerializer(rating)
+            except Rating.DoesNotExist:
+                # Créer une nouvelle évaluation
+                serializer = RatingSerializer(data=rating_data, context={'request': request})
+                if serializer.is_valid():
+                    serializer.save()
+                else:
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Send notification to the doctor about the new rating
+            NotificationService.send_rating_notification(rdv.medecin, note, commentaire)
+            
+            return Response({
+                "message": "Rendez-vous validé et évaluation enregistrée avec succès",
+                "rating": serializer.data
+            })
+        else:
+            return Response({
+                "message": "Rendez-vous validé avec succès"
+            })
+            
+    except Patient.DoesNotExist:
+        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_appointment_rating(request, pk):
+    """Récupérer l'évaluation d'un rendez-vous"""
+    try:
+        patient = request.user.patient_profile
+        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+        
+        try:
+            rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
+            serializer = RatingSerializer(rating)
+            return Response(serializer.data)
+        except Rating.DoesNotExist:
+            return Response({"message": "Aucune évaluation trouvée pour ce rendez-vous"}, status=404)
+            
+    except Patient.DoesNotExist:
+        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

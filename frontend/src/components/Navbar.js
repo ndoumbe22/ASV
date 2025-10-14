@@ -139,18 +139,63 @@ function Navbar() {
                       </div>
                     </div>
                     <div className="dropdown-divider"></div>
-                    <Link
-                      className="dropdown-item-custom"
-                      to={
-                        user?.role === "patient"
-                          ? "/interface_patient"
-                          : "/interface_medecin"
-                      }
-                      onClick={() => setShowDropdown(false)}
-                    >
-                      <i className="bi bi-speedometer2 me-2"></i>
-                      Tableau de bord
-                    </Link>
+                    {user?.role === "medecin" ? (
+                      <>
+                        <Link
+                          className="dropdown-item-custom"
+                          to="/medecin/dashboard"
+                          onClick={() => setShowDropdown(false)}
+                        >
+                          <i className="bi bi-speedometer2 me-2"></i>
+                          Dashboard
+                        </Link>
+                        <Link
+                          className="dropdown-item-custom"
+                          to="/medecin/urgences"
+                          onClick={() => setShowDropdown(false)}
+                        >
+                          <i className="bi bi-exclamation-triangle me-2"></i>
+                          Urgences
+                        </Link>
+                        <Link
+                          className="dropdown-item-custom"
+                          to="/medecin/rendez-vous"
+                          onClick={() => setShowDropdown(false)}
+                        >
+                          <i className="bi bi-calendar-check me-2"></i>
+                          Rendez-vous
+                        </Link>
+                        <Link
+                          className="dropdown-item-custom"
+                          to="/medecin/articles"
+                          onClick={() => setShowDropdown(false)}
+                        >
+                          <i className="bi bi-file-text me-2"></i>
+                          Mes Articles
+                        </Link>
+                        <Link
+                          className="dropdown-item-custom"
+                          to="/medecin/patients"
+                          onClick={() => setShowDropdown(false)}
+                        >
+                          <i className="bi bi-people me-2"></i>
+                          Patients
+                        </Link>
+                      </>
+                    ) : (
+                      <Link
+                        className="dropdown-item-custom"
+                        to={
+                          user?.role === "patient"
+                            ? "/interface_patient"
+                            : "/interface_medecin"
+                        }
+                        onClick={() => setShowDropdown(false)}
+                      >
+                        <i className="bi bi-speedometer2 me-2"></i>
+                        Tableau de bord
+                      </Link>
+                    )}
                     <Link
                       className="dropdown-item-custom"
                       to="/profile"

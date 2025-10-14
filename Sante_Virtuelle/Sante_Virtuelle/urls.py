@@ -23,6 +23,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('sante_app.urls')),
+
     # Serve React frontend for all non-API routes
     re_path(r'^(?!api|admin|media|static).*$', TemplateView.as_view(template_name='frontend_index.html'), name='frontend'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -65,25 +65,48 @@ function Utilisateurs() {
   const handleAddUser = async (e) => {
     e.preventDefault();
     try {
-      // In a real application, this would send a request to the API
-      // For now, we'll just add to the local state
-      const newUserWithId = {
-        id: users.length + 1,
-        ...newUser,
-        dateInscription: new Date().toISOString().split('T')[0]
+      // Send request to API to create user
+      const userData = {
+        username: newUser.username,
+        email: newUser.email,
+        first_name: newUser.prenom,
+        last_name: newUser.nom,
+        password: newUser.password,
+        role: newUser.role,
+        is_active: true
       };
       
-      setUsers(prev => [...prev, newUserWithId]);
+      await adminService.createUser(userData);
+      
+      // Refresh the user list
+      const usersData = await adminService.getUsers();
+      const transformedUsers = usersData.map(user => ({
+        id: user.id,
+        nom: user.last_name || "",
+        prenom: user.first_name || "",
+        email: user.email || "",
+        telephone: "",
+        role: user.role || "patient",
+        is_active: user.is_active,
+        dateInscription: new Date(user.date_joined).toISOString().split('T')[0]
+      }));
+      
+      setUsers(transformedUsers);
+      setFilteredUsers(transformedUsers);
+      
+      // Reset form and close modal
       setNewUser({
         nom: "",
         prenom: "",
         email: "",
         telephone: "",
+        username: "",
+        password: "",
         role: "patient"
       });
       setShowAddModal(false);
     } catch (err) {
-      setError("Erreur lors de l'ajout de l'utilisateur");
+      setError("Erreur lors de l'ajout de l'utilisateur: " + (err.response?.data?.error || err.message));
       console.error("Erreur lors de l'ajout de l'utilisateur :", err);
     }
   };
@@ -91,29 +114,68 @@ function Utilisateurs() {
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     try {
-      // In a real application, this would send a request to the API
-      // For now, we'll just update the local state
-      setUsers(prev => 
-        prev.map(user => 
-          user.id === currentUser.id ? currentUser : user
-        )
-      );
+      // Send request to API to update user
+      const userData = {
+        first_name: currentUser.prenom,
+        last_name: currentUser.nom,
+        email: currentUser.email,
+        username: currentUser.username,
+        role: currentUser.role,
+        is_active: currentUser.is_active
+      };
+      
+      await adminService.updateUser(currentUser.id, userData);
+      
+      // Refresh the user list
+      const usersData = await adminService.getUsers();
+      const transformedUsers = usersData.map(user => ({
+        id: user.id,
+        nom: user.last_name || "",
+        prenom: user.first_name || "",
+        email: user.email || "",
+        telephone: "",
+        role: user.role || "patient",
+        is_active: user.is_active,
+        dateInscription: new Date(user.date_joined).toISOString().split('T')[0]
+      }));
+      
+      setUsers(transformedUsers);
+      setFilteredUsers(transformedUsers);
+      
+      // Close modal
       setShowEditModal(false);
       setCurrentUser(null);
     } catch (err) {
-      setError("Erreur lors de la mise à jour de l'utilisateur");
+      setError("Erreur lors de la mise à jour de l'utilisateur: " + (err.response?.data?.error || err.message));
       console.error("Erreur lors de la mise à jour de l'utilisateur :", err);
     }
   };
 
   const handleDeleteUser = async (id) => {
-    try {
-      // In a real application, this would send a request to the API
-      // For now, we'll just remove from the local state
-      setUsers(prev => prev.filter(user => user.id !== id));
-    } catch (err) {
-      setError("Erreur lors de la suppression de l'utilisateur");
-      console.error("Erreur lors de la suppression de l'utilisateur :", err);
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ?")) {
+      try {
+        // Send request to API to delete user
+        await adminService.deleteUser(id);
+        
+        // Refresh the user list
+        const usersData = await adminService.getUsers();
+        const transformedUsers = usersData.map(user => ({
+          id: user.id,
+          nom: user.last_name || "",
+          prenom: user.first_name || "",
+          email: user.email || "",
+          telephone: "",
+          role: user.role || "patient",
+          is_active: user.is_active,
+          dateInscription: new Date(user.date_joined).toISOString().split('T')[0]
+        }));
+        
+        setUsers(transformedUsers);
+        setFilteredUsers(transformedUsers);
+      } catch (err) {
+        setError("Erreur lors de la suppression de l'utilisateur: " + (err.response?.data?.error || err.message));
+        console.error("Erreur lors de la suppression de l'utilisateur :", err);
+      }
     }
   };
 
@@ -259,6 +321,7 @@ function Utilisateurs() {
                     <th>Nom</th>
                     <th>Email</th>
                     <th>Rôle</th>
+                    <th>Statut</th>
                     <th>Date d'inscription</th>
                     <th>Actions</th>
                   </tr>
@@ -269,6 +332,13 @@ function Utilisateurs() {
                       <td>{user.prenom} {user.nom}</td>
                       <td>{user.email}</td>
                       <td>{getRoleBadge(user.role)}</td>
+                      <td>
+                        {user.is_active ? (
+                          <span className="badge bg-success">Actif</span>
+                        ) : (
+                          <span className="badge bg-danger">Inactif</span>
+                        )}
+                      </td>
                       <td>{user.dateInscription}</td>
                       <td>
                         <button className="btn btn-sm btn-outline-primary me-1">
@@ -284,12 +354,14 @@ function Utilisateurs() {
                           className={`btn btn-sm ${user.is_active ? 'btn-outline-warning' : 'btn-outline-success'} me-1`}
                           onClick={() => handleToggleUserStatus(user.id, user.is_active)}
                           title={user.is_active ? 'Désactiver' : 'Activer'}
+                          disabled={user.role === "admin"} // Prevent toggling admin status
                         >
                           {user.is_active ? 'Désactiver' : 'Activer'}
                         </button>
                         <button 
                           className="btn btn-sm btn-outline-danger"
                           onClick={() => handleDeleteUser(user.id)}
+                          disabled={user.role === "admin"} // Prevent deleting admin
                         >
                           <FaTrash />
                         </button>
@@ -318,6 +390,28 @@ function Utilisateurs() {
               </div>
               <form onSubmit={handleAddUser}>
                 <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Nom d'utilisateur *</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={newUser.username}
+                      onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label">Mot de passe *</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      value={newUser.password}
+                      onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  
                   <div className="mb-3">
                     <label className="form-label">Nom</label>
                     <input
@@ -401,6 +495,17 @@ function Utilisateurs() {
               <form onSubmit={handleUpdateUser}>
                 <div className="modal-body">
                   <div className="mb-3">
+                    <label className="form-label">Nom d'utilisateur</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={currentUser.username}
+                      onChange={(e) => setCurrentUser(prev => ({ ...prev, username: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="mb-3">
                     <label className="form-label">Nom</label>
                     <input
                       type="text"
@@ -439,11 +544,26 @@ function Utilisateurs() {
                       className="form-select"
                       value={currentUser.role}
                       onChange={(e) => setCurrentUser(prev => ({ ...prev, role: e.target.value }))}
+                      disabled={currentUser.role === "admin"} // Prevent changing admin role
                     >
                       <option value="patient">Patient</option>
                       <option value="medecin">Médecin</option>
                       <option value="admin">Administrateur</option>
                     </select>
+                  </div>
+                  
+                  <div className="mb-3 form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="isActive"
+                      checked={currentUser.is_active}
+                      onChange={(e) => setCurrentUser(prev => ({ ...prev, is_active: e.target.checked }))}
+                      disabled={currentUser.role === "admin"} // Prevent disabling admin
+                    />
+                    <label className="form-check-label" htmlFor="isActive">
+                      Compte actif
+                    </label>
                   </div>
                 </div>
                 <div className="modal-footer">

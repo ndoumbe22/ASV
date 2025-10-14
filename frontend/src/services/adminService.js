@@ -22,6 +22,20 @@ export const adminService = {
     return response.data;
   },
 
+  createUser: async (userData) => {
+    const response = await axios.post(`${API_URL}users/`, userData, {
+      headers: getAuthHeader(),
+    });
+    return response.data;
+  },
+
+  updateUser: async (userId, userData) => {
+    const response = await axios.put(`${API_URL}users/${userId}/`, userData, {
+      headers: getAuthHeader(),
+    });
+    return response.data;
+  },
+
   toggleUserStatus: async (userId) => {
     const response = await axios.put(
       `${API_URL}users/${userId}/toggle-status/`,

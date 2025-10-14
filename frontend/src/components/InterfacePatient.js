@@ -1,5 +1,6 @@
 // src/pages/PatientInterface.js
 import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   FaCalendarCheck,
@@ -17,6 +18,7 @@ import { IoMdNotificationsOutline } from "react-icons/io";
 import { BsSun, BsMoon } from "react-icons/bs";
 
 function PatientInterface({ user }) {
+  const navigate = useNavigate();
   const [theme, setTheme] = useState("light");
   const [fullName, setFullName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -152,37 +154,52 @@ function PatientInterface({ user }) {
 
         <ul className="nav flex-column">
           <li className="nav-item mb-3">
-            <a href="/rendezvous" className="nav-link text-white">
+            <Link to="/patient/rendez-vous" className="nav-link text-white">
               <FaCalendarCheck className="me-2" /> Mes Rendez-vous
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/prise-rendezvous" className="nav-link text-white">
+            <Link
+              to="/patient/prise-rendez-vous"
+              className="nav-link text-white"
+            >
               <FaFolderOpen className="me-2" /> Prise de rendez-vous
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/dossier-medical" className="nav-link text-white">
+            <Link to="/patient/dossier-medical" className="nav-link text-white">
               <FaFileMedical className="me-2" /> Dossier médical
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/profil" className="nav-link text-white">
+            <Link to="/patient/profile" className="nav-link text-white">
               <FaUserMd className="me-2" /> Profil
-            </a>
+            </Link>
           </li>
           <li className="nav-item mb-3">
-            <a href="/feedback" className="nav-link text-white">
+            <Link to="/patient/boite-email" className="nav-link text-white">
               <MdFeedback className="me-2" /> Avis
-            </a>
+            </Link>
           </li>
         </ul>
         <hr />
 
         <div className="mt-auto pt-4">
-          <a href="/" className="nav-link text-white">
+          <button
+            className="nav-link text-white btn btn-link"
+            onClick={() => {
+              localStorage.removeItem("access_token");
+              localStorage.removeItem("refresh_token");
+              localStorage.removeItem("username");
+              localStorage.removeItem("first_name");
+              localStorage.removeItem("last_name");
+              localStorage.removeItem("role");
+              localStorage.removeItem("email");
+              navigate("/connecter");
+            }}
+          >
             <FaSignOutAlt className="me-2" /> Déconnexion
-          </a>
+          </button>
         </div>
 
         {/* Switch Light/Dark */}

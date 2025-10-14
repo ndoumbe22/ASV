@@ -38,6 +38,13 @@ function Connecter() {
         throw new Error("Réponse invalide du serveur");
       }
 
+      // Check if user account is active
+      if (!res.data.user.is_active) {
+        throw new Error(
+          "Ce compte est désactivé. Veuillez contacter l'administrateur."
+        );
+      }
+
       // Use the login function from AuthContext
       login(res.data.user, {
         access: res.data.access,
@@ -49,9 +56,9 @@ function Connecter() {
       if (role === "patient") {
         navigate("/interface_patient");
       } else if (role === "medecin") {
-        navigate("/interface_medecin");
+        navigate("/medecin/dashboard");
       } else if (role === "admin") {
-        navigate("/interface_admin");
+        navigate("/admin/dashboard");
       } else {
         navigate("/");
       }
@@ -67,12 +74,17 @@ function Connecter() {
           errorMessage = errorData.error;
         } else if (error.response.status === 401) {
           errorMessage = "Identifiants incorrects";
+        } else if (error.response.status === 403) {
+          errorMessage =
+            "Ce compte est désactivé. Veuillez contacter l'administrateur.";
         } else if (error.response.status === 500) {
           errorMessage = "Erreur serveur. Veuillez réessayer plus tard.";
         }
       } else if (error.request) {
         errorMessage =
           "Impossible de contacter le serveur. Vérifiez votre connexion.";
+      } else if (error.message) {
+        errorMessage = error.message;
       }
 
       setError(errorMessage);

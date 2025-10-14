@@ -12,10 +12,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -27,7 +27,6 @@ SECRET_KEY = 'django-insecure-apb827qibt!htq_9y+bon49(wr@nwfb#c%hq!$nobf@bi4n0#9
 DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-
 
 # Application definition
 
@@ -111,21 +110,31 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'Sante_Virtuelle.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'sante',
-        'USER': 'mouha',
-        'PASSWORD': 'ndeye123',
-        'HOST': 'localhost',
-        'PORT': '5432',
+# Use SQLite for testing, PostgreSQL for production
+if 'test' in sys.argv:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'sante',
+            'USER': 'mouha',
+            'PASSWORD': 'ndeye123',
+            'HOST': 'localhost',
+            'PORT': '5432',
+        }
+    }
 
+# Custom user model
+AUTH_USER_MODEL = 'sante_app.User'
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -145,7 +154,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -156,7 +164,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
@@ -200,59 +207,25 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
+
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+
+    'JTI_CLAIM': 'jti',
+
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
-
-# ============================================
-# CONFIGURATION DE L'UTILISATEUR PERSONNALISÉ
-# ============================================
-
-AUTH_USER_MODEL = 'sante_app.User'
-
-# Configuration Email (Gmail gratuit)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'votre-email@gmail.com'  # À remplacer
-EMAIL_HOST_PASSWORD = 'votre-app-password'  # App Password Gmail
-DEFAULT_FROM_EMAIL = 'AssitoSanté <votre-email@gmail.com>'
-
-# ============================================
-# CONFIGURATION DES LOGS (pour déboguer)
-# ============================================
-
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',  # Changez à 'DEBUG' pour plus de détails
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'sante_app': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
-    },
-}
-
-# ========== SÉCURITÉ : CHIFFREMENT ==========
-# IMPORTANT : Générer une clé unique et la garder secrète
-# Pour générer : python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
-ENCRYPTION_KEY = 'qgjkDgvpHKzuZT1vnHjCWTfn3V7Rtz6WS14R7Mu9sPg='  # Clé générée pour développement
-
-# Ou depuis variable d'environnement (recommandé en production)
-# ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')

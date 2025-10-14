@@ -10,7 +10,7 @@ function Footer() {
           {/* Colonne 1 : À propos */}
           <div className="col-md-4 mb-3">
             <h5 className="mb-3">AssitoSanté</h5>
-            <p className="text-muted">
+            <p className="text-light">
               Votre plateforme de santé virtuelle pour une prise en charge
               médicale moderne et accessible.
             </p>
@@ -23,22 +23,23 @@ function Footer() {
               <li className="mb-2">
                 <Link
                   to="/articles"
-                  className="text-muted text-decoration-none"
+                  className="text-light text-decoration-none"
                 >
                   <i className="bi bi-chevron-right"></i> Articles de Santé
                 </Link>
               </li>
               <li className="mb-2">
-                <Link to="/map" className="text-muted text-decoration-none">
+                <Link to="/map" className="text-light text-decoration-none">
                   <i className="bi bi-chevron-right"></i> Localiser un Centre
                 </Link>
               </li>
               <li className="mb-2">
                 <Link
                   to="/politique-confidentialite"
-                  className="text-muted text-decoration-none"
+                  className="text-light text-decoration-none"
                 >
-                  <i className="bi bi-chevron-right"></i> Politique de Confidentialité
+                  <i className="bi bi-chevron-right"></i> Politique de
+                  Confidentialité
                 </Link>
               </li>
             </ul>
@@ -47,7 +48,7 @@ function Footer() {
           {/* Colonne 3 : Contact */}
           <div className="col-md-4 mb-3">
             <h5 className="mb-3">Contact</h5>
-            <ul className="list-unstyled text-muted">
+            <ul className="list-unstyled text-light">
               <li className="mb-2">
                 <i className="bi bi-envelope"></i> contact@assistosante.sn
               </li>
@@ -66,7 +67,7 @@ function Footer() {
         {/* Copyright */}
         <div className="row">
           <div className="col-12 text-center">
-            <p className="text-muted mb-0">
+            <p className="text-light mb-0">
               &copy; {new Date().getFullYear()} AssitoSanté. Tous droits
               réservés.
             </p>

@@ -120,9 +120,21 @@ function Accueil() {
 
         // Update stats with real counts
         setStats([
-          { title: "Médecins", value: doctorsCount.toString(), icon: "bi bi-person-fill" },
-          { title: "Patients", value: patientsCount.toString(), icon: "bi bi-people-fill" },
-          { title: "Cliniques", value: clinicsCount.toString(), icon: "bi bi-hospital-fill" },
+          {
+            title: "Médecins",
+            value: doctorsCount.toString(),
+            icon: "bi bi-person-fill",
+          },
+          {
+            title: "Patients",
+            value: patientsCount.toString(),
+            icon: "bi bi-people-fill",
+          },
+          {
+            title: "Cliniques",
+            value: clinicsCount.toString(),
+            icon: "bi bi-hospital-fill",
+          },
           {
             title: "Pharmacies",
             value: pharmaciesCount.toString(),

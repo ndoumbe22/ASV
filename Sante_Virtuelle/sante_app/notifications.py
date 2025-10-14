@@ -7,6 +7,41 @@ class NotificationService:
     """Service de notifications par email (gratuit)"""
 
     @staticmethod
+    def send_appointment_request_notification(rendez_vous):
+        """Envoyer notification de demande de rendez-vous au médecin"""
+        patient = rendez_vous.patient
+        medecin = rendez_vous.medecin
+
+        subject = f"📅 Nouvelle demande de rendez-vous - AssitoSanté"
+        message = f"""
+Bonjour Dr. {medecin.user.first_name},
+
+Vous avez reçu une nouvelle demande de rendez-vous :
+
+👤 Patient : {patient.user.first_name} {patient.user.last_name}
+📅 Date : {rendez_vous.date.strftime('%d/%m/%Y')}
+⏰ Heure : {rendez_vous.heure.strftime('%H:%M')}
+📝 Description : {rendez_vous.description}
+
+Veuillez vous connecter à votre espace médecin pour confirmer ou refuser cette demande.
+
+Cordialement,
+L'équipe AssitoSanté
+        """
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [medecin.user.email],
+                fail_silently=False,
+            )
+            print(f"✅ Notification de demande de rendez-vous envoyée à {medecin.user.email}")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'envoi de la notification : {e}")
+
+    @staticmethod
     def send_appointment_confirmation(rendez_vous):
         """Envoyer confirmation de rendez-vous"""
         patient = rendez_vous.patient
@@ -168,6 +203,40 @@ L'équipe AssitoSanté
             print(f"❌ Erreur lors de l'envoi du rappel de médicament : {e}")
 
     @staticmethod
+    def send_document_shared_notification(document, recipient):
+        """Envoyer notification de partage de document"""
+        rendez_vous = document.rendez_vous
+        sender = document.uploaded_by
+
+        subject = f"📁 Nouveau document médical partagé - AssitoSanté"
+        message = f"""
+Bonjour {recipient.first_name},
+
+{sender.first_name} {sender.last_name} a partagé un nouveau document médical :
+
+📄 Type : {document.document_type}
+📝 Description : {document.description}
+📅 Rendez-vous : {rendez_vous.date.strftime('%d/%m/%Y')} à {rendez_vous.heure.strftime('%H:%M')}
+
+Veuillez vous connecter à votre espace pour consulter le document.
+
+Cordialement,
+L'équipe AssitoSanté
+        """
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [recipient.email],
+                fail_silently=False,
+            )
+            print(f"✅ Notification de document partagé envoyée à {recipient.email}")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'envoi de la notification de document : {e}")
+
+    @staticmethod
     def send_urgence_confirmation(urgence):
         """Confirmer la réception de l'urgence au patient"""
         subject = "🚨 Urgence reçue - AssitoSanté"
@@ -248,3 +317,67 @@ Le médecin va vous contacter sous peu au {urgence.telephone_contact}.
         except Exception as e:
             print(f"Erreur envoi email : {e}")
             return False
+
+    @staticmethod
+    def send_reschedule_request(rendez_vous):
+        """Envoyer notification de demande de reprogrammation au médecin"""
+        patient = rendez_vous.patient
+        medecin = rendez_vous.medecin
+
+        subject = f"📅 Demande de reprogrammation de rendez-vous - AssitoSanté"
+        message = f"""
+Bonjour Dr. {medecin.user.first_name},
+
+Le patient {patient.user.first_name} {patient.user.last_name} a demandé à reprogrammer son rendez-vous :
+
+📅 Date actuelle : {rendez_vous.original_date.strftime('%d/%m/%Y')} à {rendez_vous.original_heure.strftime('%H:%M')}
+📅 Nouvelle date demandée : {rendez_vous.date.strftime('%d/%m/%Y')} à {rendez_vous.heure.strftime('%H:%M')}
+📝 Raison : {rendez_vous.description}
+
+Veuillez vous connecter à votre espace médecin pour accepter ou refuser cette demande.
+
+Cordialement,
+L'équipe AssitoSanté
+        """
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [medecin.user.email],
+                fail_silently=False,
+            )
+            print(f"✅ Notification de demande de reprogrammation envoyée à {medecin.user.email}")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'envoi de la notification : {e}")
+
+    @staticmethod
+    def send_rating_notification(medecin, note, commentaire):
+        """Envoyer notification d'une nouvelle évaluation au médecin"""
+        subject = f"⭐ Nouvelle évaluation reçue - AssitoSanté"
+        message = f"""
+Bonjour Dr. {medecin.user.first_name},
+
+Un patient a laissé une évaluation pour votre consultation :
+
+⭐ Note : {note}/5
+📝 Commentaire : {commentaire}
+
+Merci pour votre engagement envers la qualité des soins.
+
+Cordialement,
+L'équipe AssitoSanté
+        """
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [medecin.user.email],
+                fail_silently=False,
+            )
+            print(f"✅ Notification d'évaluation envoyée à {medecin.user.email}")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'envoi de la notification d'évaluation : {e}")

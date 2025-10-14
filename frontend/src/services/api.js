@@ -81,6 +81,12 @@ export const doctorAPI = {
   getDoctor: (id) => api.get(`medecins/${id}/`),
 };
 
+// Specialty APIs
+export const specialtyAPI = {
+  getSpecialties: () => api.get("pathologies/"),
+  getSpecialty: (id) => api.get(`pathologies/${id}/`),
+};
+
 // Appointment APIs
 export const appointmentAPI = {
   getAppointments: () => api.get("rendezvous/"),
@@ -118,6 +124,35 @@ export const dentistAPI = {
 export const articleAPI = {
   getArticles: () => api.get("articles/"),
   getArticle: (id) => api.get(`articles/${id}/`),
+};
+
+// Medical Document APIs
+export const medicalDocumentAPI = {
+  getDocuments: () => api.get("medical-documents/"),
+  getDocument: (id) => api.get(`medical-documents/${id}/`),
+  createDocument: (data) => {
+    const formData = new FormData();
+    Object.keys(data).forEach((key) => {
+      formData.append(key, data[key]);
+    });
+    return api.post("medical-documents/", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
+  updateDocument: (id, data) => {
+    const formData = new FormData();
+    Object.keys(data).forEach((key) => {
+      formData.append(key, data[key]);
+    });
+    return api.put(`medical-documents/${id}/`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
+  deleteDocument: (id) => api.delete(`medical-documents/${id}/`),
 };
 
 // Export the base api instance for custom requests

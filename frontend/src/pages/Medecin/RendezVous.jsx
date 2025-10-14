@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { appointmentAPI } from "../../services/api"; // Added appointmentAPI
 import { FaCalendarCheck, FaUser, FaSearch, FaClock } from "react-icons/fa";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
@@ -11,59 +11,16 @@ function RendezVous() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState("all"); // Added tab state
 
   // Charger les rendez-vous depuis l'API
   useEffect(() => {
     const fetchAppointments = async () => {
       try {
         setLoading(true);
-        // Dans une vraie application, ces données viendraient de l'API
-        // Pour l'instant, utilisons des données statiques
-        const mockRendezvous = [
-          {
-            id: 1,
-            patient: "Awa Diop",
-            date: "2023-10-20",
-            heure: "10:00",
-            motif: "Contrôle rhume",
-            statut: "CONFIRMED"
-          },
-          {
-            id: 2,
-            patient: "Mamadou Fall",
-            date: "2023-10-20",
-            heure: "11:30",
-            motif: "Migraine chronique",
-            statut: "CONFIRMED"
-          },
-          {
-            id: 3,
-            patient: "Fatou Ndiaye",
-            date: "2023-10-21",
-            heure: "09:00",
-            motif: "Bilan de santé",
-            statut: "PENDING"
-          },
-          {
-            id: 4,
-            patient: "Cheikh Sow",
-            date: "2023-10-21",
-            heure: "14:00",
-            motif: "Douleurs articulaires",
-            statut: "CONFIRMED"
-          },
-          {
-            id: 5,
-            patient: "Awa Diop",
-            date: "2023-10-22",
-            heure: "10:30",
-            motif: "Suivi traitement",
-            statut: "CONFIRMED"
-          }
-        ];
-        
-        setRendezvous(mockRendezvous);
-        setFilteredRdv(mockRendezvous);
+        const response = await appointmentAPI.getAppointments();
+        setRendezvous(response.data);
+        setFilteredRdv(response.data);
         setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement des rendez-vous");
@@ -75,23 +32,38 @@ function RendezVous() {
     fetchAppointments();
   }, []);
 
-  // Filtrer selon recherche et date sélectionnée
+  // Filtrer selon recherche, date sélectionnée et onglet actif
   useEffect(() => {
-    const filtered = rendezvous.filter(
-      rdv =>
-        rdv.patient.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        rdv.date === selectedDate.toISOString().split('T')[0]
-    );
+    let filtered = rendezvous;
+    
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(
+        rdv =>
+          rdv.patient_nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          rdv.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Filter by selected date
+    if (selectedDate) {
+      filtered = filtered.filter(
+        rdv => rdv.date === selectedDate.toISOString().split('T')[0]
+      );
+    }
+    
+    // Filter by active tab (status)
+    if (activeTab !== "all") {
+      filtered = filtered.filter(rdv => rdv.statut === activeTab);
+    }
+    
     setFilteredRdv(filtered);
-  }, [searchTerm, selectedDate, rendezvous]);
+  }, [searchTerm, selectedDate, activeTab, rendezvous]);
 
   // Confirmer un rendez-vous
   const confirmAppointment = async (id) => {
     try {
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // await axios.put(`/api/appointments/${id}/confirm/`, {}, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
+      await appointmentAPI.updateAppointment(id, { statut: "CONFIRMED" });
       
       setRendezvous(prev =>
         prev.map(rdv =>
@@ -106,10 +78,7 @@ function RendezVous() {
   // Annuler un rendez-vous
   const cancelAppointment = async (id) => {
     try {
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // await axios.post(`/api/appointments/${id}/cancel/`, {}, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
+      await appointmentAPI.updateAppointment(id, { statut: "CANCELLED" });
       
       setRendezvous(prev =>
         prev.map(rdv =>
@@ -127,6 +96,11 @@ function RendezVous() {
     if (statut === "PENDING") return "#fff3cd"; // orange clair
     if (statut === "CANCELLED") return "#f8d7da"; // rouge clair
     return "#f5f6fa"; // neutre
+  };
+
+  // Get counts for each status
+  const getCountByStatus = (status) => {
+    return rendezvous.filter(rdv => rdv.statut === status).length;
   };
 
   if (loading) {
@@ -192,10 +166,48 @@ function RendezVous() {
             </div>
           </div>
 
+          {/* Tabs for status filtering */}
+          <div className="mb-4">
+            <ul className="nav nav-tabs">
+              <li className="nav-item">
+                <button 
+                  className={`nav-link ${activeTab === "all" ? "active" : ""}`}
+                  onClick={() => setActiveTab("all")}
+                >
+                  Tous ({rendezvous.length})
+                </button>
+              </li>
+              <li className="nav-item">
+                <button 
+                  className={`nav-link ${activeTab === "PENDING" ? "active" : ""}`}
+                  onClick={() => setActiveTab("PENDING")}
+                >
+                  En attente ({getCountByStatus("PENDING")})
+                </button>
+              </li>
+              <li className="nav-item">
+                <button 
+                  className={`nav-link ${activeTab === "CONFIRMED" ? "active" : ""}`}
+                  onClick={() => setActiveTab("CONFIRMED")}
+                >
+                  Confirmés ({getCountByStatus("CONFIRMED")})
+                </button>
+              </li>
+              <li className="nav-item">
+                <button 
+                  className={`nav-link ${activeTab === "CANCELLED" ? "active" : ""}`}
+                  onClick={() => setActiveTab("CANCELLED")}
+                >
+                  Annulés ({getCountByStatus("CANCELLED")})
+                </button>
+              </li>
+            </ul>
+          </div>
+
           {filteredRdv.length === 0 ? (
             <div className="card shadow-sm p-5 text-center">
-              <h4>Aucun rendez-vous prévu</h4>
-              <p>Aucun rendez-vous n'est prévu pour cette date.</p>
+              <h4>Aucun rendez-vous trouvé</h4>
+              <p>Aucun rendez-vous ne correspond aux critères sélectionnés.</p>
             </div>
           ) : (
             <div className="row g-3">
@@ -205,8 +217,8 @@ function RendezVous() {
                     <div className="d-flex justify-content-between align-items-start">
                       {/* Info rendez-vous */}
                       <div>
-                        <h6 className="mb-1"><strong>{rdv.heure}</strong> - {rdv.patient}</h6>
-                        <p className="mb-1"><em>{rdv.motif}</em></p>
+                        <h6 className="mb-1"><strong>{rdv.heure}</strong> - {rdv.patient_nom}</h6>
+                        <p className="mb-1"><em>{rdv.description}</em></p>
                         <p className="mb-1" style={{ fontSize: "13px", color: "#6c757d" }}>
                           Statut :{" "}
                           {rdv.statut === "CONFIRMED" && <span style={{ color: "green" }}>✔ Confirmé</span>}

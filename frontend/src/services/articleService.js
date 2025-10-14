@@ -8,25 +8,30 @@ const getAuthHeader = () => {
 };
 
 export const articleService = {
-  // ===== PUBLIC =====
-  getArticlesPublics: async (filters = {}) => {
-    const params = new URLSearchParams(filters).toString();
+  // Public articles
+  getPublicArticles: async (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.categorie) params.append("categorie", filters.categorie);
+    if (filters.search) params.append("search", filters.search);
+
     const response = await axios.get(
-      `${API_URL}articles/${params ? "?" + params : ""}`
+      `${API_URL}articles/?${params.toString()}`
     );
     return response.data;
   },
 
-  getArticleBySlug: async (slug) => {
+  getPublicArticle: async (slug) => {
     const response = await axios.get(`${API_URL}articles/${slug}/`);
     return response.data;
   },
 
-  // ===== MÉDECIN =====
-  getMyArticles: async (filters = {}) => {
-    const params = new URLSearchParams(filters).toString();
+  // Doctor articles
+  getDoctorArticles: async (status = "all") => {
+    const params = new URLSearchParams();
+    if (status !== "all") params.append("statut", status);
+
     const response = await axios.get(
-      `${API_URL}medecin/articles/${params ? "?" + params : ""}`,
+      `${API_URL}medecin/articles/?${params.toString()}`,
       {
         headers: getAuthHeader(),
       }
@@ -34,7 +39,7 @@ export const articleService = {
     return response.data;
   },
 
-  getMyArticleDetail: async (id) => {
+  getDoctorArticle: async (id) => {
     const response = await axios.get(`${API_URL}medecin/articles/${id}/`, {
       headers: getAuthHeader(),
     });
@@ -45,7 +50,12 @@ export const articleService = {
     const response = await axios.post(
       `${API_URL}medecin/articles/`,
       articleData,
-      { headers: getAuthHeader() }
+      {
+        headers: {
+          ...getAuthHeader(),
+          "Content-Type": "multipart/form-data",
+        },
+      }
     );
     return response.data;
   },
@@ -54,7 +64,12 @@ export const articleService = {
     const response = await axios.put(
       `${API_URL}medecin/articles/${id}/`,
       articleData,
-      { headers: getAuthHeader() }
+      {
+        headers: {
+          ...getAuthHeader(),
+          "Content-Type": "multipart/form-data",
+        },
+      }
     );
     return response.data;
   },
@@ -65,20 +80,10 @@ export const articleService = {
     });
   },
 
-  soumettreValidation: async (id) => {
+  submitArticleForReview: async (id) => {
     const response = await axios.post(
       `${API_URL}medecin/articles/${id}/soumettre/`,
       {},
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  // ===== ADMIN =====
-  getAllArticles: async (filters = {}) => {
-    const params = new URLSearchParams(filters).toString();
-    const response = await axios.get(
-      `${API_URL}admin/articles/${params ? "?" + params : ""}`,
       {
         headers: getAuthHeader(),
       }
@@ -86,41 +91,55 @@ export const articleService = {
     return response.data;
   },
 
-  getArticleDetailAdmin: async (id) => {
+  // Admin articles
+  getAdminArticles: async () => {
+    const response = await axios.get(`${API_URL}admin/articles/`, {
+      headers: getAuthHeader(),
+    });
+    return response.data;
+  },
+
+  getAdminArticle: async (id) => {
     const response = await axios.get(`${API_URL}admin/articles/${id}/`, {
       headers: getAuthHeader(),
     });
     return response.data;
   },
 
-  validerArticle: async (id, commentaire = "") => {
+  validateArticle: async (id, data = {}) => {
     const response = await axios.post(
       `${API_URL}admin/articles/${id}/valider/`,
-      { commentaire },
-      { headers: getAuthHeader() }
+      data,
+      {
+        headers: getAuthHeader(),
+      }
     );
     return response.data;
   },
 
-  refuserArticle: async (id, commentaire) => {
+  rejectArticle: async (id, data = {}) => {
     const response = await axios.post(
       `${API_URL}admin/articles/${id}/refuser/`,
-      { commentaire },
-      { headers: getAuthHeader() }
+      data,
+      {
+        headers: getAuthHeader(),
+      }
     );
     return response.data;
   },
 
-  desactiverArticle: async (id, commentaire = "") => {
+  deactivateArticle: async (id, data = {}) => {
     const response = await axios.post(
       `${API_URL}admin/articles/${id}/desactiver/`,
-      { commentaire },
-      { headers: getAuthHeader() }
+      data,
+      {
+        headers: getAuthHeader(),
+      }
     );
     return response.data;
   },
 
-  getStatistics: async () => {
+  getArticleStatistics: async () => {
     const response = await axios.get(`${API_URL}admin/articles/statistics/`, {
       headers: getAuthHeader(),
     });

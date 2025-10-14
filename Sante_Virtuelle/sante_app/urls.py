@@ -29,6 +29,7 @@ router.register(r'dentistes', DentisteViewSet)
 router.register(r'hopitaux', HopitalViewSet)
 router.register(r'pharmacies', PharmacieViewSet)
 router.register(r'contact_footer', ContactFooterViewSet)
+router.register(r'medical-documents', views.MedicalDocumentViewSet)  # Added MedicalDocumentViewSet
 
 
 urlpatterns = [
@@ -36,9 +37,11 @@ urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path("appointments/upcoming/", views.upcoming_appointments, name="upcoming_appointments"),
-    path("medications/", views.patient_medications, name="patient_medications"),
+    path("appointments/history/", views.appointment_history, name="appointment_history"),
     path("appointments/<int:pk>/cancel/", views.cancel_appointment, name="cancel_appointment"),
     path("appointments/<int:pk>/reschedule/", views.reschedule_appointment, name="reschedule_appointment"),
+    path("appointments/<int:pk>/propose-reschedule/", views.propose_reschedule, name="propose_reschedule"),
+    path("medications/", views.patient_medications, name="patient_medications"),
 
     # API Routes (removed the 'api/' prefix since it's already included in the main urls.py)
     path('', include(router.urls)),
@@ -56,11 +59,14 @@ urlpatterns = [
     # Admin Dashboard
     path('admin/statistics/', views.admin_statistics, name='admin-statistics'),
     path('admin/users/', views.admin_users_list, name='admin-users-list'),
+    path('admin/users/create/', views.admin_create_user, name='admin-create-user'),
+    path('admin/users/<int:user_id>/', views.admin_update_user, name='admin-update-user'),
     path('admin/users/<int:user_id>/toggle-status/', views.admin_toggle_user_status, name='admin-toggle-user'),
     path('admin/users/<int:user_id>/delete/', views.admin_delete_user, name='admin-delete-user'),
 
     # Health Facilities for Geolocation
     path('health-facilities/', views.health_facilities, name='health-facilities'),
+    path('health-facilities/nearby/', views.nearby_health_facilities, name='nearby-health-facilities'),
 
     # Auth routes
     path('auth/register/', RegisterView.as_view(), name="register"),
@@ -98,4 +104,8 @@ urlpatterns = [
     
     # === EXPORT DONNÉES RGPD ===
     path('export-mes-donnees/', views.export_mes_donnees, name='export-donnees'),
+    
+    # === VALIDATION RENDEZ-VOUS & ÉVALUATIONS ===
+    path('appointments/<int:pk>/validate/', views.validate_appointment, name='validate-appointment'),
+    path('appointments/<int:pk>/rating/', views.get_appointment_rating, name='get-appointment-rating'),
 ]

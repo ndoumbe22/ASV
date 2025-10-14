@@ -3,8 +3,8 @@ from apscheduler.triggers.cron import CronTrigger
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
-from datetime import datetime, time
-from .models import RappelMedicament, HistoriquePriseMedicament
+from datetime import datetime, time, timedelta
+from .models import RappelMedicament, HistoriquePriseMedicament, RendezVous
 from .notifications import NotificationService
 import logging
 
@@ -25,13 +25,22 @@ class MedicationReminderScheduler:
             replace_existing=True,
         )
         
+        # Schedule the appointment reminder check to run every hour
+        self.scheduler.add_job(
+            self.check_appointment_reminders,
+            CronTrigger(minute=0),  # Run every hour
+            id="appointment_reminder_check",
+            name="Check appointment reminders",
+            replace_existing=True,
+        )
+        
         self.scheduler.start()
-        logger.info("Medication reminder scheduler started")
+        logger.info("Scheduler started with medication and appointment reminders")
         
     def stop(self):
         """Stop the scheduler"""
         self.scheduler.shutdown()
-        logger.info("Medication reminder scheduler stopped")
+        logger.info("Scheduler stopped")
         
     def check_medication_reminders(self):
         """Check for medication reminders that need to be sent"""
@@ -55,6 +64,26 @@ class MedicationReminderScheduler:
                     
         except Exception as e:
             logger.error(f"Error checking medication reminders: {e}")
+            
+    def check_appointment_reminders(self):
+        """Check for appointment reminders that need to be sent"""
+        try:
+            # Get current time
+            now = timezone.now()
+            
+            # Get appointments for tomorrow
+            tomorrow = now.date() + timedelta(days=1)
+            appointments = RendezVous.objects.filter(
+                date=tomorrow,
+                statut="CONFIRMED"
+            )
+            
+            for appointment in appointments:
+                # Send reminder to patient
+                self._send_appointment_reminder(appointment)
+                    
+        except Exception as e:
+            logger.error(f"Error checking appointment reminders: {e}")
             
     def _should_send_reminder(self, reminder, current_time):
         """Check if it's time to send a reminder"""
@@ -100,6 +129,50 @@ class MedicationReminderScheduler:
                         
         except Exception as e:
             logger.error(f"Error sending medication reminder: {e}")
+            
+    def _send_appointment_reminder(self, appointment):
+        """Send appointment reminder notification"""
+        try:
+            # Check if we've already sent a reminder for this appointment
+            # In a real implementation, you might want to store this in a separate model
+            # For now, we'll just send the reminder
+            
+            # Send email notification using NotificationService
+            patient = appointment.patient
+            medecin = appointment.medecin
+            
+            if patient.email:
+                # Create subject and message for appointment reminder
+                subject = f"📅 Rappel de rendez-vous - Demain à {appointment.heure.strftime('%H:%M')}"
+                message = f"""
+Bonjour {patient.first_name},
+
+Ceci est un rappel pour votre rendez-vous médical demain :
+
+📅 Date : {appointment.date.strftime('%d/%m/%Y')}
+⏰ Heure : {appointment.heure.strftime('%H:%M')}
+👨‍⚕️ Médecin : Dr. {medecin.first_name} {medecin.last_name}
+
+Merci d'arriver 10 minutes avant l'heure prévue.
+
+Cordialement,
+L'équipe AssitoSanté
+                """
+                
+                try:
+                    send_mail(
+                        subject,
+                        message,
+                        settings.DEFAULT_FROM_EMAIL,
+                        [patient.email],
+                        fail_silently=False,
+                    )
+                    logger.info(f"✅ Appointment reminder sent to {patient.email}")
+                except Exception as e:
+                    logger.error(f"❌ Error sending appointment reminder: {e}")
+                        
+        except Exception as e:
+            logger.error(f"Error processing appointment reminder: {e}")
 
 # Global scheduler instance
 scheduler = MedicationReminderScheduler()

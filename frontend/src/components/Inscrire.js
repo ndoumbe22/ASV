@@ -53,6 +53,16 @@ function Inscrire() {
       setError("Les mots de passe ne correspondent pas");
       return false;
     }
+    // Additional validation for username
+    if (formData.username.length < 3) {
+      setError("Le nom d'utilisateur doit contenir au moins 3 caractères");
+      return false;
+    }
+    // Additional validation for email
+    if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      setError("Email invalide");
+      return false;
+    }
     return true;
   };
 

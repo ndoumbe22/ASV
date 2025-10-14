@@ -2,6 +2,24 @@
   text-align: center;
 }
 
+/* Hide default React app logo styles in production */
+.App-logo {
+  display: none;
+}
+
+.App-header {
+  display: none;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;
@@ -45,5 +63,36 @@
 [data-theme="dark"] {
   background-color: #0d0d18;
   color: #fff;
+}
+
+/* Global styles for enhanced components */
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.hover-bg-light:hover {
+  background-color: #f8f9fa !important;
+}
+
+[data-theme="dark"] .hover-bg-light:hover {
+  background-color: #2d2d2d !important;
+}
+
+.btn-hover-scale {
+  transition: transform 0.2s;
+}
+
+.btn-hover-scale:hover {
+  transform: scale(1.05);
+}
+
+/* Toast container */
+.toast-container {
+  z-index: 9999;
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
