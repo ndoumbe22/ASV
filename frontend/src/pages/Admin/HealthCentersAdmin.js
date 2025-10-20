@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FaPlus, FaEdit, FaTrash, FaUpload, FaDownload } from "react-icons/fa";
-import { urgenceService } from "../../services/urgenceService";
+import urgenceService from "../../services/urgenceService";
 
 function HealthCentersAdmin() {
   const [facilities, setFacilities] = useState([]);

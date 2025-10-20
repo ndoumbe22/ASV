@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { 
   FaCalendarCheck, FaUserMd, FaFileMedical, FaEnvelope, 
   FaCog, FaSignOutAlt, FaUser, FaSearch, FaBell, 
@@ -12,13 +13,14 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
-import { doctorAPI } from "../../services/api";
+import { doctorAPI, appointmentAPI } from "../../services/api";
 import EnhancedChatbot from "../../components/EnhancedChatbot";
 import NotificationCenter from "../../components/NotificationCenter";
 import DoctorRatingsDisplay from "../../components/DoctorRatingsDisplay";
 
 function EnhancedDashboardMedecinV2() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [theme, setTheme] = useState("light");
   const [fullName, setFullName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,101 +88,95 @@ function EnhancedDashboardMedecinV2() {
     const fetchDoctorData = async () => {
       try {
         setLoading(true);
-        // In a real implementation, you would get the actual doctor ID
-        // const response = await doctorAPI.getDoctor(1);
-        // setDoctorData(response.data);
-        // setFullName(`${response.data.user.first_name} ${response.data.user.last_name}`.trim());
+        setError(null);
         
-        // For demo purposes, we'll use mock data
-        setDoctorData({
-          id: 1,
-          user: {
-            first_name: "Martin",
-            last_name: "Diop",
-            email: "martin.diop@example.com"
-          },
-          specialite: "Cardiologue",
-          rating: 4.7,
-          total_patients: 128,
-          consultations_this_month: 42
-        });
-        setFullName("Dr. Martin Diop");
+        // Get doctor's full name from user data
+        if (user) {
+          const firstName = user.firstName || user.first_name || "";
+          const lastName = user.lastName || user.last_name || "";
+          const username = user.username || "";
+          const specialty = user.specialty || user.profile?.specialty || "Médecin";
+          setFullName(`Dr. ${firstName} ${lastName}`.trim() || `Dr. ${username}`.trim() || `Dr. ${specialty}`);
+          
+          // Set doctor data with user information
+          setDoctorData({
+            id: 1, // In a real implementation, this would come from the API
+            user: {
+              first_name: firstName,
+              last_name: lastName,
+              email: user.email || ""
+            },
+            specialite: "Médecin", // Default specialty
+            rating: 0,
+            total_patients: 0,
+            consultations_this_month: 0
+          });
+        }
         setLoading(false);
       } catch (err) {
+        console.error("Erreur lors du chargement des données du médecin :", err);
         setError("Erreur lors du chargement des données du médecin");
         setLoading(false);
-        console.error("Erreur lors du chargement des données du médecin :", err);
       }
     };
 
     fetchDoctorData();
-  }, []);
+  }, [user]);
 
   // Charger les rendez-vous du médecin
   useEffect(() => {
     const fetchAppointments = async () => {
       try {
-        // In a real implementation, you would call the API
-        // const response = await doctorAPI.getAppointments();
-        // setAppointments(response.data);
-        
-        // For demo purposes, we'll use mock data
-        setAppointments([
-          {
-            id: 1,
-            date: "2024-06-15",
-            heure: "10:30",
-            patient_nom: "Aminata Fall",
-            motif: "Bilan de santé annuel",
-            statut: "CONFIRMED"
-          },
-          {
-            id: 2,
-            date: "2024-06-15",
-            heure: "11:15",
-            patient_nom: "Mamadou Sow",
-            motif: "Douleurs thoraciques",
-            statut: "CONFIRMED"
-          },
-          {
-            id: 3,
-            date: "2024-06-15",
-            heure: "14:00",
-            patient_nom: "Fatou Ndiaye",
-            motif: "Suivi hypertension",
-            statut: "PENDING"
-          }
-        ]);
+        const response = await appointmentAPI.getAppointments();
+        setAppointments(response?.data || []);
       } catch (err) {
         console.error("Erreur lors du chargement des rendez-vous :", err);
+        setAppointments([]);
       }
     };
 
-    fetchAppointments();
-  }, []);
+    if (user) {
+      fetchAppointments();
+    }
+  }, [user]);
 
   // Charger les patients du médecin
   useEffect(() => {
     const fetchPatients = async () => {
       try {
-        // In a real implementation, you would call the API
-        // const response = await doctorAPI.getPatients();
-        // setPatients(response.data);
+        // In a real implementation, you would call the API to get the doctor's patients
+        // For now, we'll simulate with appointment data since there might not be a specific endpoint
+        const appointmentsResponse = await appointmentAPI.getAppointments();
         
-        // For demo purposes, we'll use mock data
+        // Extract unique patients from appointments
+        const uniquePatients = [...new Set(appointmentsResponse.data.map(app => app.patient_name || app.patient || 'Patient inconnu'))];
+        
+        // Create patient objects with mock data (in a real app, this would come from a patients endpoint)
+        const patientData = uniquePatients.slice(0, 4).map((name, index) => ({
+          id: index + 1,
+          nom: name,
+          age: 20 + Math.floor(Math.random() * 60), // Random age between 20-80
+          derniere_consultation: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // Random date within last 30 days
+        }));
+        
+        setPatients(patientData);
+      } catch (err) {
+        console.error("Erreur lors du chargement des patients :", err);
+        
+        // Fallback to mock data if API fails
         setPatients([
           { id: 1, nom: "Aminata Fall", age: 35, derniere_consultation: "2024-06-10" },
           { id: 2, nom: "Mamadou Sow", age: 42, derniere_consultation: "2024-06-08" },
           { id: 3, nom: "Fatou Ndiaye", age: 28, derniere_consultation: "2024-06-05" },
           { id: 4, nom: "Ousmane Sarr", age: 55, derniere_consultation: "2024-06-01" }
         ]);
-      } catch (err) {
-        console.error("Erreur lors du chargement des patients :", err);
       }
     };
 
-    fetchPatients();
-  }, []);
+    if (user) {
+      fetchPatients();
+    }
+  }, [user]);
 
   // Charger le thème sauvegardé
   useEffect(() => {
@@ -204,531 +200,463 @@ function EnhancedDashboardMedecinV2() {
   }, [quickActions.length]);
 
   const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
+    // Clear all stored data using the same names as AuthContext
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("first_name");
+    localStorage.removeItem("last_name");
+    localStorage.removeItem("role");
+    localStorage.removeItem("email");
     navigate("/connecter");
   };
 
   // Sample data for charts
-  const appointmentHistoryData = [
+  const [appointmentHistoryData, setAppointmentHistoryData] = useState([
     { mois: "Mai", rendez_vous: 38 },
     { mois: "Juin", rendez_vous: 42 },
     { mois: "Juil", rendez_vous: 35 }
-  ];
+  ]);
 
-  const patientAgeDistribution = [
-    { range: "18-30", count: 25 },
-    { range: "31-45", count: 42 },
-    { range: "46-60", count: 38 },
-    { range: "60+", count: 23 }
-  ];
+  const [patientAgeDistribution, setPatientAgeDistribution] = useState([
+    { range: "0-18", count: 15 },
+    { range: "19-35", count: 42 },
+    { range: "36-50", count: 38 },
+    { range: "51-65", count: 25 },
+    { range: "65+", count: 12 }
+  ]);
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+  const [consultationTypes, setConsultationTypes] = useState([
+    { type: "Consultation générale", count: 65 },
+    { type: "Suivi chronique", count: 28 },
+    { type: "Urgence", count: 12 },
+    { type: "Prévention", count: 18 }
+  ]);
 
-  const nextSlide = () => {
-    setCurrentSlide(prev => (prev + 1) % Math.ceil(quickActions.length / 3));
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide(prev => (prev - 1 + Math.ceil(quickActions.length / 3)) % Math.ceil(quickActions.length / 3));
-  };
+  // Chart colors
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
   if (loading) {
-    return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Chargement...</div>;
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>
+        <div className="spinner-border" role="status">
+          <span className="visually-hidden">Chargement...</span>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Erreur: {error}</div>;
+    return (
+      <div className="container-fluid">
+        <div className="row justify-content-center">
+          <div className="col-md-8">
+            <div className="alert alert-danger alert-dismissible fade show" role="alert">
+              {error}
+              <button 
+                type="button" 
+                className="btn-close" 
+                onClick={() => window.location.reload()}
+              ></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="d-flex" style={{ minHeight: "100vh" }}>
-      {/* ===== Sidebar ===== */}
-      <aside 
-        style={{ 
-          width: "250px", 
-          padding: "20px", 
-          backgroundColor: "#1976D2",
-          color: "white"
-        }}
-      >
-        <div className="d-flex align-items-center mb-4">
-          <div className="d-flex align-items-center">
-            <FaUserMd size={30} className="me-2" />
-            <h4>AssitoSanté</h4>
-          </div>
-        </div>
-
-        <ul className="nav flex-column">
-          <li className="nav-item mb-3">
-            <Link to="/medecin/dashboard" className="nav-link text-white active">
-              <FaChartLine className="me-2" /> Tableau de bord
+    <div className={`dashboard-container ${theme === "dark" ? "bg-dark text-light" : "bg-light"}`}>
+      {/* Header */}
+      <header className={`sticky-top shadow-sm ${theme === "dark" ? "bg-dark" : "bg-white"}`}>
+        <nav className="navbar navbar-expand-lg navbar-light">
+          <div className="container-fluid">
+            <Link className="navbar-brand d-flex align-items-center" to="/medecin/dashboard">
+              <FaUserMd className="me-2 text-primary" size={24} />
+              <span className="fw-bold">Santé Virtuelle</span>
             </Link>
-          </li>
-          <li className="nav-item mb-3">
-            <Link to="/medecin/rendez-vous" className="nav-link text-white">
-              <FaCalendarCheck className="me-2" /> Rendez-vous
-            </Link>
-          </li>
-          <li className="nav-item mb-3">
-            <Link to="/medecin/patients" className="nav-link text-white">
-              <FaUsers className="me-2" /> Mes Patients
-            </Link>
-          </li>
-          <li className="nav-item mb-3">
-            <Link to="/medecin/dossiers-patients" className="nav-link text-white">
-              <FaFileMedical className="me-2" /> Dossiers Médicaux
-            </Link>
-          </li>
-          <li className="nav-item mb-3">
-            <Link to="/medecin/document-partage" className="nav-link text-white">
-              <FaClipboardList className="me-2" /> Documents Partagés
-            </Link>
-          </li>
-          <li className="nav-item mb-3">
-            <Link to="/medecin/articles" className="nav-link text-white">
-              <FaBookMedical className="me-2" /> Mes Articles
-            </Link>
-          </li>
-          <li className="nav-item mb-3">
-            <Link to="/medecin/profile" className="nav-link text-white">
-              <FaUser className="me-2" /> Profil
-            </Link>
-          </li>
-        </ul>
-        <hr style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
-
-        <div className="mt-auto pt-4">
-          <button className="nav-link text-white btn btn-link" onClick={handleLogout}>
-            <FaSignOutAlt className="me-2" /> Déconnexion
-          </button>
-        </div>
-      </aside>
-
-      {/* ===== Contenu principal ===== */}
-      <main className="flex-grow-1 p-4">
-        {/* ===== Topbar ===== */}
-        <div
-          className="d-flex justify-content-between align-items-center mb-4 topbar"
-          style={{ padding: "10px 20px", borderRadius: "10px", backgroundColor: "#f5f6fa" }}
-        >
-          {/* Barre de recherche */}
-          <div style={{ position: "relative", width: "250px" }}>
-            <input
-              type="text"
-              placeholder="Rechercher..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                borderRadius: "20px",
-                border: "1px solid #ddd",
-                padding: "6px 12px 6px 35px",
-                width: "100%",
-                backgroundColor: "white",
-                outline: "none",
-              }}
-            />
-            <FaSearch
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "12px",
-                transform: "translateY(-50%)",
-                color: "#888",
-              }}
-            />
-          </div>
-
-          {/* Icônes + Profil */}
-          <div className="d-flex align-items-center">
-            <div style={{ ...iconStyle }}><FaCog size={16} /></div>
-            <NotificationCenter />
-            <div className="d-flex align-items-center ms-3">
-              <div
-                style={{
-                  width: "35px",
-                  height: "35px",
-                  borderRadius: "50%",
-                  backgroundColor: "#1976D2",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontWeight: "bold",
-                  marginRight: "10px",
-                }}
-              >
-                {fullName.charAt(0)}
+            
+            <div className="d-flex align-items-center">
+              {/* Search Bar */}
+              <div className="input-group me-3" style={{ width: "300px" }}>
+                <span className="input-group-text">
+                  <FaSearch />
+                </span>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Rechercher..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
-              <div>
-                <div style={{ fontSize: "14px", fontWeight: "500" }}>{fullName}</div>
-                <div style={{ fontSize: "12px", color: "#666" }}>Médecin</div>
+              
+              {/* Notifications */}
+              <div className="me-3 position-relative" style={iconStyle}>
+                <FaBell size={20} />
+                {notifications.length > 0 && (
+                  <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {notifications.length}
+                  </span>
+                )}
+                <NotificationCenter 
+                  notifications={notifications} 
+                  onClear={() => setNotifications([])} 
+                />
+              </div>
+              
+              {/* User Profile */}
+              <div className="dropdown">
+                <button
+                  className="btn btn-outline-secondary dropdown-toggle d-flex align-items-center"
+                  type="button"
+                  id="userDropdown"
+                  data-bs-toggle="dropdown"
+                >
+                  <FaUser className="me-2" />
+                  {fullName || user?.username || "Médecin"}
+                </button>
+                <ul className="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <Link className="dropdown-item" to="/medecin/profile">
+                      <FaUser className="me-2" /> Mon profil
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="dropdown-item" to="/medecin/notifications">
+                      <FaBell className="me-2" /> Notifications
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="dropdown-item" to="/medecin/settings">
+                      <FaCog className="me-2" /> Paramètres
+                    </Link>
+                  </li>
+                  <li>
+                    <hr className="dropdown-divider" />
+                  </li>
+                  <li>
+                    <button className="dropdown-item text-danger" onClick={handleLogout}>
+                      <FaSignOutAlt className="me-2" /> Déconnexion
+                    </button>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
+        </nav>
+        
+        {/* Secondary Navigation */}
+        <div className="border-bottom">
+          <div className="container-fluid">
+            <ul className="nav nav-tabs">
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === "overview" ? "active" : ""}`}
+                  onClick={() => setActiveTab("overview")}
+                >
+                  <FaChartLine className="me-2" /> Vue d'ensemble
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === "appointments" ? "active" : ""}`}
+                  onClick={() => setActiveTab("appointments")}
+                >
+                  <FaCalendarCheck className="me-2" /> Rendez-vous
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === "patients" ? "active" : ""}`}
+                  onClick={() => setActiveTab("patients")}
+                >
+                  <FaUsers className="me-2" /> Patients
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === "documents" ? "active" : ""}`}
+                  onClick={() => setActiveTab("documents")}
+                >
+                  <FaFileMedical className="me-2" /> Documents
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === "articles" ? "active" : ""}`}
+                  onClick={() => setActiveTab("articles")}
+                >
+                  <FaBookMedical className="me-2" /> Articles
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${activeTab === "ratings" ? "active" : ""}`}
+                  onClick={() => setShowRatings(!showRatings)}
+                >
+                  <FaStar className="me-2" /> Évaluations
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
+      </header>
 
-        {/* ===== Welcome Banner ===== */}
-        <div className="card mb-4" style={{ background: "linear-gradient(135deg, #1976D2, #2196F3)", color: "white" }}>
-          <div className="card-body">
-            <div className="d-flex justify-content-between align-items-center">
-              <div>
-                <h2>Bonjour, {fullName || "Médecin"}!</h2>
-                <p className="mb-0">Bienvenue sur votre tableau de bord professionnel</p>
-              </div>
-              <div className="text-end">
-                <div className="d-flex align-items-center">
-                  <FaStethoscope size={30} className="me-2" />
-                  <div>
-                    <div className="fw-bold">{doctorData?.specialite || "Spécialiste"}</div>
-                    <small>Note: {doctorData?.rating || "N/A"} ★</small>
+      {/* Main Content */}
+      <main className="container-fluid py-4">
+        {activeTab === "overview" && (
+          <div className="row">
+            {/* Stats Cards */}
+            <div className="col-md-3 mb-4">
+              <div className="card border-primary h-100">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className="card-title text-muted">Rendez-vous aujourd'hui</h6>
+                      <h2 className="card-text">{appointments.length}</h2>
+                    </div>
+                    <FaCalendarCheck size={32} className="text-primary" />
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+            
+            <div className="col-md-3 mb-4">
+              <div className="card border-success h-100">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className="card-title text-muted">Patients actifs</h6>
+                      <h2 className="card-text">{patients.length}</h2>
+                    </div>
+                    <FaUsers size={32} className="text-success" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="col-md-3 mb-4">
+              <div className="card border-info h-100">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className="card-title text-muted">Consultations ce mois</h6>
+                      <h2 className="card-text">42</h2>
+                    </div>
+                    <FaStethoscope size={32} className="text-info" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="col-md-3 mb-4">
+              <div className="card border-warning h-100">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className="card-title text-muted">Note moyenne</h6>
+                      <h2 className="card-text">4.2/5</h2>
+                    </div>
+                    <FaStar size={32} className="text-warning" />
+                  </div>
+                </div>
+              </div>
+            </div>
 
-        {/* ===== Doctor Stats Cards ===== */}
-        <div className="row mb-4">
-          <div className="col-md-3">
-            <div className="card bg-primary text-white">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h5 className="card-title">Patients</h5>
-                    <h2>{doctorData?.total_patients || 0}</h2>
+            {/* Quick Actions Carousel */}
+            <div className="col-12 mb-4">
+              <div className="card">
+                <div className="card-header d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">Actions rapides</h5>
+                  <div className="d-flex">
+                    <button 
+                      className="btn btn-sm btn-outline-secondary me-1"
+                      onClick={() => setCurrentSlide(prev => Math.max(0, prev - 1))}
+                    >
+                      <FaChevronLeft />
+                    </button>
+                    <button 
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => setCurrentSlide(prev => Math.min(Math.ceil(quickActions.length / 3) - 1, prev + 1))}
+                    >
+                      <FaChevronRight />
+                    </button>
                   </div>
-                  <FaUsers size={30} />
                 </div>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card bg-success text-white">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h5 className="card-title">Consultations</h5>
-                    <h2>{doctorData?.consultations_this_month || 0}</h2>
-                  </div>
-                  <FaClipboardList size={30} />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card bg-info text-white">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h5 className="card-title">Note moyenne</h5>
-                    <h2>{doctorData?.rating || 0}<small>/5</small></h2>
-                  </div>
-                  <FaStar size={30} />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card bg-warning text-dark">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h5 className="card-title">Rendez-vous</h5>
-                    <h2>{appointments.filter(a => a.statut === "CONFIRMED").length}</h2>
-                  </div>
-                  <FaCalendarCheck size={30} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ===== Quick Actions Carousel ===== */}
-        <div className="card mb-4">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h5 className="mb-0">Actions rapides</h5>
-            <div className="d-flex">
-              <button className="btn btn-sm btn-outline-secondary me-1" onClick={prevSlide}>
-                <FaChevronLeft />
-              </button>
-              <button className="btn btn-sm btn-outline-secondary" onClick={nextSlide}>
-                <FaChevronRight />
-              </button>
-            </div>
-          </div>
-          <div className="card-body">
-            <div className="d-flex overflow-hidden">
-              <div 
-                className="d-flex" 
-                style={{ 
-                  transform: `translateX(-${currentSlide * 100}%)`, 
-                  transition: "transform 0.5s ease-in-out",
-                  width: `${Math.ceil(quickActions.length / 3) * 100}%`
-                }}
-              >
-                {Array(Math.ceil(quickActions.length / 3)).fill().map((_, groupIndex) => (
-                  <div key={groupIndex} className="d-flex" style={{ width: "100%" }}>
-                    {quickActions.slice(groupIndex * 3, (groupIndex + 1) * 3).map((action, index) => (
-                      <div key={index} className="col-md-4 mb-3 px-2">
-                        <Link 
-                          to={action.path}
-                          className="text-decoration-none"
+                <div className="card-body">
+                  <div className="d-flex overflow-hidden">
+                    {quickActions
+                      .slice(currentSlide * 3, currentSlide * 3 + 3)
+                      .map((action, index) => (
+                        <div 
+                          key={index} 
+                          className="col-md-4 px-2"
+                          onClick={() => navigate(action.path)}
                         >
                           <div 
-                            className="card h-100 text-center border-0 shadow-sm"
-                            style={{ 
-                              backgroundColor: `var(--bs-${action.color})`,
-                              color: "white",
-                              transition: "transform 0.2s"
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.05)"}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+                            className={`card h-100 text-center cursor-pointer border-${action.color} hover-shadow`}
+                            style={{ minHeight: "150px" }}
                           >
                             <div className="card-body d-flex flex-column justify-content-center align-items-center">
-                              <div className="mb-2">{action.icon}</div>
-                              <h6 className="card-title mb-0">{action.title}</h6>
+                              <div className={`mb-3 text-${action.color}`}>
+                                {action.icon}
+                              </div>
+                              <h6 className="card-title">{action.title}</h6>
                             </div>
                           </div>
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ===== Health Tip of the Day ===== */}
-        <div className="alert alert-info d-flex align-items-center mb-4">
-          <FaNotesMedical size={24} className="me-2" />
-          <div>
-            <strong>Conseil professionnel du jour:</strong> {healthTips[Math.floor(Math.random() * healthTips.length)]}
-          </div>
-        </div>
-
-        {/* ===== Tabs ===== */}
-        <ul className="nav nav-tabs mb-4">
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => setActiveTab("overview")}
-            >
-              Vue d'ensemble
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${activeTab === "appointments" ? "active" : ""}`}
-              onClick={() => setActiveTab("appointments")}
-            >
-              Rendez-vous
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${activeTab === "patients" ? "active" : ""}`}
-              onClick={() => setActiveTab("patients")}
-            >
-              Patients
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${activeTab === "ratings" ? "active" : ""}`}
-              onClick={() => setShowRatings(!showRatings)}
-            >
-              <FaStar className="me-1" /> Évaluations
-            </button>
-          </li>
-        </ul>
-
-        {/* ===== Overview Tab ===== */}
-        {activeTab === "overview" && (
-          <div>
-            <div className="row">
-              <div className="col-md-8">
-                <div className="card mb-4">
-                  <div className="card-header">
-                    <h5>Historique des consultations</h5>
-                  </div>
-                  <div className="card-body">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={appointmentHistoryData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="mois" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="rendez_vous" stroke="#8884d8" activeDot={{ r: 8 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div className="card mb-4">
-                  <div className="card-header">
-                    <h5>Répartition des patients par âge</h5>
-                  </div>
-                  <div className="card-body">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={patientAgeDistribution}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="count"
-                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {patientAgeDistribution.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                        </div>
+                      ))}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="row">
-              <div className="col-md-6">
-                <div className="card mb-4">
-                  <div className="card-header">
-                    <h5>Prochains rendez-vous</h5>
-                  </div>
-                  <div className="card-body">
-                    {appointments.filter(app => app.statut === "CONFIRMED").slice(0, 3).length === 0 ? (
-                      <p className="text-muted">Aucun rendez-vous confirmé</p>
-                    ) : (
-                      appointments.filter(app => app.statut === "CONFIRMED").slice(0, 3).map(app => (
-                        <div key={app.id} className="mb-3 p-3 border rounded">
-                          <div className="d-flex justify-content-between align-items-start">
-                            <div>
-                              <div className="d-flex align-items-center">
-                                <strong>{app.patient_nom}</strong>
-                              </div>
-                              <div className="text-muted small">{app.motif}</div>
-                              <div>{app.date} à {app.heure}</div>
-                            </div>
-                            <span className="badge bg-success">Confirmé</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+            {/* Charts */}
+            <div className="col-md-8 mb-4">
+              <div className="card">
+                <div className="card-header">
+                  <h5>Historique des rendez-vous</h5>
+                </div>
+                <div className="card-body" style={{ height: "300px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={appointmentHistoryData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="mois" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="rendez_vous" 
+                        stroke="#8884d8" 
+                        activeDot={{ r: 8 }} 
+                        name="Rendez-vous"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
-              <div className="col-md-6">
-                <div className="card mb-4">
-                  <div className="card-header">
-                    <h5>Mes patients récents</h5>
-                  </div>
-                  <div className="card-body">
-                    {patients.slice(0, 3).length === 0 ? (
-                      <p className="text-muted">Aucun patient enregistré</p>
-                    ) : (
-                      patients.slice(0, 3).map(patient => (
-                        <div key={patient.id} className="mb-3 p-3 border rounded">
-                          <div className="d-flex justify-content-between align-items-start">
-                            <div>
-                              <div className="d-flex align-items-center">
-                                <strong>{patient.nom}</strong>
-                              </div>
-                              <div className="text-muted small">{patient.age} ans</div>
-                              <div>Dernière consultation: {patient.derniere_consultation}</div>
-                            </div>
-                            <button className="btn btn-sm btn-outline-primary">
-                              Voir dossier
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+            </div>
+
+            <div className="col-md-4 mb-4">
+              <div className="card">
+                <div className="card-header">
+                  <h5>Répartition des patients par âge</h5>
+                </div>
+                <div className="card-body" style={{ height: "300px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={patientAgeDistribution}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="count"
+                        label={({ range, percent }) => `${range}: ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {patientAgeDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Health Tip */}
+            <div className="col-md-12">
+              <div className="alert alert-info d-flex align-items-center">
+                <FaHeartbeat size={24} className="me-3" />
+                <div>
+                  <strong>Conseil santé pour les médecins:</strong> {healthTips[Math.floor(Math.random() * healthTips.length)]}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ===== Appointments Tab ===== */}
         {activeTab === "appointments" && (
-          <div>
-            <div className="row">
-              <div className="col-md-12">
-                <div className="card">
-                  <div className="card-header">
-                    <h5>Mes Rendez-vous</h5>
-                  </div>
-                  <div className="card-body">
+          <div className="row">
+            <div className="col-md-12">
+              <div className="card">
+                <div className="card-header d-flex justify-content-between align-items-center">
+                  <h5>Rendez-vous</h5>
+                  <Link to="/medecin/rendez-vous" className="btn btn-primary">
+                    Voir tous les rendez-vous
+                  </Link>
+                </div>
+                <div className="card-body">
+                  {appointments.length > 0 ? (
                     <div className="table-responsive">
                       <table className="table table-striped">
                         <thead>
                           <tr>
+                            <th>Patient</th>
                             <th>Date</th>
                             <th>Heure</th>
-                            <th>Patient</th>
                             <th>Motif</th>
                             <th>Statut</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {appointments.map(app => (
-                            <tr key={app.id}>
-                              <td>{app.date}</td>
-                              <td>{app.heure}</td>
-                              <td>{app.patient_nom}</td>
-                              <td>{app.motif}</td>
+                          {appointments.slice(0, 5).map(appointment => (
+                            <tr key={appointment.id}>
+                              <td>{appointment.patient_name || appointment.patient || 'Patient non spécifié'}</td>
+                              <td>{appointment.date ? new Date(appointment.date).toLocaleDateString('fr-FR') : 'Date non spécifiée'}</td>
+                              <td>{appointment.time || 'Heure non spécifiée'}</td>
+                              <td>{appointment.motif || 'Motif non spécifié'}</td>
                               <td>
                                 <span className={`badge ${
-                                  app.statut === "CONFIRMED" ? "bg-success" :
-                                  app.statut === "PENDING" ? "bg-warning" :
-                                  "bg-danger"
+                                  appointment.status === 'confirmed' ? 'bg-success' : 
+                                  appointment.status === 'pending' ? 'bg-warning' : 
+                                  appointment.status === 'cancelled' ? 'bg-danger' : 'bg-secondary'
                                 }`}>
-                                  {app.statut}
+                                  {appointment.status === 'confirmed' ? 'Confirmé' : 
+                                   appointment.status === 'pending' ? 'En attente' : 
+                                   appointment.status === 'cancelled' ? 'Annulé' : 'Inconnu'}
                                 </span>
                               </td>
                               <td>
-                                <button className="btn btn-sm btn-outline-primary me-1">
-                                  Voir détails
-                                </button>
-                                <button className="btn btn-sm btn-outline-secondary">
-                                  Modifier
-                                </button>
+                                <div className="btn-group" role="group">
+                                  <button className="btn btn-sm btn-outline-primary">Voir</button>
+                                  <button className="btn btn-sm btn-outline-success">Confirmer</button>
+                                </div>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-center py-5">
+                      <p className="text-muted">Aucun rendez-vous trouvé.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ===== Patients Tab ===== */}
         {activeTab === "patients" && (
-          <div>
-            <div className="row">
-              <div className="col-md-12">
-                <div className="card">
-                  <div className="card-header">
-                    <h5>Mes Patients</h5>
-                  </div>
-                  <div className="card-body">
+          <div className="row">
+            <div className="col-md-12">
+              <div className="card">
+                <div className="card-header d-flex justify-content-between align-items-center">
+                  <h5>Patients</h5>
+                  <Link to="/medecin/patients" className="btn btn-primary">
+                    Voir tous les patients
+                  </Link>
+                </div>
+                <div className="card-body">
+                  {patients.length > 0 ? (
                     <div className="table-responsive">
                       <table className="table table-striped">
                         <thead>
@@ -744,20 +672,48 @@ function EnhancedDashboardMedecinV2() {
                             <tr key={patient.id}>
                               <td>{patient.nom}</td>
                               <td>{patient.age} ans</td>
-                              <td>{patient.derniere_consultation}</td>
+                              <td>{patient.derniere_consultation ? new Date(patient.derniere_consultation).toLocaleDateString('fr-FR') : 'Non spécifiée'}</td>
                               <td>
-                                <button className="btn btn-sm btn-outline-primary me-1">
-                                  Voir dossier
-                                </button>
-                                <button className="btn btn-sm btn-outline-secondary">
-                                  Envoyer message
-                                </button>
+                                <div className="btn-group" role="group">
+                                  <button className="btn btn-sm btn-outline-primary">Voir dossier</button>
+                                  <button className="btn btn-sm btn-outline-success">Contacter</button>
+                                </div>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                  ) : (
+                    <div className="text-center py-5">
+                      <p className="text-muted">Aucun patient trouvé.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "documents" && (
+          <div className="row">
+            <div className="col-md-12">
+              <div className="card">
+                <div className="card-header d-flex justify-content-between align-items-center">
+                  <h5>Documents médicaux</h5>
+                  <Link to="/medecin/document-partage" className="btn btn-primary">
+                    Gérer les documents
+                  </Link>
+                </div>
+                <div className="card-body">
+                  <div className="alert alert-info">
+                    <FaFileMedical className="me-2" />
+                    Cette section vous permet de gérer les documents médicaux partagés avec vos patients.
+                  </div>
+                  <div className="d-flex justify-content-center">
+                    <Link to="/medecin/document-partage" className="btn btn-lg btn-primary">
+                      Accéder aux documents
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -765,7 +721,32 @@ function EnhancedDashboardMedecinV2() {
           </div>
         )}
 
-        {/* ===== Ratings Tab ===== */}
+        {activeTab === "articles" && (
+          <div className="row">
+            <div className="col-md-12">
+              <div className="card">
+                <div className="card-header d-flex justify-content-between align-items-center">
+                  <h5>Mes articles</h5>
+                  <Link to="/medecin/articles" className="btn btn-primary">
+                    Gérer mes articles
+                  </Link>
+                </div>
+                <div className="card-body">
+                  <div className="alert alert-info">
+                    <FaBookMedical className="me-2" />
+                    Cette section vous permet de rédiger, publier et gérer vos articles médicaux.
+                  </div>
+                  <div className="d-flex justify-content-center">
+                    <Link to="/medecin/articles" className="btn btn-lg btn-primary">
+                      Accéder à mes articles
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showRatings && (
           <div className="row">
             <div className="col-md-12">

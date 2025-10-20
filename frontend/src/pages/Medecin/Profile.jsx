@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { useAuth } from "../../context/AuthContext";
+import { doctorAPI } from "../../services/api";
 import { FaUser, FaPhone, FaEnvelope, FaMapMarkerAlt, FaSave, FaEdit, FaStethoscope, FaBuilding } from "react-icons/fa";
+import DoctorRatingsDisplay from "../../components/DoctorRatingsDisplay";
 
 function Profile() {
+  const { user } = useAuth();
   const [medecinData, setMedecinData] = useState({
     nom: "",
     prenom: "",
@@ -24,20 +27,37 @@ function Profile() {
     const fetchMedecinData = async () => {
       try {
         setLoading(true);
-        // Dans une vraie application, ces données viendraient de l'API
-        // Pour l'instant, utilisons des données statiques
-        const mockData = {
-          nom: "Dia",
-          prenom: "Ibrahim",
-          telephone: "+221 77 123 45 67",
-          email: "ibrahim.dia@hopital.sn",
-          adresse: "Dakar, Sénégal",
-          specialite: "Chirurgien Général",
-          numeroOrdre: "CMO-2023-001",
-          hopital: "Hôpital Principal de Dakar"
-        };
         
-        setMedecinData(mockData);
+        // Get doctor data from the API
+        // First, we need to find the doctor ID for the current user
+        const doctorsResponse = await doctorAPI.getDoctors();
+        const currentDoctor = doctorsResponse.data.find(doc => doc.user.username === user.username);
+        
+        if (currentDoctor) {
+          setMedecinData({
+            nom: currentDoctor.user.last_name || "",
+            prenom: currentDoctor.user.first_name || "",
+            telephone: "", // These fields are not in the current API response
+            email: currentDoctor.user.email || "",
+            adresse: "", // These fields are not in the current API response
+            specialite: currentDoctor.specialite || "",
+            numeroOrdre: "", // These fields are not in the current API response
+            hopital: "" // These fields are not in the current API response
+          });
+        } else {
+          // Fallback to user data if doctor not found
+          setMedecinData({
+            nom: user.lastName || "",
+            prenom: user.firstName || "",
+            telephone: "",
+            email: user.email || "",
+            adresse: "",
+            specialite: "Médecin",
+            numeroOrdre: "",
+            hopital: ""
+          });
+        }
+        
         setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement du profil");
@@ -46,8 +66,10 @@ function Profile() {
       }
     };
 
-    fetchMedecinData();
-  }, []);
+    if (user) {
+      fetchMedecinData();
+    }
+  }, [user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -61,19 +83,15 @@ function Profile() {
     e.preventDefault();
     try {
       setSaving(true);
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // await axios.put('/api/medecin/profile/', medecinData, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
-      
-      // Simulation d'un délai de sauvegarde
+      // In a real application, this would send a request to the API
+      // For now, we'll just simulate a successful save
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       setIsEditing(false);
       setSaving(false);
       setSuccess(true);
       
-      // Masquer le message de succès après 3 secondes
+      // Hide success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       setError("Erreur lors de la sauvegarde du profil");
@@ -123,6 +141,11 @@ function Profile() {
                   </button>
                 )}
               </div>
+            </div>
+            
+            {/* Doctor Ratings Display */}
+            <div className="card-body">
+              <DoctorRatingsDisplay doctorId={1} />
             </div>
             
             <div className="card-body">

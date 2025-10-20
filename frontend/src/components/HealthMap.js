@@ -8,14 +8,14 @@ import {
   FaTooth,
   FaPrescriptionBottle,
 } from "react-icons/fa";
-import { urgenceService } from "../services/urgenceService";
+import urgenceService from "../services/urgenceService";
 
 // Fix for default marker icons in Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require("leaflet/dist/images/marker-icon-2x.png").default,
-  iconUrl: require("leaflet/dist/images/marker-icon.png").default,
-  shadowUrl: require("leaflet/dist/images/marker-shadow.png").default,
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
 // Custom icons for different facility types
@@ -78,19 +78,19 @@ function HealthMap({ onFacilitySelect, useNearby = false, radius = 10 }) {
     try {
       setLoading(true);
       let data;
-      
+
       if (useNearby && userLocation) {
         // Load nearby facilities
         data = await urgenceService.getNearbyHealthFacilities(
-          userLocation.lat, 
-          userLocation.lng, 
+          userLocation.lat,
+          userLocation.lng,
           radius
         );
       } else {
         // Load all facilities
         data = await urgenceService.getHealthFacilities();
       }
-      
+
       setFacilities(data);
     } catch (err) {
       setError(
@@ -145,11 +145,16 @@ function HealthMap({ onFacilitySelect, useNearby = false, radius = 10 }) {
 
   const getFacilityTypeText = (type) => {
     switch (type) {
-      case "hopital": return "Hôpital";
-      case "clinique": return "Clinique";
-      case "pharmacie": return "Pharmacie";
-      case "dentiste": return "Dentiste";
-      default: return type;
+      case "hopital":
+        return "Hôpital";
+      case "clinique":
+        return "Clinique";
+      case "pharmacie":
+        return "Pharmacie";
+      case "dentiste":
+        return "Dentiste";
+      default:
+        return type;
     }
   };
 
@@ -190,6 +195,7 @@ function HealthMap({ onFacilitySelect, useNearby = false, radius = 10 }) {
         center={[center.lat, center.lng]}
         zoom={13}
         style={{ height: "100%", width: "100%" }}
+        key={`${center.lat}-${center.lng}`} // Add key to force re-render when center changes
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -240,7 +246,10 @@ function HealthMap({ onFacilitySelect, useNearby = false, radius = 10 }) {
                 )}
                 <button
                   className="btn btn-primary btn-sm"
-                  onClick={() => handleFacilityClick(facility)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFacilityClick(facility);
+                  }}
                 >
                   Voir les détails
                 </button>

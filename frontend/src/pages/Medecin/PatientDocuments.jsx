@@ -1,92 +1,61 @@
 import React, { useState, useEffect } from "react";
-import { FaFileMedical, FaSearch, FaFilter, FaDownload, FaUpload, FaPlus } from "react-icons/fa";
-import { api } from "../../services/api";
-import { useParams } from "react-router-dom";
+import { medicalDocumentAPI } from "../../services/api";
+import { FaFileMedical, FaDownload, FaTrash, FaUpload } from "react-icons/fa";
 
 function PatientDocuments() {
-  const { patientId } = useParams();
   const [documents, setDocuments] = useState([]);
-  const [filteredDocuments, setFilteredDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [patientInfo, setPatientInfo] = useState(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadData, setUploadData] = useState({
+    file: null,
+    document_type: "",
+    description: ""
+  });
 
   useEffect(() => {
-    loadPatientDocuments();
-  }, [patientId]);
+    loadDocuments();
+  }, []);
 
-  useEffect(() => {
-    filterDocuments();
-  }, [searchTerm, typeFilter, documents]);
-
-  const loadPatientDocuments = async () => {
+  const loadDocuments = async () => {
     try {
       setLoading(true);
-      
-      // Load patient information
-      // In a real implementation, you would have an endpoint to get patient info
-      // For now, we'll simulate this
-      
-      // Load documents
-      const response = await api.get("/medical-documents/");
-      // Filter documents for this patient (in a real implementation, this would be done server-side)
-      const patientDocs = response.data.filter(doc => 
-        doc.rendez_vous && doc.rendez_vous.patient === parseInt(patientId)
-      );
-      setDocuments(patientDocs);
-      
-      // Set patient info (simulated)
-      setPatientInfo({
-        id: patientId,
-        name: "Patient Exemple",
-        email: "patient@example.com"
-      });
+      const response = await medicalDocumentAPI.getDocuments();
+      setDocuments(response.data);
     } catch (err) {
-      setError("Erreur lors du chargement des documents: " + (err.response?.data?.error || err.message));
+      setError("Erreur lors du chargement des documents");
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const filterDocuments = () => {
-    let filtered = documents;
-    
-    if (searchTerm) {
-      filtered = filtered.filter(doc => 
-        doc.document_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        doc.description.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadData.file);
+      formData.append('document_type', uploadData.document_type);
+      formData.append('description', uploadData.description);
+      
+      await medicalDocumentAPI.createDocument(formData);
+      setShowUploadModal(false);
+      setUploadData({ file: null, document_type: "", description: "" });
+      loadDocuments();
+    } catch (err) {
+      setError("Erreur lors de l'upload du document");
+      console.error(err);
     }
-    
-    if (typeFilter !== "all") {
-      filtered = filtered.filter(doc => doc.document_type === typeFilter);
-    }
-    
-    setFilteredDocuments(filtered);
   };
 
-  const documentTypes = [
-    { value: "all", label: "Tous les types" },
-    { value: "analyse", label: "Analyses médicales" },
-    { value: "radio", label: "Radiographies" },
-    { value: "ordonnance", label: "Ordonnances" },
-    { value: "certificat", label: "Certificats médicaux" },
-    { value: "compte_rendu", label: "Comptes rendus" },
-    { value: "autre", label: "Autre" }
-  ];
-
-  const getDocumentTypeLabel = (type) => {
-    const typeObj = documentTypes.find(t => t.value === type);
-    return typeObj ? typeObj.label : type;
-  };
-
-  const handleDownload = (fileUrl, fileName) => {
-    // In a real implementation, you would handle file download
-    // For now, we'll just open the file in a new tab
-    window.open(fileUrl, "_blank");
+  const handleDelete = async (id) => {
+    try {
+      await medicalDocumentAPI.deleteDocument(id);
+      setDocuments(documents.filter(doc => doc.id !== id));
+    } catch (err) {
+      setError("Erreur lors de la suppression du document");
+      console.error(err);
+    }
   };
 
   const formatDate = (dateString) => {
@@ -94,159 +63,128 @@ function PatientDocuments() {
   };
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>
-        <div className="spinner-border" role="status">
-          <span className="visually-hidden">Chargement...</span>
-        </div>
-      </div>
-    );
+    return <div className="text-center py-5">Chargement...</div>;
+  }
+
+  if (error) {
+    return <div className="alert alert-danger">Erreur: {error}</div>;
   }
 
   return (
     <div className="container-fluid">
-      <div className="row">
-        <div className="col-12">
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <div>
-              <h2>
-                <FaFileMedical className="me-2" />
-                Documents médicaux du patient
-              </h2>
-              {patientInfo && (
-                <p className="text-muted mb-0">
-                  {patientInfo.name} ({patientInfo.email})
-                </p>
-              )}
-            </div>
-            <button className="btn btn-primary">
-              <FaPlus className="me-2" />
-              Partager un document
-            </button>
-          </div>
-          
-          {error && (
-            <div className="alert alert-danger alert-dismissible fade show" role="alert">
-              {error}
-              <button type="button" className="btn-close" onClick={() => setError(null)}></button>
-            </div>
-          )}
-          
-          <div className="card mb-4">
-            <div className="card-body">
-              <div className="row">
-                <div className="col-md-6 mb-3 mb-md-0">
-                  <div className="input-group">
-                    <span className="input-group-text">
-                      <FaSearch />
-                    </span>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Rechercher des documents..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="col-md-6">
-                  <div className="input-group">
-                    <span className="input-group-text">
-                      <FaFilter />
-                    </span>
-                    <select
-                      className="form-select"
-                      value={typeFilter}
-                      onChange={(e) => setTypeFilter(e.target.value)}
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+          <FaFileMedical className="me-2" />
+          Documents Médicaux
+        </h2>
+        <button
+          className="btn btn-success"
+          onClick={() => setShowUploadModal(true)}
+        >
+          <FaUpload className="me-1" />
+          Upload Document
+        </button>
+      </div>
+
+      {documents.length === 0 ? (
+        <div className="alert alert-info">Aucun document médical disponible.</div>
+      ) : (
+        <div className="row">
+          {documents.map((document) => (
+            <div key={document.id} className="col-md-6 mb-3">
+              <div className="card">
+                <div className="card-body">
+                  <h5 className="card-title">{document.document_type}</h5>
+                  <p className="card-text">{document.description}</p>
+                  <p className="card-text">
+                    <small className="text-muted">
+                      Uploadé le {formatDate(document.uploaded_at)}
+                    </small>
+                  </p>
+                  <div className="d-flex justify-content-between">
+                    <a
+                      href={document.file_url}
+                      className="btn btn-primary btn-sm"
+                      download
                     >
-                      {documentTypes.map(type => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
+                      <FaDownload className="me-1" />
+                      Télécharger
+                    </a>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDelete(document.id)}
+                    >
+                      <FaTrash className="me-1" />
+                      Supprimer
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-          
-          {filteredDocuments.length === 0 ? (
-            <div className="card text-center p-5">
-              <h4 className="text-muted">
-                <FaFileMedical className="me-2" />
-                Aucun document médical
-              </h4>
-              <p className="text-muted">
-                {searchTerm || typeFilter !== "all" 
-                  ? "Aucun document ne correspond à vos critères de recherche."
-                  : "Ce patient n'a pas encore partagé de documents médicaux."
-                }
-              </p>
-              <button className="btn btn-primary">
-                <FaUpload className="me-2" />
-                Partager un document avec le patient
-              </button>
-            </div>
-          ) : (
-            <div className="row">
-              {filteredDocuments.map((doc) => (
-                <div key={doc.id} className="col-md-6 col-lg-4 mb-4">
-                  <div className="card h-100">
-                    <div className="card-body">
-                      <div className="d-flex justify-content-between align-items-start mb-3">
-                        <div>
-                          <h5 className="card-title">{getDocumentTypeLabel(doc.document_type)}</h5>
-                          <p className="card-text text-muted">{doc.description}</p>
-                        </div>
-                        <span className="badge bg-secondary">
-                          {doc.document_type}
-                        </span>
-                      </div>
-                      
-                      <div className="mb-3">
-                        <small className="text-muted">
-                          <strong>Téléchargé par:</strong> {doc.uploaded_by_name}
-                        </small>
-                      </div>
-                      
-                      <div className="mb-3">
-                        <small className="text-muted">
-                          <strong>Date:</strong> {formatDate(doc.uploaded_at)}
-                        </small>
-                      </div>
-                      
-                      {doc.rendez_vous && (
-                        <div className="mb-3">
-                          <small className="text-muted">
-                            <strong>Rendez-vous:</strong> {formatDate(doc.rendez_vous.date)}
-                          </small>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="card-footer">
-                      <div className="btn-group w-100" role="group">
-                        <button 
-                          className="btn btn-outline-primary btn-sm"
-                          onClick={() => handleDownload(doc.file_url, doc.document_type)}
-                        >
-                          <FaDownload className="me-1" />
-                          Télécharger
-                        </button>
-                        <button className="btn btn-outline-success btn-sm">
-                          <FaPlus className="me-1" />
-                          Annoter
-                        </button>
-                      </div>
-                    </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="modal show d-block" tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Upload Document Médical</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowUploadModal(false)}
+                ></button>
+              </div>
+              <form onSubmit={handleUpload}>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Fichier</label>
+                    <input
+                      type="file"
+                      className="form-control"
+                      onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Type de document</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={uploadData.document_type}
+                      onChange={(e) => setUploadData({...uploadData, document_type: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Description</label>
+                    <textarea
+                      className="form-control"
+                      value={uploadData.description}
+                      onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
+                    ></textarea>
                   </div>
                 </div>
-              ))}
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowUploadModal(false)}
+                  >
+                    Annuler
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Upload
+                  </button>
+                </div>
+              </form>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

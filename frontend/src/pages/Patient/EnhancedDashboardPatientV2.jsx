@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { 
   FaCalendarCheck, FaUserMd, FaFileMedical, FaEnvelope, 
   FaCog, FaSignOutAlt, FaUser, FaSearch, FaBell, 
@@ -11,7 +12,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
-import { patientAPI } from "../../services/api";
+import { patientAPI, userAPI } from "../../services/api";
 import EnhancedChatbot from "../../components/EnhancedChatbot";
 import RatingComponent from "../../components/RatingComponent";
 import DoctorRating from "../../components/DoctorRating";
@@ -20,6 +21,7 @@ import NotificationCenter from "../../components/NotificationCenter";
 
 function EnhancedDashboardPatientV2() {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [theme, setTheme] = useState("light");
   const [fullName, setFullName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -28,9 +30,12 @@ function EnhancedDashboardPatientV2() {
   const [error, setError] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [medications, setMedications] = useState([]);
+  const [confirmedDoctorsCount, setConfirmedDoctorsCount] = useState(0);
   const [activeTab, setActiveTab] = useState("overview");
   const [showDoctorRating, setShowDoctorRating] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [appointmentHistoryData, setAppointmentHistoryData] = useState([]);
+  const [medicationAdherenceData, setMedicationAdherenceData] = useState([]);
 
   // Quick actions carousel
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -76,106 +81,158 @@ function EnhancedDashboardPatientV2() {
     "Lavez-vous les mains régulièrement pour prévenir les infections."
   ];
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/connecter");
+    }
+  }, [isAuthenticated, navigate]);
+
+  // Handle logout using the proper AuthContext method
+  const handleLogout = () => {
+    // Clear all stored data using the same names as AuthContext
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("first_name");
+    localStorage.removeItem("last_name");
+    localStorage.removeItem("role");
+    localStorage.removeItem("email");
+    navigate("/connecter");
+  };
+
   // Charger les données du patient depuis l'API
   useEffect(() => {
     const fetchPatientData = async () => {
+      if (!isAuthenticated || !user) return;
+      
       try {
         setLoading(true);
-        // In a real implementation, you would get the actual patient ID
-        // const response = await patientAPI.getPatient(1);
-        // setPatientData(response.data);
-        // setFullName(`${response.data.user.first_name} ${response.data.user.last_name}`.trim());
+        setError(null);
+        // Get current user's profile data
+        const profileResponse = await userAPI.getProfile();
+        console.log("User profile:", profileResponse.data);
         
-        // For demo purposes, we'll use mock data
-        setPatientData({
-          id: 1,
-          user: {
-            first_name: "Aminata",
-            last_name: "Fall",
-            email: "aminata.fall@example.com"
-          }
-        });
-        setFullName("Aminata Fall");
+        setPatientData(profileResponse.data);
+        const firstName = profileResponse.data.first_name || "";
+        const lastName = profileResponse.data.last_name || "";
+        const username = profileResponse.data.username || "";
+        setFullName(`${firstName} ${lastName}`.trim() || username || "Patient");
         setLoading(false);
       } catch (err) {
-        setError("Erreur lors du chargement des données du patient");
-        setLoading(false);
         console.error("Erreur lors du chargement des données du patient :", err);
+        // Fallback to AuthContext data
+        setFullName(`${user.firstName} ${user.lastName}`.trim() || user.username || "Patient");
+        setLoading(false);
       }
     };
 
-    fetchPatientData();
+    if (isAuthenticated) {
+      fetchPatientData();
+    }
+  }, [isAuthenticated, user]);
+
+  // Initialize mock data for charts
+  useEffect(() => {
+    // Mock data for appointment history
+    const mockAppointmentHistory = [
+      { mois: "Jan", rendez_vous: 2 },
+      { mois: "Fév", rendez_vous: 3 },
+      { mois: "Mar", rendez_vous: 1 },
+      { mois: "Avr", rendez_vous: 4 },
+      { mois: "Mai", rendez_vous: 2 },
+      { mois: "Juin", rendez_vous: 3 }
+    ];
+    
+    // Mock data for medication adherence
+    const mockMedicationAdherence = [
+      { jour: "Lun", pris: 3, manqués: 1 },
+      { jour: "Mar", pris: 4, manqués: 0 },
+      { jour: "Mer", pris: 2, manqués: 2 },
+      { jour: "Jeu", pris: 4, manqués: 0 },
+      { jour: "Ven", pris: 3, manqués: 1 },
+      { jour: "Sam", pris: 2, manqués: 2 },
+      { jour: "Dim", pris: 4, manqués: 0 }
+    ];
+    
+    setAppointmentHistoryData(mockAppointmentHistory);
+    setMedicationAdherenceData(mockMedicationAdherence);
   }, []);
 
   // Charger les rendez-vous du patient
   useEffect(() => {
     const fetchAppointments = async () => {
+      if (!isAuthenticated) return;
+      
       try {
-        // In a real implementation, you would call the API
-        // const response = await patientAPI.getAppointments();
-        // setAppointments(response.data);
-        
-        // For demo purposes, we'll use mock data
-        setAppointments([
-          {
-            id: 1,
-            date: "2024-06-15",
-            heure: "10:30",
-            medecin_nom: "Dr. Martin Diop",
-            specialite: "Cardiologue",
-            statut: "CONFIRMED",
-            rating: 4.5
-          },
-          {
-            id: 2,
-            date: "2024-06-20",
-            heure: "14:00",
-            medecin_nom: "Dr. Fatou Ndiaye",
-            specialite: "Dermatologue",
-            statut: "PENDING",
-            rating: null
-          }
+        // Fetch both upcoming and history appointments to get a complete picture
+        const [upcomingResponse, historyResponse] = await Promise.all([
+          patientAPI.getAppointments(),
+          patientAPI.getAppointmentHistory()
         ]);
+        
+        console.log("Upcoming appointments:", upcomingResponse.data);
+        console.log("Appointment history:", historyResponse.data);
+        
+        // Combine both sets of appointments
+        const allAppointments = [
+          ...(upcomingResponse.data || []), 
+          ...(historyResponse.data || [])
+        ];
+        
+        setAppointments(allAppointments);
+        
+        // Calculate the number of doctors with confirmed appointments
+        // This includes both past and future confirmed appointments
+        if (allAppointments && Array.isArray(allAppointments)) {
+          const confirmedAppointments = allAppointments.filter(app => 
+            app.statut && app.statut === "CONFIRMED"
+          );
+          console.log("Confirmed appointments (all time):", confirmedAppointments);
+          
+          // Create a set of unique doctor names
+          const uniqueDoctors = new Set();
+          confirmedAppointments.forEach(app => {
+            if (app.medecin_nom) {
+              uniqueDoctors.add(app.medecin_nom);
+            }
+          });
+          
+          console.log("Unique doctors with confirmed appointments:", Array.from(uniqueDoctors));
+          setConfirmedDoctorsCount(uniqueDoctors.size);
+        } else {
+          console.warn("Invalid appointments data format");
+          setConfirmedDoctorsCount(0);
+        }
       } catch (err) {
         console.error("Erreur lors du chargement des rendez-vous :", err);
+        // Set to 0 in case of error
+        setConfirmedDoctorsCount(0);
       }
     };
 
-    fetchAppointments();
-  }, []);
+    if (isAuthenticated) {
+      fetchAppointments();
+    }
+  }, [isAuthenticated]);
 
   // Charger les médicaments du patient
   useEffect(() => {
     const fetchMedications = async () => {
+      if (!isAuthenticated) return;
+      
       try {
-        // In a real implementation, you would call the API
-        // const response = await medicationService.getReminders();
-        // setMedications(response.data);
-        
-        // For demo purposes, we'll use mock data
-        setMedications([
-          {
-            id: 1,
-            medicament: "Paracétamol",
-            dosage: "500mg",
-            frequence: "3/jour",
-            heure_rappel: "08:00"
-          },
-          {
-            id: 2,
-            medicament: "Amoxicilline",
-            dosage: "1g",
-            frequence: "2/jour",
-            heure_rappel: "12:00"
-          }
-        ]);
+        const response = await patientAPI.getMedications();
+        setMedications(response.data);
       } catch (err) {
         console.error("Erreur lors du chargement des médicaments :", err);
       }
     };
 
-    fetchMedications();
-  }, []);
+    if (isAuthenticated) {
+      fetchMedications();
+    }
+  }, [isAuthenticated]);
 
   // Charger le thème sauvegardé
   useEffect(() => {
@@ -197,32 +254,6 @@ function EnhancedDashboardPatientV2() {
     
     return () => clearInterval(interval);
   }, [quickActions.length]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
-    navigate("/connecter");
-  };
-
-  // Sample data for charts
-  const medicationAdherenceData = [
-    { jour: "Lun", pris: 3, manqués: 1 },
-    { jour: "Mar", pris: 4, manqués: 0 },
-    { jour: "Mer", pris: 2, manqués: 2 },
-    { jour: "Jeu", pris: 4, manqués: 0 },
-    { jour: "Ven", pris: 3, manqués: 1 },
-    { jour: "Sam", pris: 2, manqués: 2 },
-    { jour: "Dim", pris: 4, manqués: 0 }
-  ];
-
-  const appointmentHistoryData = [
-    { mois: "Mai", rendez_vous: 3 },
-    { mois: "Juin", rendez_vous: 5 },
-    { mois: "Juil", rendez_vous: 2 }
-  ];
-
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
   const nextSlide = () => {
     setCurrentSlide(prev => (prev + 1) % Math.ceil(quickActions.length / 3));
@@ -369,10 +400,10 @@ function EnhancedDashboardPatientV2() {
                   marginRight: "10px",
                 }}
               >
-                {fullName.charAt(0)}
+                {fullName?.charAt(0) || user?.username?.charAt(0) || 'P'}
               </div>
               <div>
-                <div style={{ fontSize: "14px", fontWeight: "500" }}>{fullName}</div>
+                <div style={{ fontSize: "14px", fontWeight: "500" }}>{fullName || user?.username || "Patient"}</div>
                 <div style={{ fontSize: "12px", color: "#666" }}>Patient</div>
               </div>
             </div>
@@ -384,7 +415,7 @@ function EnhancedDashboardPatientV2() {
           <div className="card-body">
             <div className="d-flex justify-content-between align-items-center">
               <div>
-                <h2>Bonjour, {fullName || "Patient"}!</h2>
+                <h2>Bonjour, {fullName || user?.username || "Patient"}!</h2>
                 <p className="mb-0">Bienvenue sur votre tableau de bord de santé personnalisé</p>
               </div>
               <div className="text-end">
@@ -527,10 +558,11 @@ function EnhancedDashboardPatientV2() {
                   <div className="card-body">
                     <div className="d-flex justify-content-between align-items-center">
                       <div>
-                        <h5 className="card-title">Documents</h5>
-                        <h2>5</h2>
+                        <h5 className="card-title">Médecins</h5>
+                        <h2>{confirmedDoctorsCount}</h2>
+                        <small>avec RDV confirmé</small>
                       </div>
-                      <FaFileMedical size={30} />
+                      <FaUserMd size={30} />
                     </div>
                   </div>
                 </div>

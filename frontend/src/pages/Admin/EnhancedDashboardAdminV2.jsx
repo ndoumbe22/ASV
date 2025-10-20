@@ -14,11 +14,14 @@ import {
   Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
 import { adminAPI } from "../../services/api";
+import { adminService } from "../../services/adminService";
 import EnhancedChatbot from "../../components/EnhancedChatbot";
 import NotificationCenter from "../../components/NotificationCenter";
+import { useAuth } from "../../context/AuthContext";
 
 function EnhancedDashboardAdminV2() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [theme, setTheme] = useState("light");
   const [fullName, setFullName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -90,17 +93,33 @@ function EnhancedDashboardAdminV2() {
     const fetchAdminData = async () => {
       try {
         setLoading(true);
-        // In a real implementation, you would get the actual admin data
-        // For demo purposes, we'll use mock data
-        setAdminData({
-          id: 1,
-          user: {
-            first_name: "Administrateur",
-            last_name: "Principal",
-            email: "admin@assitosante.com"
-          }
-        });
-        setFullName("Administrateur Principal");
+        // Get admin data from auth context
+        if (user) {
+          setAdminData({
+            id: 1,
+            user: {
+              first_name: user.firstName || user.first_name || "",
+              last_name: user.lastName || user.last_name || "",
+              email: user.email || ""
+            }
+          });
+          setFullName(`${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim() || user.username || "Administrateur Principal");
+        } else {
+          // Fallback if no user in context
+          const firstName = localStorage.getItem("first_name") || "Administrateur";
+          const lastName = localStorage.getItem("last_name") || "Principal";
+          const email = localStorage.getItem("email") || "admin@assitosante.com";
+          
+          setAdminData({
+            id: 1,
+            user: {
+              first_name: firstName,
+              last_name: lastName,
+              email: email
+            }
+          });
+          setFullName(`${firstName} ${lastName}`.trim() || "Administrateur Principal");
+        }
         setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement des données de l'administrateur");
@@ -110,14 +129,29 @@ function EnhancedDashboardAdminV2() {
     };
 
     fetchAdminData();
-  }, []);
+  }, [user]);
 
   // Charger les statistiques
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // In a real implementation, you would call the API
-        // For demo purposes, we'll use mock data
+        // Fetch real statistics from the API
+        const statsResponse = await adminAPI.getStatistics();
+        setStats({
+          total_users: statsResponse.total_users || 0,
+          total_doctors: statsResponse.total_medecins || 0,
+          total_patients: statsResponse.total_patients || 0,
+          total_secretaries: 0, // This would need a specific API endpoint
+          total_appointments: statsResponse.total_rendez_vous || 0,
+          total_articles: 0, // This would need a specific API endpoint
+          total_hospitals: 0, // This would need a specific API endpoint
+          total_clinics: 0, // This would need a specific API endpoint
+          appointments_this_month: statsResponse.rendez_vous_month || 0,
+          new_users_this_week: statsResponse.new_users_week || 0
+        });
+      } catch (err) {
+        console.error("Erreur lors du chargement des statistiques :", err);
+        // Fallback to mock data if API fails
         setStats({
           total_users: 1247,
           total_doctors: 89,
@@ -130,8 +164,6 @@ function EnhancedDashboardAdminV2() {
           appointments_this_month: 127,
           new_users_this_week: 34
         });
-      } catch (err) {
-        console.error("Erreur lors du chargement des statistiques :", err);
       }
     };
 
@@ -160,9 +192,13 @@ function EnhancedDashboardAdminV2() {
   }, [quickActions.length]);
 
   const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("first_name");
+    localStorage.removeItem("last_name");
+    localStorage.removeItem("role");
+    localStorage.removeItem("email");
     navigate("/connecter");
   };
 
@@ -201,7 +237,16 @@ function EnhancedDashboardAdminV2() {
   }
 
   if (error) {
-    return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Erreur: {error}</div>;
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>
+        <div className="text-center">
+          <p>Erreur: {error}</p>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -211,7 +256,7 @@ function EnhancedDashboardAdminV2() {
         style={{ 
           width: "250px", 
           padding: "20px", 
-          backgroundColor: "#D32F2F",
+          backgroundColor: "#0d9488",
           color: "white"
         }}
       >
@@ -317,7 +362,7 @@ function EnhancedDashboardAdminV2() {
                   width: "35px",
                   height: "35px",
                   borderRadius: "50%",
-                  backgroundColor: "#D32F2F",
+                  backgroundColor: "#0d9488",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -326,10 +371,10 @@ function EnhancedDashboardAdminV2() {
                   marginRight: "10px",
                 }}
               >
-                {fullName.charAt(0)}
+                {fullName?.charAt(0) || user?.username?.charAt(0) || localStorage.getItem("username")?.charAt(0) || 'A'}
               </div>
               <div>
-                <div style={{ fontSize: "14px", fontWeight: "500" }}>{fullName}</div>
+                <div style={{ fontSize: "14px", fontWeight: "500" }}>{fullName || user?.username || localStorage.getItem("username") || "Administrateur"}</div>
                 <div style={{ fontSize: "12px", color: "#666" }}>Administrateur</div>
               </div>
             </div>
@@ -337,11 +382,11 @@ function EnhancedDashboardAdminV2() {
         </div>
 
         {/* ===== Welcome Banner ===== */}
-        <div className="card mb-4" style={{ background: "linear-gradient(135deg, #D32F2F, #F44336)", color: "white" }}>
+        <div className="card mb-4" style={{ background: "linear-gradient(135deg, #0d9488, #14b8a6)", color: "white" }}>
           <div className="card-body">
             <div className="d-flex justify-content-between align-items-center">
               <div>
-                <h2>Bonjour, {fullName || "Administrateur"}!</h2>
+                <h2>Bonjour, {fullName || user?.username || localStorage.getItem("username") || "Administrateur"}!</h2>
                 <p className="mb-0">Bienvenue sur votre tableau de bord d'administration</p>
               </div>
               <div className="text-end">

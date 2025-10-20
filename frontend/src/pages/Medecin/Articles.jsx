@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { FaPlus, FaEdit, FaEye, FaPaperPlane, FaSearch } from "react-icons/fa";
-import { articleService } from "../../services/articleService";
+import articleService from "../../services/articleService";
 
 function Articles() {
   const [articles, setArticles] = useState([]);

@@ -7,6 +7,10 @@ module.exports = {
         "primary-green": "#2e7d32",
         "primary-light": "#4caf50",
         "primary-dark": "#1b5e20",
+        "teal-500": "#0d9488",
+        "teal-600": "#0f766e",
+        "teal-700": "#115e59",
+        "teal-100": "#ccfbf1",
 
         // Couleurs secondaires
         "secondary-blue": "#2196f3",

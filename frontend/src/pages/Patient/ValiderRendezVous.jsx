@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FaCalendarCheck, FaStar, FaComment, FaPrescription } from "react-icons/fa";
-import { api } from "../../services/api";
+import { appointmentAPI, patientAPI } from "../../services/api";
 import RatingComponent from "../../components/RatingComponent";
 
 function ValiderRendezVous() {
@@ -22,7 +22,7 @@ function ValiderRendezVous() {
   const loadAppointment = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/rendezvous/${id}/`);
+      const response = await appointmentAPI.getAppointment(id);
       setAppointment(response.data);
     } catch (err) {
       setError("Erreur lors du chargement du rendez-vous");
@@ -49,7 +49,7 @@ function ValiderRendezVous() {
         commentaire: comment
       };
       
-      await api.post(`/appointments/${id}/validate/`, ratingData);
+      await patientAPI.validateAppointment(id, ratingData);
       setSuccess(true);
     } catch (err) {
       setError("Erreur lors de la validation du rendez-vous: " + (err.response?.data?.error || err.message));
@@ -146,7 +146,7 @@ function ValiderRendezVous() {
                     </div>
                     <div className="row mb-3">
                       <div className="col-4"><strong>Date:</strong></div>
-                      <div className="col-8">{formatDate(appointment.date)}</div>
+                      <div className="col-88">{formatDate(appointment.date)}</div>
                     </div>
                     <div className="row mb-3">
                       <div className="col-4"><strong>Heure:</strong></div>

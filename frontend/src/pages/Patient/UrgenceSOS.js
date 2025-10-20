@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { urgenceService } from "../../services/urgenceService";
+import urgenceService from "../../services/urgenceService";
 
 function UrgenceSOS() {
   const [showForm, setShowForm] = useState(false);

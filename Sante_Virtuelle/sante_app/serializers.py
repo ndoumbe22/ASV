@@ -5,7 +5,7 @@ from .models import (
     Pathologie, Traitement, Constante, Mesure, Article,
     StructureDeSante, Service, Clinique, Dentiste, Hopital, Pharmacie,
     ContactFooter, ChatbotConversation, RappelMedicament, HistoriquePriseMedicament,
-    Urgence, NotificationUrgence, MedicalDocument, Rating  # Added Rating
+    Urgence, NotificationUrgence, MedicalDocument, Rating, Conversation, Message, ChatbotKnowledgeBase  # Added Conversation, Message and ChatbotKnowledgeBase
 )
 
 User = get_user_model()
@@ -60,8 +60,51 @@ class RendezVousSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RendezVous
-        fields = ["id", "date", "heure", "description", "statut", "medecin_nom", "patient_nom", 
+        fields = ["numero", "date", "heure", "description", "statut", "medecin_nom", "patient_nom", 
                   "original_date", "original_heure", "date_creation", "date_modification"]
+
+
+class RendezVousCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RendezVous
+        fields = ["patient", "medecin", "date", "heure", "description"]
+        extra_kwargs = {
+            'patient': {'required': False},  # Make patient optional
+            'medecin': {'required': True},
+            'date': {'required': True},
+            'heure': {'required': True},
+            'description': {'required': False, 'allow_blank': True}
+        }
+
+    def validate(self, attrs):
+        # Ensure patient and medecin are User instances, not just IDs
+        patient = attrs.get('patient')
+        medecin = attrs.get('medecin')
+        
+        if patient and not isinstance(patient, User):
+            try:
+                attrs['patient'] = User.objects.get(id=patient)
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Patient non trouvé")
+                
+        if medecin and not isinstance(medecin, User):
+            try:
+                attrs['medecin'] = User.objects.get(id=medecin)
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Médecin non trouvé")
+                
+        return attrs
+
+    def create(self, validated_data):
+        # Set default status for new appointments
+        validated_data['statut'] = 'PENDING'
+        
+        # Ensure medecin is properly set
+        medecin = validated_data.get('medecin')
+        if not medecin:
+            raise serializers.ValidationError("Un médecin doit être spécifié pour le rendez-vous")
+            
+        return super().create(validated_data)
 
 
 class PathologieSerializer(serializers.ModelSerializer):
@@ -352,4 +395,100 @@ class RatingSerializer(serializers.ModelSerializer):
         validated_data.pop('patient', None)
         validated_data.pop('medecin', None)
         validated_data.pop('rendez_vous', None)
+        return super().update(instance, validated_data)
+
+
+# -------------------- Messaging Serializers --------------------
+class ConversationSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les conversations"""
+    participant_names = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    last_message_time = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+    recipient_name = serializers.SerializerMethodField()
+    patient_name = serializers.SerializerMethodField()
+    is_urgent = serializers.BooleanField(default=False)
+    
+    class Meta:
+        model = Conversation
+        fields = ['id', 'subject', 'created_at', 'updated_at', 'is_active', 
+                  'participant_names', 'last_message', 'last_message_time', 
+                  'unread_count', 'recipient_name', 'patient_name', 'is_urgent']
+        
+    def get_participant_names(self, obj):
+        return ", ".join([p.username for p in obj.participants.all()])
+        
+    def get_last_message(self, obj):
+        last_message = obj.messages.last()
+        return last_message.content if last_message else ""
+        
+    def get_last_message_time(self, obj):
+        last_message = obj.messages.last()
+        return last_message.timestamp if last_message else None
+        
+    def get_unread_count(self, obj):
+        user = self.context['request'].user
+        return obj.messages.filter(is_read=False).exclude(sender=user).count()
+        
+    def get_recipient_name(self, obj):
+        user = self.context['request'].user
+        other_participant = obj.get_other_participant(user)
+        if other_participant:
+            if hasattr(other_participant, 'medecin_profile'):
+                return f"Dr. {other_participant.first_name} {other_participant.last_name}"
+            else:
+                return f"{other_participant.first_name} {other_participant.last_name}"
+        return ""
+        
+    def get_patient_name(self, obj):
+        # For doctor's view, show patient name
+        user = self.context['request'].user
+        if hasattr(user, 'medecin_profile'):
+            other_participant = obj.get_other_participant(user)
+            if other_participant and not hasattr(other_participant, 'medecin_profile'):
+                return f"{other_participant.first_name} {other_participant.last_name}"
+        return ""
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les messages"""
+    sender_name = serializers.SerializerMethodField()
+    is_own = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Message
+        fields = ['id', 'conversation', 'sender', 'sender_name', 'content', 
+                  'timestamp', 'is_read', 'is_own']
+        read_only_fields = ['sender', 'timestamp']
+        
+    def get_sender_name(self, obj):
+        if hasattr(obj.sender, 'medecin_profile'):
+            return f"Dr. {obj.sender.first_name} {obj.sender.last_name}"
+        return f"{obj.sender.first_name} {obj.sender.last_name}"
+        
+    def get_is_own(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            return obj.sender == request.user
+        return False
+        
+    def create(self, validated_data):
+        # Automatically set the sender to the current user
+        validated_data['sender'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+# -------------------- Chatbot Knowledge Base Serializer --------------------
+class ChatbotKnowledgeBaseSerializer(serializers.ModelSerializer):
+    """Serializer for chatbot knowledge base entries"""
+    
+    class Meta:
+        model = ChatbotKnowledgeBase
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def create(self, validated_data):
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
         return super().update(instance, validated_data)

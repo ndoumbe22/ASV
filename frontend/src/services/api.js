@@ -6,7 +6,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 15000, // Increased timeout to 15 seconds
 });
 
 // Add a request interceptor to include token if available
@@ -47,6 +47,35 @@ api.interceptors.response.use(
       );
     }
 
+    // Handle authentication errors
+    if (error.response.status === 401) {
+      // Clear local storage and redirect to login
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("username");
+      localStorage.removeItem("first_name");
+      localStorage.removeItem("last_name");
+      localStorage.removeItem("role");
+      localStorage.removeItem("email");
+      window.location.href = "/connecter";
+      return Promise.reject(new Error("Votre session a expiré. Veuillez vous reconnecter."));
+    }
+
+    // Handle forbidden errors
+    if (error.response.status === 403) {
+      return Promise.reject(new Error("Vous n'avez pas les permissions nécessaires pour accéder à cette ressource."));
+    }
+
+    // Handle not found errors
+    if (error.response.status === 404) {
+      return Promise.reject(new Error("La ressource demandée n'a pas été trouvée."));
+    }
+
+    // Handle server errors
+    if (error.response.status >= 500) {
+      return Promise.reject(new Error("Une erreur serveur s'est produite. Veuillez réessayer plus tard."));
+    }
+
     return Promise.reject(error);
   }
 );
@@ -60,19 +89,56 @@ export const authAPI = {
 
 // User APIs
 export const userAPI = {
-  getProfile: () => api.get("users/profile/"),
+  getProfile: async () => {
+    try {
+      console.log("Fetching user profile...");
+      const response = await api.get("users/profile/");
+      console.log("User profile response:", response.data);
+      
+      // Validate response data structure
+      if (!response.data) {
+        console.warn("User profile response is empty, returning default structure");
+        return {
+          data: {
+            username: localStorage.getItem("username") || "admin",
+            first_name: localStorage.getItem("first_name") || "Administrateur",
+            last_name: localStorage.getItem("last_name") || "",
+            email: localStorage.getItem("email") || "admin@example.com"
+          }
+        };
+      }
+      
+      return response;
+    } catch (error) {
+      console.error("Error fetching user profile:", error.response?.data || error.message);
+      // Return a default user structure to prevent dashboard from breaking
+      return {
+        data: {
+          username: localStorage.getItem("username") || "admin",
+          first_name: localStorage.getItem("first_name") || "Administrateur",
+          last_name: localStorage.getItem("last_name") || "",
+          email: localStorage.getItem("email") || "admin@example.com"
+        }
+      };
+    }
+  },
   updateProfile: (data) => api.put("users/profile/", data),
 };
 
 // Patient APIs
 export const patientAPI = {
   getAppointments: () => api.get("appointments/upcoming/"),
+  getAppointmentHistory: () => api.get("appointments/history/"),
   getMedications: () => api.get("medications/"),
   cancelAppointment: (id) => api.post(`appointments/${id}/cancel/`),
   rescheduleAppointment: (id, data) =>
     api.post(`appointments/${id}/reschedule/`),
+  proposeReschedule: (id, data) =>
+    api.post(`appointments/${id}/propose-reschedule/`),
+  validateAppointment: (id, data) => api.post(`appointments/${id}/validate/`),
   getPatients: () => api.get("patients/"),
   getPatient: (id) => api.get(`patients/${id}/`),
+  updatePatient: (id, data) => api.put(`patients/${id}/`, data),
 };
 
 // Doctor APIs
@@ -94,6 +160,16 @@ export const appointmentAPI = {
   createAppointment: (data) => api.post("rendezvous/", data),
   updateAppointment: (id, data) => api.put(`rendezvous/${id}/`, data),
   deleteAppointment: (id) => api.delete(`rendezvous/${id}/`),
+};
+
+// Message APIs
+export const messageAPI = {
+  getConversations: () => api.get("messages/conversations/"),
+  getMessages: (conversationId) => api.get(`messages/conversations/${conversationId}/messages/`),
+  createConversation: (data) => api.post("messages/conversations/create/", data),
+  sendMessage: (data) => api.post("messages/send/", data),
+  markMessageAsRead: (messageId) => api.put(`messages/${messageId}/mark-read/`),
+  getUnreadCount: () => api.get("messages/unread-count/"),
 };
 
 // Hospital APIs
@@ -153,6 +229,16 @@ export const medicalDocumentAPI = {
     });
   },
   deleteDocument: (id) => api.delete(`medical-documents/${id}/`),
+};
+
+// Admin APIs
+export const adminAPI = {
+  getStatistics: () => api.get("admin/statistics/"),
+  getUsers: () => api.get("admin/users/"),
+  createUser: (data) => api.post("admin/users/create/", data),
+  updateUser: (id, data) => api.put(`admin/users/${id}/`, data),
+  toggleUserStatus: (id) => api.put(`admin/users/${id}/toggle-status/`, {}),
+  deleteUser: (id) => api.delete(`admin/users/${id}/delete/`),
 };
 
 // Export the base api instance for custom requests

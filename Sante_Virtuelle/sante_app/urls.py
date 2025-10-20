@@ -108,4 +108,29 @@ urlpatterns = [
     # === VALIDATION RENDEZ-VOUS & ÉVALUATIONS ===
     path('appointments/<int:pk>/validate/', views.validate_appointment, name='validate-appointment'),
     path('appointments/<int:pk>/rating/', views.get_appointment_rating, name='get-appointment-rating'),
+    
+    # === ADMIN APPOINTMENT MANAGEMENT ===
+    path('admin/appointments/', views.admin_appointments_list, name='admin-appointments-list'),
+    path('admin/appointments/<int:pk>/validate/', views.admin_validate_appointment, name='admin-validate-appointment'),
+    path('admin/appointments/<int:pk>/cancel/', views.admin_cancel_appointment, name='admin-cancel-appointment'),
+    path('admin/appointments/<int:pk>/reschedule/', views.admin_reschedule_appointment, name='admin-reschedule-appointment'),
+    path('admin/appointments/statistics/', views.admin_appointments_statistics, name='admin-appointments-statistics'),
+    
+    # === ADMIN CHATBOT MANAGEMENT ===
+    path('admin/chatbot/knowledge-base/', views.admin_chatbot_knowledge_base, name='admin-chatbot-knowledge-base'),
+    path('admin/chatbot/knowledge-base/create/', views.admin_create_chatbot_entry, name='admin-create-chatbot-entry'),
+    path('admin/chatbot/knowledge-base/<int:pk>/update/', views.admin_update_chatbot_entry, name='admin-update-chatbot-entry'),
+    path('admin/chatbot/knowledge-base/<int:pk>/delete/', views.admin_delete_chatbot_entry, name='admin-delete-chatbot-entry'),
+    path('admin/chatbot/statistics/', views.admin_chatbot_statistics, name='admin-chatbot-statistics'),
+    
+    # === SEARCH FUNCTIONALITY ===
+    path('search/', views.search, name='search'),
+    
+    # === MESSAGING FUNCTIONALITY ===
+    path('messages/conversations/', views.get_conversations, name='get-conversations'),
+    path('messages/conversations/create/', views.create_conversation, name='create-conversation'),
+    path('messages/conversations/<int:conversation_id>/messages/', views.get_messages, name='get-messages'),
+    path('messages/send/', views.send_message, name='send-message'),
+    path('messages/<int:message_id>/mark-read/', views.mark_message_as_read, name='mark-message-read'),
+    path('messages/unread-count/', views.get_unread_count, name='get-unread-count'),
 ]

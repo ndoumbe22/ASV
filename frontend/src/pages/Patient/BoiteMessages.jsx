@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { useAuth } from "../../context/AuthContext";
 import { FaPaperPlane, FaTrash, FaReply, FaSearch, FaFilter } from "react-icons/fa";
+import messageService from "../../services/messageService";
 
 function BoiteMessages() {
+  const { user, isAuthenticated } = useAuth();
   const [messages, setMessages] = useState([]);
   const [filteredMessages, setFilteredMessages] = useState([]);
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -15,66 +17,25 @@ function BoiteMessages() {
 
   // Charger les messages
   useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    
     const fetchMessages = async () => {
       try {
         setLoading(true);
-        // Dans une vraie application, ces données viendraient de l'API
-        // Pour l'instant, utilisons des données statiques
-        const mockMessages = [
-          {
-            id: 1,
-            from: "Dr. Ibrahim Dia",
-            to: "Awa Diop",
-            subject: "Résultats d'analyse",
-            content: "Bonjour Mme Diop, les résultats de vos analyses sanguines sont disponibles. Tout est normal. Je vous attends pour la consultation de suivi la semaine prochaine.",
-            date: "2023-10-15T14:30:00",
-            read: true,
-            folder: "inbox"
-          },
-          {
-            id: 2,
-            from: "Service Médical",
-            to: "Awa Diop",
-            subject: "Rappel de rendez-vous",
-            content: "Bonjour, nous vous rappelons votre rendez-vous avec Dr. Fatou Ndiaye le 20 octobre 2023 à 10h00. Merci d'arriver 15 minutes à l'avance.",
-            date: "2023-10-16T09:15:00",
-            read: false,
-            folder: "inbox"
-          },
-          {
-            id: 3,
-            from: "Awa Diop",
-            to: "Dr. Mamadou Fall",
-            subject: "Question sur mon traitement",
-            content: "Bonjour Docteur, je voulais savoir si les effets secondaires que je ressens avec le propranolol sont normaux. J'ai parfois des vertiges le matin.",
-            date: "2023-10-14T11:20:00",
-            read: true,
-            folder: "sent"
-          },
-          {
-            id: 4,
-            from: "Support HealthMeet",
-            to: "Awa Diop",
-            subject: "Confirmation de votre compte",
-            content: "Bonjour, votre compte HealthMeet a été créé avec succès. Vous pouvez maintenant prendre des rendez-vous et accéder à votre dossier médical en ligne.",
-            date: "2023-10-10T08:45:00",
-            read: true,
-            folder: "inbox"
-          }
-        ];
-        
-        setMessages(mockMessages);
-        setFilteredMessages(mockMessages);
+        // Get real messages from the API
+        const response = await messageService.getMessages();
+        setMessages(response.data);
+        setFilteredMessages(response.data);
         setLoading(false);
       } catch (err) {
-        setError("Erreur lors du chargement des messages");
+        setError("Erreur lors du chargement des messages: " + (err.response?.data?.error || err.message));
         setLoading(false);
         console.error("Erreur lors du chargement des messages :", err);
       }
     };
 
     fetchMessages();
-  }, []);
+  }, [isAuthenticated, user]);
 
   // Filtrer les messages selon la recherche et le filtre
   useEffect(() => {
@@ -97,41 +58,37 @@ function BoiteMessages() {
     setFilteredMessages(result);
   }, [searchTerm, filter, messages]);
 
-  const handleDeleteMessage = (id) => {
-    setMessages(prev => prev.filter(msg => msg.id !== id));
-    if (selectedMessage && selectedMessage.id === id) {
-      setSelectedMessage(null);
+  const handleDeleteMessage = async (id) => {
+    try {
+      await messageService.deleteMessage(id);
+      setMessages(prev => prev.filter(msg => msg.id !== id));
+      if (selectedMessage && selectedMessage.id === id) {
+        setSelectedMessage(null);
+      }
+    } catch (err) {
+      setError("Erreur lors de la suppression du message: " + (err.response?.data?.error || err.message));
+      console.error("Erreur lors de la suppression du message :", err);
     }
   };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     try {
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // await axios.post('/api/messages/', newMessage, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
-      
-      // Simulation d'un délai d'envoi
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Ajouter le message à la liste (simulation)
-      const sentMessage = {
-        id: messages.length + 1,
-        from: "Awa Diop",
+      // Send message through the API
+      const messageData = {
         to: newMessage.to,
         subject: newMessage.subject,
-        content: newMessage.content,
-        date: new Date().toISOString(),
-        read: false,
-        folder: "sent"
+        content: newMessage.content
       };
       
-      setMessages(prev => [...prev, sentMessage]);
+      const response = await messageService.sendMessage(messageData);
+      
+      // Add the sent message to the list
+      setMessages(prev => [...prev, response.data]);
       setNewMessage({ to: "", subject: "", content: "" });
       setShowCompose(false);
     } catch (err) {
-      setError("Erreur lors de l'envoi du message");
+      setError("Erreur lors de l'envoi du message: " + (err.response?.data?.error || err.message));
       console.error("Erreur lors de l'envoi du message :", err);
     }
   };
@@ -147,13 +104,18 @@ function BoiteMessages() {
     });
   };
 
-  const markAsRead = (id) => {
-    setMessages(prev => prev.map(msg => 
-      msg.id === id ? { ...msg, read: true } : msg
-    ));
-    
-    if (selectedMessage && selectedMessage.id === id) {
-      setSelectedMessage(prev => ({ ...prev, read: true }));
+  const markAsRead = async (id) => {
+    try {
+      await messageService.markAsRead(id);
+      setMessages(prev => prev.map(msg => 
+        msg.id === id ? { ...msg, read: true } : msg
+      ));
+      
+      if (selectedMessage && selectedMessage.id === id) {
+        setSelectedMessage(prev => ({ ...prev, read: true }));
+      }
+    } catch (err) {
+      console.error("Erreur lors du marquage comme lu :", err);
     }
   };
 

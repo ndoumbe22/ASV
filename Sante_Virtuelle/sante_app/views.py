@@ -19,7 +19,7 @@ from .models import (
     Patient, Medecin, RendezVous, Consultation, Medicament,
     Pathologie, Traitement, Constante, Mesure, Article,
     StructureDeSante, Service, Hopital, Clinique, Dentiste,Pharmacie,
-    ChatbotConversation, ContactFooter, MedicalDocument  # Added MedicalDocument
+    ChatbotConversation, ContactFooter, MedicalDocument, ChatbotKnowledgeBase  # Added MedicalDocument and ChatbotKnowledgeBase
 )
 from .serializers import (
     PatientSerializer, MedecinSerializer, RendezVousSerializer,
@@ -27,7 +27,7 @@ from .serializers import (
     PathologieSerializer, TraitementSerializer, ConstanteSerializer,
     MesureSerializer, ArticleSerializer, StructureDeSanteSerializer,
     ServiceSerializer, ContactFooterSerializer, ChatbotConversationSerializer,
-    MedicalDocumentSerializer  # Added MedicalDocumentSerializer
+    MedicalDocumentSerializer, ChatbotKnowledgeBaseSerializer, RendezVousCreateSerializer  # Added MedicalDocumentSerializer and ChatbotKnowledgeBaseSerializer
 )
 
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -44,6 +44,10 @@ from .notifications import NotificationService
 # Add these imports for admin statistics
 from django.db.models import Count, Q
 from datetime import date, timedelta
+from .models import log_action  # Added for audit logging
+
+logger = logging.getLogger(__name__)
+
 from .models import log_action  # Added for audit logging
 
 logger = logging.getLogger(__name__)
@@ -94,13 +98,23 @@ class RendezVousViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
     
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return RendezVousCreateSerializer
+        return RendezVousSerializer
+    
     def perform_create(self, serializer):
-        # Save the appointment
-        appointment = serializer.save()
+        # Auto-assign patient from authenticated user if not provided
+        if not serializer.validated_data.get('patient'):
+            serializer.save(patient=self.request.user)
+        else:
+            serializer.save()
         
         # Send notification to the doctor
         from .notifications import NotificationService
         try:
+            # Get the appointment instance after saving
+            appointment = serializer.instance
             NotificationService.send_appointment_request_notification(appointment)
         except Exception as e:
             print(f"Error sending appointment notification: {e}")
@@ -290,25 +304,19 @@ class MedicalDocumentViewSet(viewsets.ModelViewSet):
             )
 
     def perform_create(self, serializer):
-        # Set the uploaded_by field to the current user
-        serializer.save(uploaded_by=self.request.user)
+        # Save the appointment
+        appointment = serializer.save()
         
-        # Send notification to the other party
-        document = serializer.instance
-        rendez_vous = document.rendez_vous
-        
-        if self.request.user == rendez_vous.patient:
-            # Patient uploaded document, notify doctor
-            recipient = rendez_vous.medecin
-        else:
-            # Doctor uploaded document, notify patient
-            recipient = rendez_vous.patient
-            
+        # Send notification to the doctor
         from .notifications import NotificationService
         try:
-            NotificationService.send_document_shared_notification(document, recipient)
+            # Additional validation to ensure we're only sending to one specific doctor
+            if hasattr(appointment, 'medecin') and appointment.medecin and hasattr(appointment.medecin, 'user'):
+                NotificationService.send_appointment_request_notification(appointment)
+            else:
+                print(f"❌ Erreur: Aucun médecin associé au rendez-vous {getattr(appointment, 'numero', 'N/A')}")
         except Exception as e:
-            print(f"Error sending document notification: {e}")
+            print(f"Error sending appointment notification: {e}")
 
 # --------------------
 # Chatbot (Rasa)
@@ -1754,3 +1762,465 @@ def get_appointment_rating(request, pk):
         return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- Search Functionality --------------------
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search(request):
+    """Global search across doctors, patients, articles, and appointments"""
+    query = request.GET.get('q', '').strip()
+    
+    if not query:
+        return Response({
+            'doctors': [],
+            'patients': [],
+            'articles': [],
+            'appointments': []
+        })
+    
+    # Search doctors
+    doctors = Medecin.objects.filter(
+        Q(user__first_name__icontains=query) |
+        Q(user__last_name__icontains=query) |
+        Q(specialite__icontains=query)
+    )[:10]
+    
+    doctors_data = []
+    for doctor in doctors:
+        doctors_data.append({
+            'id': doctor.id,
+            'name': f"Dr. {doctor.user.first_name} {doctor.user.last_name}",
+            'specialty': doctor.specialite,
+            'rating': 4.5  # In a real implementation, this would be calculated from ratings
+        })
+    
+    # Search patients (only for authenticated users with proper permissions)
+    patients_data = []
+    if request.user.is_authenticated and request.user.role in ['medecin', 'admin']:
+        patients = Patient.objects.filter(
+            Q(user__first_name__icontains=query) |
+            Q(user__last_name__icontains=query)
+        )[:10]
+        
+        for patient in patients:
+            patients_data.append({
+                'id': patient.id,
+                'name': f"{patient.user.first_name} {patient.user.last_name}",
+                'age': 30,  # In a real implementation, this would be calculated
+                'lastVisit': '2023-10-15'  # In a real implementation, this would be from actual data
+            })
+    
+    # Search articles
+    articles = Article.objects.filter(
+        Q(titre__icontains=query) |
+        Q(contenu__icontains=query) |
+        Q(resume__icontains=query) |
+        Q(tags__icontains=query)
+    ).filter(statut='valide')[:10]
+    
+    articles_data = []
+    for article in articles:
+        articles_data.append({
+            'id': article.id,
+            'title': article.titre,
+            'excerpt': article.resume,
+            'author': f"Dr. {article.auteur.user.first_name} {article.auteur.user.last_name}",
+            'date': article.date_publication.strftime('%Y-%m-%d') if article.date_publication else '',
+            'views': article.vues
+        })
+    
+    # Search appointments (only for authenticated users)
+    appointments_data = []
+    if request.user.is_authenticated:
+        appointments = RendezVous.objects.filter(
+            Q(patient__first_name__icontains=query) |
+            Q(patient__last_name__icontains=query) |
+            Q(medecin__first_name__icontains=query) |
+            Q(medecin__last_name__icontains=query)
+        )
+        
+        # Filter by user role
+        if request.user.role == 'patient':
+            appointments = appointments.filter(patient=request.user)
+        elif request.user.role == 'medecin':
+            appointments = appointments.filter(medecin=request.user)
+        # Admin can see all appointments
+        
+        appointments = appointments[:10]
+        
+        for appointment in appointments:
+            appointments_data.append({
+                'id': appointment.id,
+                'patient': f"{appointment.patient.first_name} {appointment.patient.last_name}",
+                'doctor': f"Dr. {appointment.medecin.first_name} {appointment.medecin.last_name}",
+                'specialty': getattr(appointment.medecin.medecin_profile, 'specialite', '') if hasattr(appointment.medecin, 'medecin_profile') else '',
+                'date': appointment.date.strftime('%Y-%m-%d') if appointment.date else '',
+                'time': appointment.heure.strftime('%H:%M') if appointment.heure else '',
+                'status': appointment.get_statut_display()
+            })
+    
+    return Response({
+        'doctors': doctors_data,
+        'patients': patients_data,
+        'articles': articles_data,
+        'appointments': appointments_data
+    })
+
+
+# -------------------- Messaging Functionality --------------------
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_conversations(request):
+    """Get all conversations for the current user"""
+    conversations = request.user.conversations.all()
+    serializer = ConversationSerializer(conversations, many=True, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_messages(request, conversation_id):
+    """Get all messages for a specific conversation"""
+    try:
+        conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        messages = conversation.messages.all()
+        
+        # Mark messages as read (except those sent by the current user)
+        for message in messages:
+            if message.sender != request.user and not message.is_read:
+                message.mark_as_read()
+        
+        serializer = MessageSerializer(messages, many=True, context={'request': request})
+        return Response(serializer.data)
+    except Conversation.DoesNotExist:
+        return Response({"error": "Conversation non trouvée"}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_conversation(request):
+    """Create a new conversation"""
+    try:
+        recipient_id = request.data.get('recipient_id')
+        subject = request.data.get('subject', 'Nouvelle conversation')
+        
+        if not recipient_id:
+            return Response({"error": "ID du destinataire requis"}, status=400)
+        
+        try:
+            recipient = User.objects.get(id=recipient_id)
+        except User.DoesNotExist:
+            return Response({"error": "Destinataire non trouvé"}, status=404)
+        
+        # Check if conversation already exists between these two users
+        existing_conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(
+            participants=recipient
+        ).distinct()
+        
+        if existing_conversation.exists():
+            conversation = existing_conversation.first()
+        else:
+            # Create new conversation
+            conversation = Conversation.objects.create(subject=subject)
+            conversation.participants.add(request.user, recipient)
+        
+        serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response(serializer.data, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_message(request):
+    """Send a new message"""
+    try:
+        conversation_id = request.data.get('conversation_id')
+        content = request.data.get('content')
+        
+        if not conversation_id or not content:
+            return Response({"error": "ID de conversation et contenu requis"}, status=400)
+        
+        try:
+            conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation non trouvée"}, status=404)
+        
+        # Create message
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=content
+        )
+        
+        # Update conversation timestamp
+        conversation.updated_at = timezone.now()
+        conversation.save()
+        
+        serializer = MessageSerializer(message, context={'request': request})
+        return Response(serializer.data, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def mark_message_as_read(request, message_id):
+    """Mark a message as read"""
+    try:
+        message = Message.objects.get(id=message_id, conversation__participants=request.user)
+        message.mark_as_read()
+        return Response({"message": "Message marqué comme lu"})
+    except Message.DoesNotExist:
+        return Response({"error": "Message non trouvé"}, status=404)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_unread_count(request):
+    """Get unread messages count for the current user"""
+    unread_count = Message.objects.filter(
+        conversation__participants=request.user,
+        is_read=False
+    ).exclude(sender=request.user).count()
+    
+    return Response({"unread_count": unread_count})
+
+
+# -------------------- Admin Appointment Management --------------------
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_appointments_list(request):
+    """List all appointments for admin dashboard"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+
+    # Get all appointments with related data
+    appointments = RendezVous.objects.select_related('patient', 'medecin').all().order_by('-date_creation')
+    
+    # Apply filters if provided
+    status = request.GET.get('status')
+    if status:
+        appointments = appointments.filter(statut=status)
+    
+    date_from = request.GET.get('date_from')
+    if date_from:
+        appointments = appointments.filter(date__gte=date_from)
+        
+    date_to = request.GET.get('date_to')
+    if date_to:
+        appointments = appointments.filter(date__lte=date_to)
+    
+    serializer = RendezVousSerializer(appointments, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_validate_appointment(request, pk):
+    """Validate an appointment by admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        appointment = RendezVous.objects.get(pk=pk)
+        
+        # Only validate confirmed appointments
+        if appointment.statut != 'CONFIRMED':
+            return Response({'error': 'Seuls les rendez-vous confirmés peuvent être validés'}, status=400)
+        
+        appointment.statut = 'TERMINE'
+        appointment.save()
+        
+        return Response({
+            'message': 'Rendez-vous validé avec succès',
+            'appointment': RendezVousSerializer(appointment).data
+        })
+    except RendezVous.DoesNotExist:
+        return Response({'error': 'Rendez-vous non trouvé'}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_cancel_appointment(request, pk):
+    """Cancel an appointment by admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        appointment = RendezVous.objects.get(pk=pk)
+        
+        # Store old status for notification
+        old_status = appointment.statut
+        appointment.statut = 'CANCELLED'
+        appointment.save()
+        
+        # Send cancellation notification if not already cancelled
+        if old_status != 'CANCELLED':
+            NotificationService.send_appointment_cancellation(appointment)
+        
+        return Response({
+            'message': 'Rendez-vous annulé avec succès',
+            'appointment': RendezVousSerializer(appointment).data
+        })
+    except RendezVous.DoesNotExist:
+        return Response({'error': 'Rendez-vous non trouvé'}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_reschedule_appointment(request, pk):
+    """Reschedule an appointment by admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        appointment = RendezVous.objects.get(pk=pk)
+        new_date = request.data.get('date')
+        new_time = request.data.get('heure')
+        
+        if not new_date or not new_time:
+            return Response({'error': 'Date et heure requises pour reprogrammer'}, status=400)
+        
+        # Store old values for notification
+        old_date = appointment.date
+        old_time = appointment.heure
+        old_status = appointment.statut
+        
+        # Update appointment
+        appointment.date = new_date
+        appointment.heure = new_time
+        appointment.statut = 'RESCHEDULED'
+        appointment.save()
+        
+        # Send reschedule notification if not already rescheduled
+        if old_status != 'RESCHEDULED':
+            NotificationService.send_appointment_reschedule(appointment, old_date, old_time)
+        
+        return Response({
+            'message': 'Rendez-vous reprogrammé avec succès',
+            'appointment': RendezVousSerializer(appointment).data
+        })
+    except RendezVous.DoesNotExist:
+        return Response({'error': 'Rendez-vous non trouvé'}, status=404)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_appointments_statistics(request):
+    """Get appointment statistics for admin dashboard"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    from django.db.models import Count
+    from datetime import date, timedelta
+    
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
+    
+    stats = {
+        'total_appointments': RendezVous.objects.count(),
+        'today_appointments': RendezVous.objects.filter(date=today).count(),
+        'week_appointments': RendezVous.objects.filter(date__gte=week_ago).count(),
+        'month_appointments': RendezVous.objects.filter(date__gte=month_ago).count(),
+        'appointments_by_status': list(RendezVous.objects.values('statut').annotate(count=Count('id'))),
+        'confirmed_appointments': RendezVous.objects.filter(statut='CONFIRMED').count(),
+        'cancelled_appointments': RendezVous.objects.filter(statut='CANCELLED').count(),
+        'rescheduled_appointments': RendezVous.objects.filter(statut='RESCHEDULED').count(),
+        'pending_appointments': RendezVous.objects.filter(statut='PENDING').count(),
+        'completed_appointments': RendezVous.objects.filter(statut='TERMINE').count(),
+    }
+    
+    return Response(stats)
+
+
+# -------------------- Admin Chatbot Management --------------------
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_chatbot_knowledge_base(request):
+    """Get all chatbot knowledge base entries for admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    entries = ChatbotKnowledgeBase.objects.all().order_by('-created_at')
+    serializer = ChatbotKnowledgeBaseSerializer(entries, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_create_chatbot_entry(request):
+    """Create a new chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def admin_update_chatbot_entry(request, pk):
+    """Update a chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
+    except ChatbotKnowledgeBase.DoesNotExist:
+        return Response({'error': 'Entrée non trouvée'}, status=404)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(entry, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def admin_delete_chatbot_entry(request, pk):
+    """Delete a chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
+        entry.delete()
+        return Response({'message': 'Entrée supprimée avec succès'}, status=status.HTTP_204_NO_CONTENT)
+    except ChatbotKnowledgeBase.DoesNotExist:
+        return Response({'error': 'Entrée non trouvée'}, status=404)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_chatbot_statistics(request):
+    """Get chatbot statistics for admin dashboard"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    from django.db.models import Count
+    
+    # Get top questions from conversation history
+    top_questions = ChatbotConversation.objects.values('message_user').annotate(
+        count=Count('message_user')
+    ).order_by('-count')[:10]
+    
+    stats = {
+        'total_conversations': ChatbotConversation.objects.count(),
+        'total_users': ChatbotConversation.objects.values('patient').distinct().count(),
+        'avg_response_time': '2.3s',  # This would need to be calculated in a real implementation
+        'top_questions': [
+            {'question': item['message_user'], 'count': item['count']} 
+            for item in top_questions
+        ]
+    }
+    
+    return Response(stats)

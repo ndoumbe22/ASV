@@ -630,3 +630,79 @@ class Rating(models.Model):
 
     def __str__(self):
         return f"Évaluation de {self.patient.user.username} pour Dr. {self.medecin.user.username} - {self.note}/5"
+
+
+# -------------------- Messaging --------------------  
+class Conversation(models.Model):
+    """Conversation between two users"""
+    participants = models.ManyToManyField(User, related_name='conversations')
+    subject = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        db_table = 'Conversation'
+
+    def __str__(self):
+        participant_names = ", ".join([p.username for p in self.participants.all()])
+        return f"Conversation: {self.subject} ({participant_names})"
+
+    def get_other_participant(self, user):
+        """Get the other participant in a conversation (for 1-on-1 chats)"""
+        return self.participants.exclude(id=user.id).first()
+
+
+class Message(models.Model):
+    """Individual messages within a conversation"""
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    content = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['timestamp']
+        db_table = 'Message'
+
+    def __str__(self):
+        return f"Message from {self.sender.username} in {self.conversation.subject}"
+
+    def mark_as_read(self):
+        """Mark message as read"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save()
+
+
+# -------------------- Chatbot Knowledge Base --------------------
+class ChatbotKnowledgeBase(models.Model):
+    """Knowledge base entries for the chatbot"""
+    CATEGORY_CHOICES = [
+        ('general', 'Général'),
+        ('symptoms', 'Symptômes'),
+        ('services', 'Services'),
+        ('emergency', 'Urgences'),
+        ('medication', 'Médicaments'),
+        ('appointment', 'Rendez-vous'),
+        ('other', 'Autre'),
+    ]
+    
+    keyword = models.CharField(max_length=100, verbose_name="Mot-clé")
+    response = models.TextField(verbose_name="Réponse")
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='general', verbose_name="Catégorie")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Date de mise à jour")
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    
+    class Meta:
+        verbose_name = "Entrée de base de connaissances"
+        verbose_name_plural = "Entrées de base de connaissances"
+        db_table = 'ChatbotKnowledgeBase'
+        ordering = ['keyword']
+    
+    def __str__(self):
+        return f"{self.keyword} - {self.get_category_display()}"

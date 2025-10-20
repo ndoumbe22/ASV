@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { articleService } from "../../services/articleService";
+import articleService from "../../services/articleService";
 
 function ArticleForm() {
   const { id } = useParams();
@@ -14,7 +14,6 @@ function ArticleForm() {
     contenu: "",
     categorie: "autre",
     tags: "",
-    statut: "brouillon",
   });
 
   const categories = [
@@ -36,14 +35,13 @@ function ArticleForm() {
 
   const loadArticle = async () => {
     try {
-      const data = await articleService.getMyArticleDetail(id);
+      const data = await articleService.getDoctorArticle(id);
       setFormData({
         titre: data.titre,
         resume: data.resume,
         contenu: data.contenu,
         categorie: data.categorie,
-        tags: data.tags,
-        statut: data.statut,
+        tags: data.tags || "",
       });
     } catch (error) {
       console.error("Erreur:", error);
@@ -87,6 +85,37 @@ function ArticleForm() {
     }
   };
 
+  const handleSaveDraft = async () => {
+    if (!formData.titre && !formData.resume && !formData.contenu) {
+      alert("Veuillez remplir au moins un champ avant d'enregistrer");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const draftData = {
+        ...formData,
+        statut: "brouillon"
+      };
+
+      if (isEdit) {
+        await articleService.updateArticle(id, draftData);
+        alert("Brouillon mis à jour");
+      } else {
+        await articleService.createArticle(draftData);
+        alert("Brouillon enregistré");
+      }
+
+      navigate("/medecin/articles");
+    } catch (error) {
+      console.error("Erreur:", error);
+      alert(error.response?.data?.error || "Erreur lors de l'enregistrement");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="container py-4">
       <div className="row">
@@ -108,7 +137,11 @@ function ArticleForm() {
                 onChange={handleChange}
                 required
                 maxLength="200"
+                placeholder="Entrez le titre de votre article"
               />
+              <div className="form-text">
+                {formData.titre.length}/200 caractères
+              </div>
             </div>
 
             {/* Résumé */}
@@ -122,10 +155,11 @@ function ArticleForm() {
                 rows="3"
                 required
                 maxLength="500"
+                placeholder="Résumé concis de votre article"
               />
-              <small className="text-muted">
+              <div className="form-text">
                 {formData.resume.length}/500 caractères
-              </small>
+              </div>
             </div>
 
             {/* Contenu */}
@@ -140,9 +174,9 @@ function ArticleForm() {
                 required
                 placeholder="Rédigez votre article ici..."
               />
-              <small className="text-muted">
+              <div className="form-text">
                 Utilisez des paragraphes pour une meilleure lisibilité
-              </small>
+              </div>
             </div>
 
             {/* Catégorie */}
@@ -173,33 +207,49 @@ function ArticleForm() {
                 onChange={handleChange}
                 placeholder="Ex: diabète, nutrition, prévention"
               />
-              <small className="text-muted">
+              <div className="form-text">
                 Séparez les tags par des virgules
-              </small>
+              </div>
             </div>
 
             {/* Boutons */}
-            <div className="d-flex justify-content-between">
+            <div className="d-flex justify-content-between flex-wrap">
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-secondary mb-2"
                 onClick={() => navigate("/medecin/articles")}
               >
                 <i className="bi bi-x-circle"></i> Annuler
               </button>
 
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-              >
-                {loading ? (
-                  <span className="spinner-border spinner-border-sm me-2"></span>
-                ) : (
-                  <i className="bi bi-save me-2"></i>
-                )}
-                {isEdit ? "Mettre à jour" : "Enregistrer comme brouillon"}
-              </button>
+              <div className="d-flex flex-wrap">
+                <button
+                  type="button"
+                  className="btn btn-outline-primary mb-2 me-2"
+                  onClick={handleSaveDraft}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="spinner-border spinner-border-sm me-2"></span>
+                  ) : (
+                    <i className="bi bi-save me-2"></i>
+                  )}
+                  Enregistrer comme brouillon
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary mb-2"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="spinner-border spinner-border-sm me-2"></span>
+                  ) : (
+                    <i className="bi bi-send me-2"></i>
+                  )}
+                  {isEdit ? "Mettre à jour" : "Soumettre pour validation"}
+                </button>
+              </div>
             </div>
           </form>
         </div>

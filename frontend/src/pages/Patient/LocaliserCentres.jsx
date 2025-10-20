@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { FaMapMarkerAlt, FaHospital, FaClinicMedical, FaTooth, FaPrescriptionBottle, FaDirections, FaFilter, FaSearchLocation, FaSync } from "react-icons/fa";
 import HealthMap from "../../components/HealthMap";
-import { urgenceService } from "../../services/urgenceService";
+import urgenceService from "../../services/urgenceService";
 
 function LocaliserCentres() {
   const [facilities, setFacilities] = useState([]);

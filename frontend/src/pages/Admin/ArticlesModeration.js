@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { FaCheck, FaTimes, FaBan, FaSearch, FaChartBar } from "react-icons/fa";
-import { articleService } from "../../services/articleService";
+import { FaCheck, FaTimes, FaBan, FaSearch, FaChartBar, FaStar, FaRegStar, FaTrash } from "react-icons/fa";
+import articleService from "../../services/articleService";
 
 function ArticlesModeration() {
   const [articles, setArticles] = useState([]);
@@ -141,6 +141,53 @@ function ArticlesModeration() {
     }
   };
 
+  // New function to completely cancel/remove an article
+  const handleCancelArticle = async (articleId, articleTitle) => {
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement l'article "${articleTitle}" ? Cette action est irréversible.`)) {
+      try {
+        // Use the admin delete method
+        await articleService.deleteAdminArticle(articleId);
+        loadArticles();
+        loadStatistics();
+        alert("Article supprimé définitivement");
+      } catch (err) {
+        alert(
+          "Erreur lors de la suppression: " +
+            (err.response?.data?.error || err.message)
+        );
+        console.error(err);
+      }
+    }
+  };
+
+  const handleFeature = async (articleId) => {
+    try {
+      await articleService.featureArticle(articleId);
+      loadArticles();
+      alert("Article mis en avant");
+    } catch (err) {
+      alert(
+        "Erreur lors de la mise en avant: " +
+          (err.response?.data?.error || err.message)
+      );
+      console.error(err);
+    }
+  };
+
+  const handleUnfeature = async (articleId) => {
+    try {
+      await articleService.unfeatureArticle(articleId);
+      loadArticles();
+      alert("Article retiré de la mise en avant");
+    } catch (err) {
+      alert(
+        "Erreur lors du retrait de la mise en avant: " +
+          (err.response?.data?.error || err.message)
+      );
+      console.error(err);
+    }
+  };
+
   const openRejectModal = (article) => {
     setSelectedArticle(article);
     setShowRejectModal(true);
@@ -258,6 +305,7 @@ function ArticlesModeration() {
                     <th>Auteur</th>
                     <th>Catégorie</th>
                     <th>Date de soumission</th>
+                    <th>Statut</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -284,6 +332,16 @@ function ArticlesModeration() {
                         )}
                       </td>
                       <td>
+                        <div className="d-flex align-items-center">
+                          {getStatusBadge(article.statut)}
+                          {article.is_featured && (
+                            <span className="badge bg-warning ms-2">
+                              <FaStar /> À la Une
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
                         <div className="btn-group" role="group">
                           <button
                             type="button"
@@ -303,12 +361,43 @@ function ArticlesModeration() {
                           </button>
                           <button
                             type="button"
-                            className="btn btn-dark btn-sm"
+                            className="btn btn-dark btn-sm me-1"
                             onClick={() => handleDeactivate(article.id)}
                             title="Désactiver"
                           >
                             <FaBan />
                           </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm me-1"
+                            onClick={() => handleCancelArticle(article.id, article.titre)}
+                            title="Supprimer définitivement"
+                          >
+                            <FaTrash />
+                          </button>
+                          {article.statut === "valide" && (
+                            <>
+                              {article.is_featured ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-warning btn-sm"
+                                  onClick={() => handleUnfeature(article.id)}
+                                  title="Retirer de la une"
+                                >
+                                  <FaStar />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-warning btn-sm"
+                                  onClick={() => handleFeature(article.id)}
+                                  title="Mettre en avant"
+                                >
+                                  <FaRegStar />
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

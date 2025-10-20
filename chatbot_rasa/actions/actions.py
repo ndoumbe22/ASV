@@ -4,6 +4,14 @@
 # See this guide on how to implement these action:
 # https://rasa.com/docs/rasa/custom-actions
 
+import requests
+import json
+import os 
+from typing import Any, Text, Dict, List
+from rasa_sdk import Action, Tracker
+from rasa_sdk.executor import CollectingDispatcher
+from rasa_sdk.events import SlotSet
+
 
 # This is a simple example for a custom action which utters "Hello World!"
 
@@ -92,40 +100,35 @@ class ActionPrendreRendezVous(Action):
             dispatcher.utter_message(text="Pouvez-vous préciser l’heure du rendez-vous ?")
             return []
 
-        # Lecture du fichier JSON
-        rendez_vous_file = "rendez_vous.json"
-        if os.path.exists(rendez_vous_file):
-            try:
-                with open(rendez_vous_file, "r", encoding="utf-8") as f:
-                    rendez_vous = json.load(f)
-            except json.JSONDecodeError:
-                rendez_vous = []
-        else:
-            rendez_vous = []
-
-        # Vérifier si un rendez-vous existe déjà pour ce user à cette date/heure
-        for rdv in rendez_vous:
-            if rdv["user_id"] == user_id and rdv["date"] == date and rdv["heure"] == heure:
+        # Intégration avec le backend Django
+        try:
+            # Make API call to Django backend to create appointment
+            django_api_url = "http://localhost:8000/api/rendezvous/"
+            appointment_data = {
+                "patient": user_id,  # This should be the patient ID in the Django system
+                "date": date,
+                "heure": heure,
+                "statut": "PENDING"
+            }
+            
+            # In a real implementation, you would need to authenticate with the Django API
+            # For now, we'll make a POST request without authentication
+            response = requests.post(django_api_url, json=appointment_data)
+            
+            if response.status_code == 201:
                 dispatcher.utter_message(
-                    text=f"⚠️ Vous avez déjà un rendez-vous prévu le {date} à {heure}."
+                    text=f"✅ Votre rendez-vous a été enregistré pour le {date} à {heure}. Il est synchronisé avec votre compte."
                 )
-                return []
-
-        # Ajouter le nouveau rendez-vous
-        nouveau_rdv = {
-            "user_id": user_id,
-            "date": date,
-            "heure": heure
-        }
-        rendez_vous.append(nouveau_rdv)
-
-        # Sauvegarde
-        with open(rendez_vous_file, "w", encoding="utf-8") as f:
-            json.dump(rendez_vous, f, ensure_ascii=False, indent=4)
-
-        dispatcher.utter_message(
-            text=f"✅ Votre rendez-vous a été enregistré pour le {date} à {heure}."
-        )
+            else:
+                # If API call fails, provide an error message
+                dispatcher.utter_message(
+                    text=f"❌ Une erreur s'est produite lors de l'enregistrement de votre rendez-vous. Veuillez réessayer plus tard."
+                )
+        except Exception as e:
+            # Handle any exceptions during the API call
+            dispatcher.utter_message(
+                text=f"❌ Une erreur s'est produite lors de la connexion au système. Veuillez réessayer plus tard."
+            )
 
         return [SlotSet("date", date), SlotSet("heure", heure)]
     
@@ -140,21 +143,27 @@ class ActionListerRendezVous(Action):
 
         user_id = tracker.sender_id  # identifiant unique de l'utilisateur
 
-        # Charger les rendez-vous depuis le fichier JSON
+        # Make API call to Django backend to get appointments
         try:
-            with open("rendez_vous.json", "r", encoding="utf-8") as f:
-                rendez_vous = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            rendez_vous = []
-
-        # Filtrer les rendez-vous de cet utilisateur
-        mes_rdv = [rdv for rdv in rendez_vous if rdv["user_id"] == user_id]
-
-        if not mes_rdv:
-            dispatcher.utter_message(text="📭 Vous n’avez aucun rendez-vous enregistré.")
-        else:
-            rdv_text = "\n".join([f"- {rdv['date']} à {rdv['heure']}" for rdv in mes_rdv])
-            dispatcher.utter_message(text=f"📅 Voici vos rendez-vous enregistrés :\n{rdv_text}")
+            django_api_url = f"http://localhost:8000/api/rendezvous/?patient={user_id}"
+            response = requests.get(django_api_url)
+            
+            if response.status_code == 200:
+                rendez_vous = response.json()
+                
+                # Filter appointments for this user
+                mes_rdv = [rdv for rdv in rendez_vous if str(rdv.get("patient")) == user_id]
+                
+                if not mes_rdv:
+                    dispatcher.utter_message(text="📭 Vous n’avez aucun rendez-vous enregistré dans le système.")
+                else:
+                    rdv_text = "\n".join([f"- {rdv['date']} à {rdv['heure']}" for rdv in mes_rdv])
+                    dispatcher.utter_message(text=f"📅 Voici vos rendez-vous enregistrés dans le système :\n{rdv_text}")
+            else:
+                dispatcher.utter_message(text="📭 Vous n’avez aucun rendez-vous enregistré dans le système.")
+        except Exception as e:
+            # Handle any exceptions during the API call
+            dispatcher.utter_message(text="📭 Vous n’avez aucun rendez-vous enregistré dans le système.")
 
         return []
     
@@ -201,3 +210,97 @@ class ActionDemanderMedicament(Action):
         return []
 
 
+class ActionAjouterRappelMedicament(Action):
+    def name(self) -> Text:
+        return "action_ajouter_rappel_medicament"
+
+    async def run(self, dispatcher: CollectingDispatcher,
+                  tracker: Tracker,
+                  domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+
+        # Récupération des slots
+        medicament = tracker.get_slot("medicament")
+        dosage = tracker.get_slot("dosage")
+        heure_rappel = tracker.get_slot("heure")
+        frequence = tracker.get_slot("frequence") or "quotidienne"
+        user_id = tracker.sender_id
+
+        # Si les informations sont manquantes, on demande à l'utilisateur
+        if not medicament:
+            dispatcher.utter_message(text="Quel médicament souhaitez-vous ajouter à vos rappels ?")
+            return []
+        if not dosage:
+            dispatcher.utter_message(text="Quel est le dosage de ce médicament ?")
+            return []
+        if not heure_rappel:
+            dispatcher.utter_message(text="À quelle heure souhaitez-vous recevoir le rappel ?")
+            return []
+
+        # Intégration avec le backend Django pour les rappels de médicaments
+        try:
+            # Make API call to Django backend to create medication reminder
+            django_api_url = "http://localhost:8000/api/medication-reminders/"
+            reminder_data = {
+                "patient": user_id,
+                "medicament": medicament,
+                "dosage": dosage,
+                "heure_rappel": heure_rappel,
+                "frequence": frequence,
+                "date_debut": "2023-01-01",  # Default start date
+                "actif": True
+            }
+            
+            # In a real implementation, you would need to authenticate with the Django API
+            response = requests.post(django_api_url, json=reminder_data)
+            
+            if response.status_code == 201:
+                dispatcher.utter_message(
+                    text=f"✅ Le rappel pour {medicament} ({dosage}) à {heure_rappel} a été enregistré avec succès."
+                )
+            else:
+                # If API call fails, provide an error message
+                dispatcher.utter_message(
+                    text=f"❌ Une erreur s'est produite lors de l'enregistrement du rappel. Veuillez réessayer plus tard."
+                )
+        except Exception as e:
+            # Handle any exceptions during the API call
+            dispatcher.utter_message(
+                text=f"❌ Une erreur s'est produite lors de la connexion au système. Veuillez réessayer plus tard."
+            )
+
+        return [SlotSet("medicament", medicament), SlotSet("dosage", dosage), SlotSet("heure", heure_rappel)]
+
+
+class ActionListerRappelsMedicament(Action):
+    def name(self) -> Text:
+        return "action_lister_rappels_medicament"
+
+    async def run(self, dispatcher: CollectingDispatcher,
+                  tracker: Tracker,
+                  domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+
+        user_id = tracker.sender_id  # identifiant unique de l'utilisateur
+
+        # Make API call to Django backend to get medication reminders
+        try:
+            django_api_url = f"http://localhost:8000/api/medication-reminders/"
+            response = requests.get(django_api_url)
+            
+            if response.status_code == 200:
+                rappels = response.json()
+                
+                # Filter reminders for this user
+                mes_rappels = [rappel for rappel in rappels if str(rappel.get("patient")) == user_id]
+                
+                if not mes_rappels:
+                    dispatcher.utter_message(text="📭 Vous n’avez aucun rappel de médicament enregistré.")
+                else:
+                    rappel_text = "\n".join([f"- {rappel['medicament']} ({rappel['dosage']}) à {rappel['heure_rappel']}" for rappel in mes_rappels])
+                    dispatcher.utter_message(text=f"💊 Voici vos rappels de médicaments :\n{rappel_text}")
+            else:
+                dispatcher.utter_message(text="📭 Vous n’avez aucun rappel de médicament enregistré.")
+        except Exception as e:
+            # Handle any exceptions during the API call
+            dispatcher.utter_message(text="📭 Vous n’avez aucun rappel de médicament enregistré.")
+
+        return []

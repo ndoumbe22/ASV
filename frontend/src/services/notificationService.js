@@ -34,8 +34,8 @@ class NotificationService {
   // Delete a notification
   async deleteNotification(id) {
     try {
-      await api.delete(`/notifications/${id}/`);
-      return true;
+      const response = await api.delete(`/notifications/${id}/`);
+      return response.data;
     } catch (error) {
       throw error;
     }

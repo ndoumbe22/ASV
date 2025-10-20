@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { articleService } from "../../services/articleService";
+import articleService from "../../services/articleService";
 
 function MesArticles() {
   const navigate = useNavigate();
@@ -14,6 +14,7 @@ function MesArticles() {
     { value: "en_attente", label: "En attente", badge: "warning" },
     { value: "valide", label: "Validés", badge: "success" },
     { value: "refuse", label: "Refusés", badge: "danger" },
+    { value: "desactive", label: "Désactivés", badge: "dark" },
   ];
 
   useEffect(() => {
@@ -65,6 +66,21 @@ function MesArticles() {
   const getStatusBadge = (statut) => {
     const status = statuts.find((s) => s.value === statut);
     return status ? status.badge : "secondary";
+  };
+
+  const getStatusLabel = (statut) => {
+    const status = statuts.find((s) => s.value === statut);
+    return status ? status.label : statut;
+  };
+
+  const getAdminFeedback = (article) => {
+    if (article.statut === "refuse" && article.commentaire_refus) {
+      return `Refusé: ${article.commentaire_refus}`;
+    }
+    if (article.statut === "desactive" && article.commentaire_desactivation) {
+      return `Désactivé: ${article.commentaire_desactivation}`;
+    }
+    return null;
   };
 
   if (loading)
@@ -129,7 +145,19 @@ function MesArticles() {
               {articles.map((article) => (
                 <tr key={article.id}>
                   <td>
-                    <strong>{article.titre}</strong>
+                    <div>
+                      <strong>{article.titre}</strong>
+                    </div>
+                    {article.is_featured && (
+                      <span className="badge bg-warning">
+                        <i className="bi bi-star-fill"></i> À la Une
+                      </span>
+                    )}
+                    {getAdminFeedback(article) && (
+                      <div className="text-muted small mt-1">
+                        <i className="bi bi-info-circle"></i> {getAdminFeedback(article)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span className="badge bg-info">{article.categorie}</span>
@@ -138,7 +166,7 @@ function MesArticles() {
                     <span
                       className={`badge bg-${getStatusBadge(article.statut)}`}
                     >
-                      {article.statut}
+                      {getStatusLabel(article.statut)}
                     </span>
                   </td>
                   <td>
@@ -190,6 +218,17 @@ function MesArticles() {
                         >
                           <i className="bi bi-trash"></i>
                         </button>
+                      )}
+                      
+                      {/* Voir */}
+                      {article.statut === "valide" && (
+                        <Link
+                          to={`/articles/${article.slug}`}
+                          className="btn btn-outline-info"
+                          title="Voir l'article"
+                        >
+                          <i className="bi bi-eye"></i>
+                        </Link>
                       )}
                     </div>
                   </td>

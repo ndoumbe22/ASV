@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FaPills, FaCheck } from "react-icons/fa";
-import { medicationService } from "../services/medicationService";
+import medicationService from "../services/medicationService";
 
 function MedicationTodayWidget() {
   const [medications, setMedications] = useState([]);

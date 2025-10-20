@@ -146,14 +146,15 @@ function EnhancedChatbot() {
       <button
         onClick={toggleChat}
         className="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 transition-all duration-300 z-50"
-        style={{ width: "60px", height: "60px" }}
+        style={{ width: "60px", height: "60px", bottom: "20px" }}
       >
         {isOpen ? <FaTimes size={24} /> : <FaComments size={24} />}
       </button>
 
       {/* Chat window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-full max-w-md h-[500px] bg-white rounded-lg shadow-xl z-50 flex flex-col border border-gray-200">
+        <div className="fixed bottom-24 right-6 w-full max-w-md h-[500px] bg-white rounded-lg shadow-xl z-50 flex flex-col border border-gray-200"
+           style={{ bottom: "100px" }}>
           {/* Chat header */}
           <div className="bg-blue-600 text-white p-4 rounded-t-lg flex justify-between items-center">
             <div className="flex items-center">

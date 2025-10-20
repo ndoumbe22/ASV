@@ -1,250 +1,403 @@
 import React, { useState, useEffect } from "react";
-import { appointmentAPI } from "../../services/api"; // Added appointmentAPI
-import { FaCalendarCheck, FaUser, FaSearch, FaClock } from "react-icons/fa";
-import Calendar from "react-calendar";
-import "react-calendar/dist/Calendar.css";
+import { useAuth } from "../../context/AuthContext";
+import { appointmentAPI, doctorAPI } from "../../services/api";
+import { FaCalendarAlt, FaUser, FaSearch, FaCheck, FaTimes, FaClock, FaEdit } from "react-icons/fa";
 
 function RendezVous() {
-  const [rendezvous, setRendezvous] = useState([]);
-  const [filteredRdv, setFilteredRdv] = useState([]);
+  const { user } = useAuth();
+  const [appointments, setAppointments] = useState([]);
+  const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("all"); // Added tab state
 
-  // Charger les rendez-vous depuis l'API
   useEffect(() => {
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true);
-        const response = await appointmentAPI.getAppointments();
-        setRendezvous(response.data);
-        setFilteredRdv(response.data);
-        setLoading(false);
-      } catch (err) {
-        setError("Erreur lors du chargement des rendez-vous");
-        setLoading(false);
-        console.error("Erreur lors du chargement des rendez-vous :", err);
-      }
-    };
-
-    fetchAppointments();
+    loadAppointments();
   }, []);
 
-  // Filtrer selon recherche, date sélectionnée et onglet actif
   useEffect(() => {
-    let filtered = rendezvous;
-    
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(
-        rdv =>
-          rdv.patient_nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          rdv.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    
-    // Filter by selected date
-    if (selectedDate) {
-      filtered = filtered.filter(
-        rdv => rdv.date === selectedDate.toISOString().split('T')[0]
-      );
-    }
-    
-    // Filter by active tab (status)
-    if (activeTab !== "all") {
-      filtered = filtered.filter(rdv => rdv.statut === activeTab);
-    }
-    
-    setFilteredRdv(filtered);
-  }, [searchTerm, selectedDate, activeTab, rendezvous]);
+    const filtered = appointments.filter(
+      (appointment) =>
+        appointment.patient_nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        appointment.date?.includes(searchTerm)
+    );
+    setFilteredAppointments(filtered);
+  }, [searchTerm, appointments]);
 
-  // Confirmer un rendez-vous
-  const confirmAppointment = async (id) => {
+  const loadAppointments = async () => {
     try {
-      await appointmentAPI.updateAppointment(id, { statut: "CONFIRMED" });
+      setLoading(true);
+      const response = await appointmentAPI.getAppointments();
       
-      setRendezvous(prev =>
-        prev.map(rdv =>
-          rdv.id === id ? { ...rdv, statut: "CONFIRMED" } : rdv
-        )
-      );
-    } catch (error) {
-      console.error("Erreur lors de la confirmation :", error);
+      // Filter appointments for the current doctor
+      let doctorAppointments = response.data;
+      if (user) {
+        // Filter appointments for this doctor using medecin_nom field
+        // This matches the doctor's full name in the format "First Last"
+        const doctorName = `${user.first_name} ${user.last_name}`.trim();
+        doctorAppointments = response.data.filter(app => 
+          app.medecin_nom === `Dr. ${doctorName}`
+        );
+      }
+      
+      setAppointments(doctorAppointments);
+      setFilteredAppointments(doctorAppointments);
+    } catch (err) {
+      setError("Erreur lors du chargement des rendez-vous");
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Annuler un rendez-vous
-  const cancelAppointment = async (id) => {
+  const handleConfirm = async (appointment) => {
     try {
+      // Use the ID field that's available in the appointment object
+      const id = appointment.numero || appointment.id;
+      
+      if (!id) {
+        throw new Error("ID de rendez-vous manquant");
+      }
+      
+      const response = await appointmentAPI.updateAppointment(id, { statut: "CONFIRMED" });
+      setAppointments(appointments.map(app => 
+        (app.numero === id || app.id === id) ? { ...app, statut: "CONFIRMED" } : app
+      ));
+      setFilteredAppointments(filteredAppointments.map(app => 
+        (app.numero === id || app.id === id) ? { ...app, statut: "CONFIRMED" } : app
+      ));
+      
+      // Show success message
+      alert("Rendez-vous confirmé avec succès !");
+    } catch (err) {
+      setError("Erreur lors de la confirmation du rendez-vous");
+      console.error("Error confirming appointment:", err);
+      
+      // Show specific error message to user
+      let errorMessage = "Erreur lors de la confirmation du rendez-vous. Veuillez réessayer.";
+      
+      if (err.response) {
+        if (err.response.data) {
+          if (err.response.data.error) {
+            errorMessage = `Erreur: ${err.response.data.error}`;
+          } else if (err.response.data.detail) {
+            errorMessage = `Erreur: ${err.response.data.detail}`;
+          } else if (err.response.data.message) {
+            errorMessage = `Erreur: ${err.response.data.message}`;
+          } else if (typeof err.response.data === 'object') {
+            // Try to get the first error message from the object
+            const firstKey = Object.keys(err.response.data)[0];
+            if (firstKey) {
+              const firstValue = err.response.data[firstKey];
+              if (Array.isArray(firstValue)) {
+                errorMessage = `Erreur ${firstKey}: ${firstValue.join(', ')}`;
+              } else {
+                errorMessage = `Erreur ${firstKey}: ${firstValue}`;
+              }
+            }
+          } else if (typeof err.response.data === 'string') {
+            errorMessage = `Erreur: ${err.response.data}`;
+          }
+        } else if (err.response.status) {
+          errorMessage = `Erreur ${err.response.status}: ${err.response.statusText}`;
+        }
+      } else if (err.request) {
+        errorMessage = "Erreur réseau: Aucune réponse du serveur";
+      } else if (err.message) {
+        errorMessage = `Erreur: ${err.message}`;
+      }
+      
+      alert(errorMessage);
+    }
+  };
+
+  const handleCancel = async (appointment) => {
+    try {
+      // Use the ID field that's available in the appointment object
+      const id = appointment.numero || appointment.id;
+      
+      if (!id) {
+        throw new Error("ID de rendez-vous manquant");
+      }
+      
       await appointmentAPI.updateAppointment(id, { statut: "CANCELLED" });
+      setAppointments(appointments.map(app => 
+        (app.numero === id || app.id === id) ? { ...app, statut: "CANCELLED" } : app
+      ));
+      setFilteredAppointments(filteredAppointments.map(app => 
+        (app.numero === id || app.id === id) ? { ...app, statut: "CANCELLED" } : app
+      ));
       
-      setRendezvous(prev =>
-        prev.map(rdv =>
-          rdv.id === id ? { ...rdv, statut: "CANCELLED" } : rdv
-        )
-      );
-    } catch (error) {
-      console.error("Erreur lors de l'annulation :", error);
+      // Show success message
+      alert("Rendez-vous annulé avec succès !");
+    } catch (err) {
+      setError("Erreur lors de l'annulation du rendez-vous");
+      console.error("Error cancelling appointment:", err);
+      
+      // Show specific error message to user
+      let errorMessage = "Erreur lors de l'annulation du rendez-vous. Veuillez réessayer.";
+      
+      if (err.response) {
+        if (err.response.data) {
+          if (err.response.data.error) {
+            errorMessage = `Erreur: ${err.response.data.error}`;
+          } else if (err.response.data.detail) {
+            errorMessage = `Erreur: ${err.response.data.detail}`;
+          } else if (err.response.data.message) {
+            errorMessage = `Erreur: ${err.response.data.message}`;
+          } else if (typeof err.response.data === 'object') {
+            // Try to get the first error message from the object
+            const firstKey = Object.keys(err.response.data)[0];
+            if (firstKey) {
+              const firstValue = err.response.data[firstKey];
+              if (Array.isArray(firstValue)) {
+                errorMessage = `Erreur ${firstKey}: ${firstValue.join(', ')}`;
+              } else {
+                errorMessage = `Erreur ${firstKey}: ${firstValue}`;
+              }
+            }
+          } else if (typeof err.response.data === 'string') {
+            errorMessage = `Erreur: ${err.response.data}`;
+          }
+        } else if (err.response.status) {
+          errorMessage = `Erreur ${err.response.status}: ${err.response.statusText}`;
+        }
+      } else if (err.request) {
+        errorMessage = "Erreur réseau: Aucune réponse du serveur";
+      } else if (err.message) {
+        errorMessage = `Erreur: ${err.message}`;
+      }
+      
+      alert(errorMessage);
     }
   };
 
-  // Déterminer la couleur du fond selon le statut
-  const getStatusBg = (statut) => {
-    if (statut === "CONFIRMED") return "#d4edda"; // vert clair
-    if (statut === "PENDING") return "#fff3cd"; // orange clair
-    if (statut === "CANCELLED") return "#f8d7da"; // rouge clair
-    return "#f5f6fa"; // neutre
+  // Reschedule appointment function for doctors
+  const handleReschedule = async (appointment) => {
+    // Get today's date for validation
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Prompt for new date and time
+    const newDate = prompt("Nouvelle date (YYYY-MM-DD) :");
+    if (!newDate) return;
+    
+    // Validate that the date is not in the past
+    const newDateObj = new Date(newDate);
+    newDateObj.setHours(0, 0, 0, 0);
+    
+    if (newDateObj < today) {
+      alert("Veuillez sélectionner une date future valide");
+      return;
+    }
+    
+    const newTime = prompt("Nouvelle heure (HH:MM) :");
+    if (!newTime) return;
+
+    try {
+      // Use the ID field that's available in the appointment object
+      const id = appointment.numero || appointment.id;
+      
+      if (!id) {
+        throw new Error("ID de rendez-vous manquant");
+      }
+      
+      // Update the appointment with new date and time, and set status to RESCHEDULED
+      const response = await appointmentAPI.updateAppointment(id, { 
+        date: newDate, 
+        heure: newTime, 
+        statut: "RESCHEDULED" 
+      });
+      
+      // Update the local state
+      setAppointments(appointments.map(app => 
+        (app.numero === id || app.id === id) ? { ...app, date: newDate, heure: newTime, statut: "RESCHEDULED" } : app
+      ));
+      setFilteredAppointments(filteredAppointments.map(app => 
+        (app.numero === id || app.id === id) ? { ...app, date: newDate, heure: newTime, statut: "RESCHEDULED" } : app
+      ));
+      
+      // Show success message
+      alert("Rendez-vous reprogrammé avec succès !");
+    } catch (err) {
+      setError("Erreur lors de la reprogrammation du rendez-vous");
+      console.error("Error rescheduling appointment:", err);
+      
+      // Show specific error message to user
+      let errorMessage = "Erreur lors de la reprogrammation du rendez-vous. Veuillez réessayer.";
+      
+      if (err.response) {
+        if (err.response.data) {
+          if (err.response.data.error) {
+            errorMessage = `Erreur: ${err.response.data.error}`;
+          } else if (err.response.data.detail) {
+            errorMessage = `Erreur: ${err.response.data.detail}`;
+          } else if (err.response.data.message) {
+            errorMessage = `Erreur: ${err.response.data.message}`;
+          } else if (typeof err.response.data === 'object') {
+            // Try to get the first error message from the object
+            const firstKey = Object.keys(err.response.data)[0];
+            if (firstKey) {
+              const firstValue = err.response.data[firstKey];
+              if (Array.isArray(firstValue)) {
+                errorMessage = `Erreur ${firstKey}: ${firstValue.join(', ')}`;
+              } else {
+                errorMessage = `Erreur ${firstKey}: ${firstValue}`;
+              }
+            }
+          } else if (typeof err.response.data === 'string') {
+            errorMessage = `Erreur: ${err.response.data}`;
+          }
+        } else if (err.response.status) {
+          errorMessage = `Erreur ${err.response.status}: ${err.response.statusText}`;
+        }
+      } else if (err.request) {
+        errorMessage = "Erreur réseau: Aucune réponse du serveur";
+      } else if (err.message) {
+        errorMessage = `Erreur: ${err.message}`;
+      }
+      
+      alert(errorMessage);
+    }
   };
 
-  // Get counts for each status
-  const getCountByStatus = (status) => {
-    return rendezvous.filter(rdv => rdv.statut === status).length;
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('fr-FR');
+  };
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "CONFIRMED":
+        return <span className="badge bg-success">Confirmé</span>;
+      case "CANCELLED":
+        return <span className="badge bg-danger">Annulé</span>;
+      case "RESCHEDULED":
+        return <span className="badge bg-warning">Reprogrammé</span>;
+      case "PENDING":
+        return <span className="badge bg-info">En attente</span>;
+      default:
+        return <span className="badge bg-secondary">{status}</span>;
+    }
   };
 
   if (loading) {
-    return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Chargement...</div>;
+    return <div className="text-center py-5">Chargement...</div>;
   }
 
   if (error) {
-    return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Erreur: {error}</div>;
+    return <div className="alert alert-danger">Erreur: {error}</div>;
   }
 
   return (
     <div className="container-fluid">
-      <div className="row">
-        {/* Sidebar - Calendrier */}
-        <div className="col-md-4">
-          <div className="card shadow-sm p-3 mb-4">
-            <h5>Calendrier</h5>
-            <Calendar
-              onChange={setSelectedDate}
-              value={selectedDate}
-              className="border-0"
-            />
-          </div>
-          
-          <div className="card shadow-sm p-3">
-            <h5>Légende</h5>
-            <div className="d-flex align-items-center mb-2">
-              <div style={{ width: "20px", height: "20px", backgroundColor: "#d4edda", marginRight: "10px" }}></div>
-              <span>Confirmé</span>
-            </div>
-            <div className="d-flex align-items-center mb-2">
-              <div style={{ width: "20px", height: "20px", backgroundColor: "#fff3cd", marginRight: "10px" }}></div>
-              <span>En attente</span>
-            </div>
-            <div className="d-flex align-items-center">
-              <div style={{ width: "20px", height: "20px", backgroundColor: "#f8d7da", marginRight: "10px" }}></div>
-              <span>Annulé</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="col-md-8">
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <h2>Rendez-vous du {selectedDate.toLocaleDateString('fr-FR')}</h2>
-            <div style={{ position: "relative", width: "250px" }}>
-              <input
-                type="text"
-                placeholder="Rechercher un patient..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="form-control"
-              />
-              <FaSearch
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  right: "12px",
-                  transform: "translateY(-50%)",
-                  color: "#888",
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Tabs for status filtering */}
-          <div className="mb-4">
-            <ul className="nav nav-tabs">
-              <li className="nav-item">
-                <button 
-                  className={`nav-link ${activeTab === "all" ? "active" : ""}`}
-                  onClick={() => setActiveTab("all")}
-                >
-                  Tous ({rendezvous.length})
-                </button>
-              </li>
-              <li className="nav-item">
-                <button 
-                  className={`nav-link ${activeTab === "PENDING" ? "active" : ""}`}
-                  onClick={() => setActiveTab("PENDING")}
-                >
-                  En attente ({getCountByStatus("PENDING")})
-                </button>
-              </li>
-              <li className="nav-item">
-                <button 
-                  className={`nav-link ${activeTab === "CONFIRMED" ? "active" : ""}`}
-                  onClick={() => setActiveTab("CONFIRMED")}
-                >
-                  Confirmés ({getCountByStatus("CONFIRMED")})
-                </button>
-              </li>
-              <li className="nav-item">
-                <button 
-                  className={`nav-link ${activeTab === "CANCELLED" ? "active" : ""}`}
-                  onClick={() => setActiveTab("CANCELLED")}
-                >
-                  Annulés ({getCountByStatus("CANCELLED")})
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          {filteredRdv.length === 0 ? (
-            <div className="card shadow-sm p-5 text-center">
-              <h4>Aucun rendez-vous trouvé</h4>
-              <p>Aucun rendez-vous ne correspond aux critères sélectionnés.</p>
-            </div>
-          ) : (
-            <div className="row g-3">
-              {filteredRdv.map((rdv) => (
-                <div key={rdv.id} className="col-md-12">
-                  <div className="card shadow-sm p-3" style={{ backgroundColor: getStatusBg(rdv.statut) }}>
-                    <div className="d-flex justify-content-between align-items-start">
-                      {/* Info rendez-vous */}
-                      <div>
-                        <h6 className="mb-1"><strong>{rdv.heure}</strong> - {rdv.patient_nom}</h6>
-                        <p className="mb-1"><em>{rdv.description}</em></p>
-                        <p className="mb-1" style={{ fontSize: "13px", color: "#6c757d" }}>
-                          Statut :{" "}
-                          {rdv.statut === "CONFIRMED" && <span style={{ color: "green" }}>✔ Confirmé</span>}
-                          {rdv.statut === "PENDING" && <span style={{ color: "#ff9800" }}>⏳ En attente</span>}
-                          {rdv.statut === "CANCELLED" && <span style={{ color: "red" }}>✖ Annulé</span>}
-                        </p>
-                      </div>
-
-                      {/* Boutons d’action */}
-                      <div className="d-flex flex-column align-items-end">
-                        {rdv.statut === "PENDING" && (
-                          <button className="btn btn-success btn-sm mb-2" onClick={() => confirmAppointment(rdv.id)}>Confirmer</button>
-                        )}
-                        {rdv.statut !== "CANCELLED" && (
-                          <button className="btn btn-danger btn-sm mb-2" onClick={() => cancelAppointment(rdv.id)}>Annuler</button>
-                        )}
-                        <button className="btn btn-outline-success btn-sm">Détails</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2>Rendez-vous</h2>
+        <div style={{ position: "relative", width: "250px" }}>
+          <input
+            type="text"
+            placeholder="Rechercher un rendez-vous..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="form-control"
+          />
+          <FaSearch
+            style={{
+              position: "absolute",
+              top: "50%",
+              right: "12px",
+              transform: "translateY(-50%)",
+              color: "#888",
+            }}
+          />
         </div>
       </div>
+
+      {filteredAppointments.length === 0 ? (
+        <div className="alert alert-info">Aucun rendez-vous trouvé.</div>
+      ) : (
+        <div className="row">
+          {filteredAppointments.map((appointment) => (
+            <div key={appointment.numero} className="col-md-6 mb-3">
+              <div className="card">
+                <div className="card-body">
+                  <h5 className="card-title">
+                    <FaUser className="me-2" />
+                    {appointment.patient_nom}
+                  </h5>
+                  <p className="card-text">
+                    <FaCalendarAlt className="me-2" />
+                    {formatDate(appointment.date)}
+                  </p>
+                  <p className="card-text">
+                    <FaClock className="me-2" />
+                    {appointment.heure}
+                  </p>
+                  {appointment.description && (
+                    <p className="card-text">{appointment.description}</p>
+                  )}
+                  <div className="d-flex justify-content-between align-items-center">
+                    {getStatusBadge(appointment.statut)}
+                    {appointment.statut === "PENDING" && (
+                      <div>
+                        <button
+                          className="btn btn-success btn-sm me-2"
+                          onClick={() => handleConfirm(appointment)}
+                        >
+                          <FaCheck className="me-1" />
+                          Confirmer
+                        </button>
+                        <button
+                          className="btn btn-warning btn-sm me-2"
+                          onClick={() => handleReschedule(appointment)}
+                        >
+                          <FaEdit className="me-1" />
+                          Reporter
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleCancel(appointment)}
+                        >
+                          <FaTimes className="me-1" />
+                          Annuler
+                        </button>
+                      </div>
+                    )}
+                    {appointment.statut === "CONFIRMED" && (
+                      <div>
+                        <button
+                          className="btn btn-warning btn-sm"
+                          onClick={() => handleReschedule(appointment)}
+                        >
+                          <FaEdit className="me-1" />
+                          Reporter
+                        </button>
+                      </div>
+                    )}
+                    {(appointment.statut === "RESCHEDULED") && (
+                      <div>
+                        <button
+                          className="btn btn-success btn-sm me-2"
+                          onClick={() => handleConfirm(appointment)}
+                        >
+                          <FaCheck className="me-1" />
+                          Confirmer
+                        </button>
+                        <button
+                          className="btn btn-warning btn-sm"
+                          onClick={() => handleReschedule(appointment)}
+                        >
+                          <FaEdit className="me-1" />
+                          Reporter
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,11 @@ class NotificationService:
         patient = rendez_vous.patient
         medecin = rendez_vous.medecin
 
+        # Additional validation to ensure we're only sending to one specific doctor
+        if not medecin or not hasattr(medecin, 'user') or not getattr(medecin.user, 'email', None):
+            print(f"❌ Erreur: Médecin invalide ou email manquant pour le rendez-vous {getattr(rendez_vous, 'numero', 'N/A')}")
+            return
+
         subject = f"📅 Nouvelle demande de rendez-vous - AssitoSanté"
         message = f"""
 Bonjour Dr. {medecin.user.first_name},

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FaPlus, FaEdit, FaTrash, FaChartBar, FaCalendarAlt, FaPills } from "react-icons/fa";
-import { medicationService } from "../../services/medicationService";
+import medicationService from "../../services/medicationService";
 import { Line, Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FaRobot, FaPlus, FaEdit, FaTrash, FaChartBar } from "react-icons/fa";
-import { chatbotService } from "../../services/chatbotService";
+import chatbotService from "../../services/chatbotService";
 
 function ChatbotManagement() {
   const [knowledgeBase, setKnowledgeBase] = useState([]);
@@ -31,37 +31,8 @@ function ChatbotManagement() {
   const loadKnowledgeBase = async () => {
     try {
       setLoading(true);
-      // In a real implementation, this would call the API
-      // For now, we'll use sample data
-      const sampleData = [
-        {
-          id: 1,
-          keyword: "fièvre",
-          response:
-            "La fièvre est souvent un signe que votre corps combat une infection.",
-          category: "symptoms",
-        },
-        {
-          id: 2,
-          keyword: "tête",
-          response: "Les maux de tête peuvent avoir plusieurs causes.",
-          category: "symptoms",
-        },
-        {
-          id: 3,
-          keyword: "rendez-vous",
-          response:
-            "Pour prendre un rendez-vous, connectez-vous à votre espace patient.",
-          category: "services",
-        },
-        {
-          id: 4,
-          keyword: "urgence",
-          response: "En cas d'urgence, composez le 15 (SAMU).",
-          category: "emergency",
-        },
-      ];
-      setKnowledgeBase(sampleData);
+      const data = await chatbotService.getKnowledgeBase();
+      setKnowledgeBase(data);
     } catch (err) {
       setError(
         "Erreur lors du chargement de la base de connaissances: " +
@@ -75,19 +46,8 @@ function ChatbotManagement() {
 
   const loadStatistics = async () => {
     try {
-      // In a real implementation, this would call the API
-      // For now, we'll use sample data
-      const sampleStats = {
-        total_conversations: 1245,
-        total_users: 876,
-        avg_response_time: "2.3s",
-        top_questions: [
-          { question: "Comment prendre rendez-vous ?", count: 142 },
-          { question: "J'ai de la fièvre", count: 98 },
-          { question: "Horaires d'ouverture", count: 87 },
-        ],
-      };
-      setStatistics(sampleStats);
+      const data = await chatbotService.getStatistics();
+      setStatistics(data);
     } catch (err) {
       console.error("Erreur lors du chargement des statistiques:", err);
     }
@@ -132,21 +92,13 @@ function ChatbotManagement() {
     try {
       if (currentEntry) {
         // Update existing entry
-        // In a real implementation, this would call the API
-        setKnowledgeBase((prev) =>
-          prev.map((entry) =>
-            entry.id === currentEntry.id ? { ...entry, ...formData } : entry
-          )
-        );
+        await chatbotService.updateKnowledgeBaseEntry(currentEntry.id, formData);
+        loadKnowledgeBase();
         setShowEditModal(false);
       } else {
         // Add new entry
-        // In a real implementation, this would call the API
-        const newEntry = {
-          id: Date.now(),
-          ...formData,
-        };
-        setKnowledgeBase((prev) => [...prev, newEntry]);
+        await chatbotService.addKnowledgeBaseEntry(formData);
+        loadKnowledgeBase();
         setShowAddModal(false);
       }
 
@@ -172,13 +124,11 @@ function ChatbotManagement() {
     setShowEditModal(true);
   };
 
-  const handleDelete = (entryId) => {
+  const handleDelete = async (entryId) => {
     if (window.confirm("Êtes-vous sûr de vouloir supprimer cette entrée ?")) {
       try {
-        // In a real implementation, this would call the API
-        setKnowledgeBase((prev) =>
-          prev.filter((entry) => entry.id !== entryId)
-        );
+        await chatbotService.deleteKnowledgeBaseEntry(entryId);
+        loadKnowledgeBase();
         alert("Entrée supprimée");
       } catch (err) {
         alert(

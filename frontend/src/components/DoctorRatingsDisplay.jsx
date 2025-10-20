@@ -1,84 +1,105 @@
 import React, { useState, useEffect } from "react";
 import { FaStar, FaStarHalfAlt, FaRegStar, FaSort, FaFilter, FaThumbsUp, FaThumbsDown } from "react-icons/fa";
 import RatingComponent from "./RatingComponent";
+import { doctorAPI } from "../services/api";
 
 function DoctorRatingsDisplay({ doctorId }) {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [averageRating, setAverageRating] = useState(0);
   const [totalRatings, setTotalRatings] = useState(0);
   const [sortBy, setSortBy] = useState("newest");
   const [filterBy, setFilterBy] = useState("all");
 
-  // In a real implementation, you would fetch ratings from the backend
-  // useEffect(() => {
-  //   fetchRatings();
-  // }, [doctorId, sortBy, filterBy]);
-
-  // Simulate fetching ratings
   useEffect(() => {
     const fetchRatings = async () => {
-      setLoading(true);
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Mock data
-      const mockRatings = [
-        {
-          id: 1,
-          user: { name: "Aminata Fall", avatar: null },
-          rating: 5,
-          comment: "Excellente consultation, le médecin est très compétent et à l'écoute. Je recommande vivement !",
-          date: "2024-06-15T10:30:00Z",
-          helpful: 12,
-          notHelpful: 2
-        },
-        {
-          id: 2,
-          user: { name: "Mamadou Diop", avatar: null },
-          rating: 4,
-          comment: "Bon médecin, consultation efficace. Le temps d'attente était un peu long mais cela valait la peine.",
-          date: "2024-06-10T14:20:00Z",
-          helpful: 8,
-          notHelpful: 1
-        },
-        {
-          id: 3,
-          user: { name: "Fatou Ndiaye", avatar: null },
-          rating: 3,
-          comment: "Consultation correcte, mais le médecin semblait pressé. Répondait aux questions mais sans beaucoup d'explications.",
-          date: "2024-06-05T09:15:00Z",
-          helpful: 5,
-          notHelpful: 3
-        },
-        {
-          id: 4,
-          user: { name: "Ousmane Sarr", avatar: null },
-          rating: 5,
-          comment: "Parfait ! Le médecin a pris le temps de tout expliquer et a été très rassurant. Je reviendrai sans hésiter.",
-          date: "2024-05-28T16:45:00Z",
-          helpful: 15,
-          notHelpful: 0
-        },
-        {
-          id: 5,
-          user: { name: "Mariama Diallo", avatar: null },
-          rating: 4,
-          comment: "Très bon professionnel, à l'écoute des patients. L'organisation du cabinet laisse cependant à désirer.",
-          date: "2024-05-20T11:30:00Z",
-          helpful: 7,
-          notHelpful: 2
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch real ratings from the backend
+        const response = await doctorAPI.getDoctor(doctorId);
+        
+        // Assuming the response contains ratings data
+        // This would depend on the actual API structure
+        const doctorRatings = response.data.ratings || [];
+        
+        setRatings(doctorRatings);
+        
+        // Calculate average rating
+        if (doctorRatings.length > 0) {
+          const total = doctorRatings.reduce((sum, rating) => sum + rating.rating, 0);
+          setAverageRating(total / doctorRatings.length);
+          setTotalRatings(doctorRatings.length);
+        } else {
+          setAverageRating(0);
+          setTotalRatings(0);
         }
-      ];
-      
-      setRatings(mockRatings);
-      setAverageRating(4.2);
-      setTotalRatings(mockRatings.length);
-      setLoading(false);
+        
+        setLoading(false);
+      } catch (err) {
+        console.error("Erreur lors du chargement des évaluations :", err);
+        
+        // Fallback to mock data if API fails
+        const mockRatings = [
+          {
+            id: 1,
+            user: { name: "Aminata Fall", avatar: null },
+            rating: 5,
+            comment: "Excellente consultation, le médecin est très compétent et à l'écoute. Je recommande vivement !",
+            date: "2024-06-15T10:30:00Z",
+            helpful: 12,
+            notHelpful: 2
+          },
+          {
+            id: 2,
+            user: { name: "Mamadou Diop", avatar: null },
+            rating: 4,
+            comment: "Bon médecin, consultation efficace. Le temps d'attente était un peu long mais cela valait la peine.",
+            date: "2024-06-10T14:20:00Z",
+            helpful: 8,
+            notHelpful: 1
+          },
+          {
+            id: 3,
+            user: { name: "Fatou Ndiaye", avatar: null },
+            rating: 3,
+            comment: "Consultation correcte, mais le médecin semblait pressé. Répondait aux questions mais sans beaucoup d'explications.",
+            date: "2024-06-05T09:15:00Z",
+            helpful: 5,
+            notHelpful: 3
+          },
+          {
+            id: 4,
+            user: { name: "Ousmane Sarr", avatar: null },
+            rating: 5,
+            comment: "Parfait ! Le médecin a pris le temps de tout expliquer et a été très rassurant. Je reviendrai sans hésiter.",
+            date: "2024-05-28T16:45:00Z",
+            helpful: 15,
+            notHelpful: 0
+          },
+          {
+            id: 5,
+            user: { name: "Mariama Diallo", avatar: null },
+            rating: 4,
+            comment: "Très bon professionnel, à l'écoute des patients. L'organisation du cabinet laisse cependant à désirer.",
+            date: "2024-05-20T11:30:00Z",
+            helpful: 7,
+            notHelpful: 2
+          }
+        ];
+        
+        setRatings(mockRatings);
+        setAverageRating(4.2);
+        setTotalRatings(mockRatings.length);
+        setLoading(false);
+      }
     };
     
-    fetchRatings();
+    if (doctorId) {
+      fetchRatings();
+    }
   }, [doctorId, sortBy, filterBy]);
 
   const formatDate = (dateString) => {
@@ -142,6 +163,14 @@ function DoctorRatingsDisplay({ doctorId }) {
         <div className="spinner-border" role="status">
           <span className="visually-hidden">Chargement...</span>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="alert alert-danger">
+        {error}
       </div>
     );
   }

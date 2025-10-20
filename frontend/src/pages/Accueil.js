@@ -202,7 +202,7 @@ function Accueil() {
         <div className="container-fluid h-100">
           <div className="row align-items-center h-100">
             {/* Colonne gauche : Texte */}
-            <div className="col-lg-6 text-white px-5">
+            <div className="col-lg-6 px-5" style={{ color: "#333" }}>
               {/* Barre de recherche */}
               <div className="input-group mb-4">
                 <input
@@ -459,6 +459,17 @@ function Accueil() {
             vertical-align: -.125em;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+          }
+          
+          /* Fix carousel caption visibility */
+          .carousel-caption {
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+          }
+          
+          .carousel-caption h5 {
+            background-color: rgba(220, 53, 69, 0.85) !important;
+            color: white !important;
           }
         `}
       </style>

@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework.authtoken',
     'corsheaders',
+    'channels',  # Add this for WebSocket support
 ]
 
 MIDDLEWARE = [
@@ -107,6 +108,9 @@ TEMPLATES = [
         },
     },
 ]
+
+# Add ASGI application for WebSocket support
+ASGI_APPLICATION = 'Sante_Virtuelle.asgi.application'
 
 WSGI_APPLICATION = 'Sante_Virtuelle.wsgi.application'
 
@@ -228,4 +232,14 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+}
+
+# ============================================
+# CHANNELS CONFIGURATION FOR WEBSOCKET
+# ============================================
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
 }

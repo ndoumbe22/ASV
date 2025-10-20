@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { useAuth } from "../../context/AuthContext";
+import { patientAPI, doctorAPI } from "../../services/api";
 import { FaUser, FaSearch, FaPhone, FaEnvelope, FaMapMarkerAlt } from "react-icons/fa";
 
 function DossiersPatients() {
+  const { user } = useAuth();
   const [patients, setPatients] = useState([]);
   const [filteredPatients, setFilteredPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -14,61 +16,26 @@ function DossiersPatients() {
     const fetchPatients = async () => {
       try {
         setLoading(true);
-        // Dans une vraie application, ces données viendraient de l'API
-        // Pour l'instant, utilisons des données statiques
-        const mockPatients = [
-          {
-            id: 1,
-            nom: "Diop",
-            prenom: "Awa",
-            age: 32,
-            sexe: "Féminin",
-            telephone: "+221 77 987 65 43",
-            email: "awa.diop@email.com",
-            adresse: "Dakar, Sénégal",
-            dernierRdv: "2023-10-15",
-            prochainRdv: "2023-10-20"
-          },
-          {
-            id: 2,
-            nom: "Fall",
-            prenom: "Mamadou",
-            age: 45,
-            sexe: "Masculin",
-            telephone: "+221 77 123 45 67",
-            email: "mamadou.fall@email.com",
-            adresse: "Thiès, Sénégal",
-            dernierRdv: "2023-10-10",
-            prochainRdv: null
-          },
-          {
-            id: 3,
-            nom: "Ndiaye",
-            prenom: "Fatou",
-            age: 28,
-            sexe: "Féminin",
-            telephone: "+221 77 456 78 90",
-            email: "fatou.ndiaye@email.com",
-            adresse: "Saint-Louis, Sénégal",
-            dernierRdv: "2023-09-28",
-            prochainRdv: null
-          },
-          {
-            id: 4,
-            nom: "Sow",
-            prenom: "Cheikh",
-            age: 52,
-            sexe: "Masculin",
-            telephone: "+221 77 234 56 78",
-            email: "cheikh.sow@email.com",
-            adresse: "Kaolack, Sénégal",
-            dernierRdv: "2023-10-05",
-            prochainRdv: "2023-10-25"
-          }
-        ];
         
-        setPatients(mockPatients);
-        setFilteredPatients(mockPatients);
+        // Get patients from the API
+        const response = await patientAPI.getPatients();
+        
+        // Transform the data to match the expected format
+        const formattedPatients = response.data.map(patient => ({
+          id: patient.user.id,
+          nom: patient.user.last_name || "",
+          prenom: patient.user.first_name || "",
+          age: calculateAge(patient.date_naissance) || 0,
+          sexe: patient.sexe || "Non spécifié",
+          telephone: patient.telephone || "",
+          email: patient.user.email || "",
+          adresse: patient.adresse || "",
+          dernierRdv: "", // This would need to be fetched from appointment API
+          prochainRdv: "" // This would need to be fetched from appointment API
+        }));
+        
+        setPatients(formattedPatients);
+        setFilteredPatients(formattedPatients);
         setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement des patients");
@@ -77,16 +44,33 @@ function DossiersPatients() {
       }
     };
 
-    fetchPatients();
-  }, []);
+    if (user) {
+      fetchPatients();
+    }
+  }, [user]);
+
+  // Helper function to calculate age from birth date
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    
+    return age;
+  };
 
   // Filtrer selon recherche
   useEffect(() => {
     const filtered = patients.filter(
       patient =>
         `${patient.prenom} ${patient.nom}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        patient.telephone.includes(searchTerm) ||
-        patient.email.toLowerCase().includes(searchTerm.toLowerCase())
+        (patient.telephone && patient.telephone.includes(searchTerm)) ||
+        (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     setFilteredPatients(filtered);
   }, [searchTerm, patients]);
@@ -182,9 +166,9 @@ function DossiersPatients() {
                     </div>
                     
                     <div className="mb-3">
-                      <p className="mb-1"><FaPhone className="me-2" /> {patient.telephone}</p>
-                      <p className="mb-1"><FaEnvelope className="me-2" /> {patient.email}</p>
-                      <p className="mb-1"><FaMapMarkerAlt className="me-2" /> {patient.adresse}</p>
+                      <p className="mb-1"><FaPhone className="me-2" /> {patient.telephone || "Non renseigné"}</p>
+                      <p className="mb-1"><FaEnvelope className="me-2" /> {patient.email || "Non renseigné"}</p>
+                      <p className="mb-1"><FaMapMarkerAlt className="me-2" /> {patient.adresse || "Non renseigné"}</p>
                     </div>
                     
                     <div className="d-flex justify-content-between align-items-center mb-3">

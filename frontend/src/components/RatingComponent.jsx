@@ -33,11 +33,14 @@ function RatingComponent({
     const stars = [];
     const currentRating = hover || rating;
     
+    // Ensure currentRating is between 0 and 5
+    const clampedRating = Math.max(0, Math.min(5, currentRating));
+    
     for (let i = 1; i <= 5; i++) {
       let icon;
-      if (currentRating >= i) {
+      if (clampedRating >= i) {
         icon = <FaStar data-testid={`star-${i}-full`} />;
-      } else if (currentRating >= i - 0.5) {
+      } else if (clampedRating >= i - 0.5) {
         icon = <FaStarHalfAlt data-testid={`star-${i}-half`} />;
       } else {
         icon = <FaRegStar data-testid={`star-${i}-empty`} />;

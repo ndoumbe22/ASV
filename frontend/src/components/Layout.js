@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import Chatbot from "./Chatbot"; // Import the Chatbot component
 import Footer from "./Footer"; // Import the Footer component
-import ThemeSwitcher from "./ThemeSwitcher"; // Import Theme Switcher
+import GlobalSearch from "./GlobalSearch"; // Import the GlobalSearch component
+import EnhancedChatbot from "./EnhancedChatbot"; // Import the EnhancedChatbot component
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
 
@@ -10,7 +10,6 @@ function Layout() {
   const [query, setQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showChatbot, setShowChatbot] = useState(false); // State for chatbot modal
   const navigate = useNavigate();
 
   // Initialize map when component mounts
@@ -167,6 +166,11 @@ function Layout() {
             />
           </div>
 
+          {/* Global Search */}
+          <div className="d-none d-lg-block" style={{ flex: 1, maxWidth: "500px", margin: "0 20px" }}>
+            <GlobalSearch />
+          </div>
+
           {/* Mobile menu toggle button */}
           <button
             className="navbar-toggler d-lg-none"
@@ -294,10 +298,10 @@ function Layout() {
               </a>
               <Link
                 className="nav-link"
-                to="/consultation"
+                to="/articles"
                 onClick={() => setShowMobileMenu(false)}
               >
-                Consultation
+                Articles
               </Link>
             </div>
           </nav>
@@ -380,13 +384,6 @@ function Layout() {
               pharmacies et hôpitaux, tout en profitant d'un suivi personnalisé.
             </p>
             <div className="d-flex align-items-center mt-4">
-              <button
-                className="btn fw-bold me-3"
-                style={{ backgroundColor: "#4f9cef", color: "white" }}
-                onClick={() => setShowChatbot(true)} // Open chatbot modal
-              >
-                ChatSanté
-              </button>
               <button className="btn btn-outline-light">▶ Voir la Démo</button>
             </div>
           </div>
@@ -417,30 +414,6 @@ function Layout() {
       {/* Professional Footer Component */}
       <Footer />
 
-      {/* Floating Chatbot Button */}
-      <button
-        className="btn btn-primary chatbot-floating-button"
-        onClick={() => setShowChatbot(true)}
-        style={{
-          position: "fixed",
-          bottom: "80px",
-          right: "20px",
-          zIndex: "1000",
-          borderRadius: "50%",
-          width: "60px",
-          height: "60px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 4px 8px rgba(0,0,0,0.2)",
-        }}
-      >
-        <i className="bi bi-chat-dots" style={{ fontSize: "24px" }}></i>
-      </button>
-
-      {/* Chatbot Modal */}
-      <Chatbot show={showChatbot} onClose={() => setShowChatbot(false)} />
-
       {/* Bootstrap Icons */}
       <link
         rel="stylesheet"
@@ -454,7 +427,7 @@ function Layout() {
         className="btn btn-success fw-bold"
         style={{
           position: "fixed",
-          bottom: "20px",
+          bottom: "90px",
           right: "20px",
           zIndex: "1000",
         }}
@@ -462,104 +435,8 @@ function Layout() {
         Demander un Rendez-vous
       </Link>
 
-      <style>
-        {`
-          .search-input {
-            max-width: 0;
-            opacity: 0;
-            transition: all 0.4s ease-in-out;
-            overflow: hidden;
-          }
-          .search-input.show {
-            max-width: 200px;
-            opacity: 1;
-          }
-          
-          /* Fix for ensuring all components are visible */
-          body {
-            overflow-x: hidden;
-          }
-          
-          /* Ensure the hero section displays properly */
-          .hero-section {
-            display: block !important;
-          }
-          
-          /* Fix potential z-index issues */
-          header, .hero-section, main, footer {
-            position: relative;
-            z-index: 1;
-          }
-          
-          /* Ensure navbar is always visible */
-          .navbar {
-            display: flex !important;
-            flex-direction: row;
-          }
-          
-          .navbar-nav {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-          }
-          
-          .nav-link {
-            padding: 0.5rem 1rem;
-            color: white !important;
-          }
-          
-          .dropdown-menu {
-            position: absolute;
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 0.5rem 0;
-          }
-          
-          .dropdown-item {
-            padding: 0.5rem 1rem;
-            display: block;
-            text-decoration: none;
-          }
-          
-          @media (max-width: 991px) {
-            .navbar-nav {
-              flex-direction: column;
-              align-items: flex-start;
-              background-color: #103e6e;
-              padding: 1rem;
-            }
-            
-            .nav-link {
-              padding: 0.75rem 0;
-            }
-          }
-          
-          /* Map container */
-          #map {
-            width: 100%;
-            height: 200px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
-          }
-          
-          /* Floating chatbot button */
-          .chatbot-floating-button {
-            background-color: #007bff !important;
-            border: none !important;
-          }
-          
-          .chatbot-floating-button:hover {
-            background-color: #0056b3 !important;
-          }
-        `}
-      </style>
-
-      {/* Leaflet CSS for map */}
-      <link
-        rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      />
+      {/* Chatbot button will be positioned by the EnhancedChatbot component itself */}
+      <EnhancedChatbot />
     </>
   );
 }

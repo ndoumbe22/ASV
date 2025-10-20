@@ -10,53 +10,54 @@ class WebSocketService {
 
   connect(url) {
     if (this.socket && this.isConnected) {
-      console.log('WebSocket already connected');
+      console.log("WebSocket already connected");
       return;
     }
 
     try {
       this.socket = new WebSocket(url);
-      
+
       this.socket.onopen = (event) => {
-        console.log('WebSocket connected');
+        console.log("WebSocket connected to:", url);
         this.isConnected = true;
         this.reconnectAttempts = 0;
-        this.emit('connected', event);
+        this.emit("connected", event);
       };
 
       this.socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('WebSocket message received:', data);
-          this.emit('message', data);
+          console.log("WebSocket message received:", data);
+          this.emit("message", data);
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
-       
- }
+          console.error("Error parsing WebSocket message:", error);
+        }
       };
 
       this.socket.onclose = (event) => {
-        console.log('WebSocket closed:', event);
+        console.log("WebSocket closed:", event);
         this.isConnected = false;
-        this.emit('disconnected', event);
-        
+        this.emit("disconnected", event);
+
         // Attempt to reconnect
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           setTimeout(() => {
             this.reconnectAttempts++;
-            console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            console.log(
+              `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+            );
             this.connect(url);
           }, this.reconnectDelay * this.reconnectAttempts);
         }
       };
 
       this.socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.emit('error', error);
+        console.error("WebSocket error:", error);
+        this.emit("error", error);
       };
     } catch (error) {
-      console.error('Error creating WebSocket connection:', error);
-      this.emit('error', error);
+      console.error("Error creating WebSocket connection:", error);
+      this.emit("error", error);
     }
   }
 
@@ -73,10 +74,10 @@ class WebSocketService {
       try {
         this.socket.send(JSON.stringify(data));
       } catch (error) {
-        console.error('Error sending WebSocket message:', error);
+        console.error("Error sending WebSocket message:", error);
       }
     } else {
-      console.warn('WebSocket not connected. Cannot send message.');
+      console.warn("WebSocket not connected. Cannot send message.");
     }
   }
 
@@ -90,13 +91,15 @@ class WebSocketService {
 
   off(event, callback) {
     if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+      this.listeners[event] = this.listeners[event].filter(
+        (cb) => cb !== callback
+      );
     }
   }
 
   emit(event, data) {
     if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => {
+      this.listeners[event].forEach((callback) => {
         try {
           callback(data);
         } catch (error) {
@@ -108,25 +111,38 @@ class WebSocketService {
 
   // Specific methods for notification events
   onNotification(callback) {
-    this.on('message', (data) => {
-      if (data.type === 'notification') {
+    this.on("message", (data) => {
+      if (data.type === "notification") {
         callback(data.payload);
       }
     });
   }
 
   onMedicationReminder(callback) {
-    this.on('message', (data) => {
-      if (data.type === 'medication_reminder') {
+    this.on("message", (data) => {
+      if (data.type === "medication_reminder") {
         callback(data.payload);
       }
     });
   }
 
   onAppointmentUpdate(callback) {
-    this.on('message', (data) => {
-      if (data.type === 'appointment_update') {
+    this.on("message", (data) => {
+      if (data.type === "appointment_update") {
         callback(data.payload);
+      }
+    });
+  }
+
+  // Specific method for message events
+  onMessage(callback) {
+    this.on("message", (data) => {
+      // Handle both direct message format and wrapped format
+      if (data.type === "message") {
+        callback(data.payload);
+      } else if (data.content && data.timestamp) {
+        // Direct message format
+        callback(data);
       }
     });
   }

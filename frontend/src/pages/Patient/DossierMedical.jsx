@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { patientAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
+import { patientAPI, userAPI, medicalDocumentAPI } from "../../services/api";
 import { 
   FaUser, FaHeart, FaWeight, FaTemperatureHigh, 
   FaPrescription, FaFileMedical, FaAllergies,
@@ -11,6 +12,7 @@ import {
 } from 'recharts';
 
 function DossierMedical() {
+  const { user, isAuthenticated } = useAuth();
   const [patientData, setPatientData] = useState(null);
   const [consultations, setConsultations] = useState([]);
   const [traitements, setTraitements] = useState([]);
@@ -23,53 +25,113 @@ function DossierMedical() {
   // Charger les données du dossier médical
   useEffect(() => {
     const fetchMedicalData = async () => {
+      if (!isAuthenticated || !user) return;
+      
       try {
         setLoading(true);
         
-        // Fetch patient data
-        const patientResponse = await patientAPI.getPatient(1); // We'll need to get the actual patient ID
-        setPatientData(patientResponse.data);
+        // Fetch current user's profile data
+        const profileResponse = await userAPI.getProfile();
+        console.log("User profile:", profileResponse.data);
+        
+        // Set patient data with user profile information
+        setPatientData({
+          nom: profileResponse.data.last_name || "",
+          prenom: profileResponse.data.first_name || "",
+          email: profileResponse.data.email || "",
+          telephone: profileResponse.data.telephone || "",
+          adresse: profileResponse.data.adresse || "",
+          // Add other fields as needed
+          allergies: [],
+          contactUrgence: {
+            nom: "",
+            telephone: ""
+          }
+        });
         
         // Fetch medications
-        const medicationsResponse = await patientAPI.getMedications();
-        setTraitements(medicationsResponse.data);
+        try {
+          const medicationsResponse = await patientAPI.getMedications();
+          setTraitements(medicationsResponse.data);
+        } catch (medicationError) {
+          console.error("Error fetching medications:", medicationError);
+          setTraitements([]);
+        }
         
-        // For now, we'll still use mock data for other sections
-        // In a real application, these would come from the API
-        const mockConsultations = [
-          { id: 1, date: "2023-10-15", medecin: "Dr. Ibrahim Dia", diagnostic: "Rhume saisonnier", ordonnance: "Paracétamol 500mg, 3 fois par jour pendant 5 jours" },
-          { id: 2, date: "2023-08-22", medecin: "Dr. Fatou Ndiaye", diagnostic: "Hypertension légère", ordonnance: "Surveillance régulière, réduction sel" },
-          { id: 3, date: "2023-05-10", medecin: "Dr. Mamadou Fall", diagnostic: "Migraine chronique", ordonnance: "Propranolol 40mg matin et soir" }
-        ];
+        // Fetch consultations from the API
+        try {
+          const consultationsResponse = await patientAPI.getAppointmentHistory();
+          // Transform the data to match the expected format
+          const formattedConsultations = consultationsResponse.data.map(app => ({
+            id: app.id,
+            date: app.date,
+            medecin: app.doctor_name || app.doctor || "Médecin non spécifié",
+            diagnostic: app.diagnostic || "Diagnostic non disponible",
+            ordonnance: app.ordonnance || "Ordonnance non disponible"
+          }));
+          setConsultations(formattedConsultations);
+        } catch (consultationError) {
+          console.error("Error fetching consultations:", consultationError);
+          // Fallback to mock data if API fails
+          const mockConsultations = [
+            { id: 1, date: "2023-10-15", medecin: "Dr. Ibrahim Dia", diagnostic: "Rhume saisonnier", ordonnance: "Paracétamol 500mg, 3 fois par jour pendant 5 jours" },
+            { id: 2, date: "2023-08-22", medecin: "Dr. Fatou Ndiaye", diagnostic: "Hypertension légère", ordonnance: "Surveillance régulière, réduction sel" },
+            { id: 3, date: "2023-05-10", medecin: "Dr. Mamadou Fall", diagnostic: "Migraine chronique", ordonnance: "Propranolol 40mg matin et soir" }
+          ];
+          setConsultations(mockConsultations);
+        }
         
-        const mockMesures = [
-          { id: 1, constante: "Poids", valeur: 65, unite: "kg", date: "2023-10-15" },
-          { id: 2, constante: "Tension", valeur: "130/85", unite: "mmHg", date: "2023-10-15" },
-          { id: 3, constante: "Température", valeur: 37.2, unite: "°C", date: "2023-10-15" },
-          { id: 4, constante: "Poids", valeur: 64, unite: "kg", date: "2023-08-22" },
-          { id: 5, constante: "Tension", valeur: "125/80", unite: "mmHg", date: "2023-08-22" },
-          { id: 6, constante: "Poids", valeur: 66, unite: "kg", date: "2023-05-10" }
-        ];
+        // Fetch medical measures from the API (this would need a specific endpoint)
+        try {
+          // For now, we'll use mock data as there's no specific API endpoint
+          // In a real implementation, you would call the appropriate API
+          const mockMesures = [
+            { id: 1, constante: "Poids", valeur: 65, unite: "kg", date: "2023-10-15" },
+            { id: 2, constante: "Tension", valeur: "130/85", unite: "mmHg", date: "2023-10-15" },
+            { id: 3, constante: "Température", valeur: 37.2, unite: "°C", date: "2023-10-15" },
+            { id: 4, constante: "Poids", valeur: 64, unite: "kg", date: "2023-08-22" },
+            { id: 5, constante: "Tension", valeur: "125/80", unite: "mmHg", date: "2023-08-22" },
+            { id: 6, constante: "Poids", valeur: 66, unite: "kg", date: "2023-05-10" }
+          ];
+          setMesures(mockMesures);
+        } catch (mesuresError) {
+          console.error("Error fetching medical measures:", mesuresError);
+          setMesures([]);
+        }
         
-        const mockDocuments = [
-          { id: 1, nom: "Analyse sanguine.pdf", date: "2023-10-15", type: "pdf" },
-          { id: 2, nom: "Radiographie thoracique.jpg", date: "2023-08-22", type: "image" },
-          { id: 3, nom: "Ordonnance_2023_10.pdf", date: "2023-10-15", type: "pdf" }
-        ];
-        
-        setConsultations(mockConsultations);
-        setMesures(mockMesures);
-        setDocuments(mockDocuments);
+        // Fetch medical documents from the API
+        try {
+          const documentsResponse = await medicalDocumentAPI.getDocuments();
+          // Transform the data to match the expected format
+          const formattedDocuments = documentsResponse.data.map(doc => ({
+            id: doc.id,
+            nom: doc.title || doc.name || "Document sans titre",
+            date: doc.uploaded_at || doc.created_at || new Date().toISOString(),
+            type: doc.file_type || "pdf"
+          }));
+          setDocuments(formattedDocuments);
+        } catch (documentError) {
+          console.error("Error fetching documents:", documentError);
+          // Fallback to mock data if API fails
+          const mockDocuments = [
+            { id: 1, nom: "Analyse sanguine.pdf", date: "2023-10-15", type: "pdf" },
+            { id: 2, nom: "Radiographie thoracique.jpg", date: "2023-08-22", type: "image" },
+            { id: 3, nom: "Ordonnance_2023_10.pdf", date: "2023-10-15", type: "pdf" }
+          ];
+          setDocuments(mockDocuments);
+        };
         setLoading(false);
       } catch (err) {
-        setError("Erreur lors du chargement du dossier médical");
+        setError("Erreur lors du chargement du dossier médical: " + (err.response?.data?.error || err.message));
         setLoading(false);
         console.error("Erreur lors du chargement du dossier médical :", err);
       }
     };
 
-    fetchMedicalData();
-  }, []);
+    if (isAuthenticated) {
+      fetchMedicalData();
+    }
+  }, [isAuthenticated, user]);
 
   // Données pour les graphiques
   const poidsData = mesures
