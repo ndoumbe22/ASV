@@ -16,6 +16,8 @@ router.register(r'patients', views.PatientViewSet)
 router.register(r'medecins', views.MedecinViewSet)
 router.register(r'rendezvous', views.RendezVousViewSet)
 router.register(r'consultations', views.ConsultationViewSet)
+router.register(r'consultation-messages', views.ConsultationMessageViewSet)
+router.register(r'teleconsultations', views.TeleconsultationViewSet)
 router.register(r'medicaments', views.MedicamentViewSet)
 router.register(r'pathologies', views.PathologieViewSet)
 router.register(r'traitements', views.TraitementViewSet)
@@ -30,6 +32,8 @@ router.register(r'hopitaux', HopitalViewSet)
 router.register(r'pharmacies', PharmacieViewSet)
 router.register(r'contact_footer', ContactFooterViewSet)
 router.register(r'medical-documents', views.MedicalDocumentViewSet)  # Added MedicalDocumentViewSet
+router.register(r'disponibilites-medecin', views.DisponibiliteMedecinViewSet)
+router.register(r'indisponibilites-medecin', views.IndisponibiliteMedecinViewSet)
 
 
 urlpatterns = [
@@ -108,6 +112,9 @@ urlpatterns = [
     # === VALIDATION RENDEZ-VOUS & ÉVALUATIONS ===
     path('appointments/<int:pk>/validate/', views.validate_appointment, name='validate-appointment'),
     path('appointments/<int:pk>/rating/', views.get_appointment_rating, name='get-appointment-rating'),
+    
+    # === DOCTOR APPOINTMENT MANAGEMENT ===
+    path('appointments/<int:pk>/doctor-reschedule/', views.doctor_reschedule_appointment, name='doctor-reschedule-appointment'),
     
     # === ADMIN APPOINTMENT MANAGEMENT ===
     path('admin/appointments/', views.admin_appointments_list, name='admin-appointments-list'),

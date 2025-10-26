@@ -1,111 +1,142 @@
-import os
-import django
-
-# Set up Django environment
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Sante_Virtuelle.settings')
-django.setup()
-
-# Import models
-from sante_app.models import Hopital, Clinique, Dentiste, Pharmacie
-
-# Create sample hospitals
-print("Creating hospitals...")
-hopital1, created = Hopital.objects.get_or_create(
-    nom='Hôpital Principal de Dakar',
-    defaults={
-        'adresse': 'Avenue Georges Pompidou, Dakar',
-        'telephone': '+221 33 123 45 67',
-        'latitude': 14.6937,
-        'longitude': -17.4440
-    }
-)
-print(f"Hôpital Principal de Dakar: {created}")
-
-hopital2, created = Hopital.objects.get_or_create(
-    nom='Hôpital Aristide Le Dantec',
-    defaults={
-        'adresse': 'Rue Faustin Imbassa, Dakar',
-        'telephone': '+221 33 987 65 43',
-        'latitude': 14.6892,
-        'longitude': -17.4428
-    }
-)
-print(f"Hôpital Aristide Le Dantec: {created}")
+from sante_app.models import Clinique, Pharmacie
 
 # Create sample clinics
-print("Creating clinics...")
-clinique1, created = Clinique.objects.get_or_create(
-    nom='Clinique Pasteur',
-    defaults={
-        'adresse': 'Rue Carnot, Dakar',
-        'telephone': '+221 33 456 78 90',
-        'latitude': 14.6915,
-        'longitude': -17.4452
+cliniques_data = [
+    {
+        "nom": "Clinique Médicale du Soleil",
+        "adresse": "15 Avenue Cheikh Anta Diop, Dakar",
+        "telephone": "+221 33 123 45 67",
+        "email": "contact@clinique-soleil.sn",
+        "latitude": 14.6937,
+        "longitude": -17.4440
+    },
+    {
+        "nom": "Centre de Santé Familiale",
+        "adresse": "45 Boulevard Martin Luther King, Dakar",
+        "telephone": "+221 33 234 56 78",
+        "email": "info@csf-dakar.sn",
+        "latitude": 14.7128,
+        "longitude": -17.4560
+    },
+    {
+        "nom": "Clinique Internationale de Dakar",
+        "adresse": "12 Rue Georges Pompidou, Dakar",
+        "telephone": "+221 33 345 67 89",
+        "email": "contact@cid.sn",
+        "latitude": 14.6789,
+        "longitude": -17.4321
+    },
+    {
+        "nom": "Clinique du Bon Pasteur",
+        "adresse": "8 Avenue Léopold Sédar Senghor, Dakar",
+        "telephone": "+221 33 456 78 90",
+        "email": "bonpasteur@clinique.sn",
+        "latitude": 14.6850,
+        "longitude": -17.4200
+    },
+    {
+        "nom": "Centre Médical Saint-Louis",
+        "adresse": "23 Rue Président Diouf, Dakar",
+        "telephone": "+221 33 567 89 01",
+        "email": "contact@cmsl.sn",
+        "latitude": 14.6500,
+        "longitude": -17.4000
     }
-)
-print(f"Clinique Pasteur: {created}")
-
-clinique2, created = Clinique.objects.get_or_create(
-    nom='Clinique du Bel-Air',
-    defaults={
-        'adresse': 'Avenue Léopold Sédar Senghor, Dakar',
-        'telephone': '+221 33 567 89 01',
-        'latitude': 14.6958,
-        'longitude': -17.4412
-    }
-)
-print(f"Clinique du Bel-Air: {created}")
-
-# Create sample dentists
-print("Creating dentists...")
-dentiste1, created = Dentiste.objects.get_or_create(
-    nom='Cabinet Dentaire du Dr. Ndiaye',
-    defaults={
-        'adresse': 'Rue de Thiong, Dakar',
-        'telephone': '+221 33 345 67 89',
-        'latitude': 14.6880,
-        'longitude': -17.4475
-    }
-)
-print(f"Cabinet Dentaire du Dr. Ndiaye: {created}")
-
-dentiste2, created = Dentiste.objects.get_or_create(
-    nom='Centre Dentaire International',
-    defaults={
-        'adresse': 'Avenue Malick Sy, Dakar',
-        'telephone': '+221 33 234 56 78',
-        'latitude': 14.6985,
-        'longitude': -17.4398
-    }
-)
-print(f"Centre Dentaire International: {created}")
+]
 
 # Create sample pharmacies
-print("Creating pharmacies...")
-pharmacie1, created = Pharmacie.objects.get_or_create(
-    nom='Pharmacie du Centre',
-    defaults={
-        'adresse': 'Place du Souvenir, Dakar',
-        'telephone': '+221 33 111 22 33',
-        'latitude': 14.6900,
-        'longitude': -17.4430
+pharmacies_data = [
+    {
+        "nom": "Pharmacie du Centre",
+        "adresse": "10 Place de l'Indépendance, Dakar",
+        "telephone": "+221 33 111 22 33",
+        "email": "pharmacie-centre@pharmacie.sn",
+        "ouvert_24h": True,
+        "latitude": 14.6900,
+        "longitude": -17.4400
+    },
+    {
+        "nom": "Pharmacie de la Gare",
+        "adresse": "5 Avenue Georges Brassens, Dakar",
+        "telephone": "+221 33 222 33 44",
+        "email": "gare@pharmacie.sn",
+        "ouvert_24h": False,
+        "latitude": 14.6750,
+        "longitude": -17.4300
+    },
+    {
+        "nom": "Pharmacie Saint-Michel",
+        "adresse": "30 Rue Saint-Michel, Dakar",
+        "telephone": "+221 33 333 44 55",
+        "email": "st-michel@pharmacie.sn",
+        "ouvert_24h": True,
+        "latitude": 14.6800,
+        "longitude": -17.4500
+    },
+    {
+        "nom": "Pharmacie de l'Université",
+        "adresse": "Université Cheikh Anta Diop, Dakar",
+        "telephone": "+221 33 444 55 66",
+        "email": "universite@pharmacie.sn",
+        "ouvert_24h": False,
+        "latitude": 14.6950,
+        "longitude": -17.4600
+    },
+    {
+        "nom": "Pharmacie du Marché",
+        "adresse": "Marché HLM, Dakar",
+        "telephone": "+221 33 555 66 77",
+        "email": "marche@pharmacie.sn",
+        "ouvert_24h": True,
+        "latitude": 14.7000,
+        "longitude": -17.4700
+    },
+    {
+        "nom": "Pharmacie Centrale",
+        "adresse": "Place du Souvenir Africain, Dakar",
+        "telephone": "+221 33 666 77 88",
+        "email": "centrale@pharmacie.sn",
+        "ouvert_24h": False,
+        "latitude": 14.6850,
+        "longitude": -17.4350
+    },
+    {
+        "nom": "Pharmacie de Ngor",
+        "adresse": "Île de Ngor, Dakar",
+        "telephone": "+221 33 777 88 99",
+        "email": "ngor@pharmacie.sn",
+        "ouvert_24h": True,
+        "latitude": 14.7500,
+        "longitude": -17.3800
+    },
+    {
+        "nom": "Pharmacie du Plateau",
+        "adresse": "Plateau, Dakar",
+        "telephone": "+221 33 888 99 00",
+        "email": "plateau@pharmacie.sn",
+        "ouvert_24h": False,
+        "latitude": 14.6600,
+        "longitude": -17.4250
     }
-)
-print(f"Pharmacie du Centre: {created}")
+]
 
-pharmacie2, created = Pharmacie.objects.get_or_create(
-    nom='Pharmacie de la République',
-    defaults={
-        'adresse': 'Avenue Lamine Guèye, Dakar',
-        'telephone': '+221 33 444 55 66',
-        'latitude': 14.6970,
-        'longitude': -17.4480
-    }
-)
-print(f"Pharmacie de la République: {created}")
+# Create clinics
+for clinique_data in cliniques_data:
+    clinique, created = Clinique.objects.get_or_create(
+        nom=clinique_data["nom"],
+        defaults=clinique_data
+    )
+    if created:
+        print(f"Created clinic: {clinique.nom}")
 
-print(f"Total hospitals: {Hopital.objects.count()}")
+# Create pharmacies
+for pharmacie_data in pharmacies_data:
+    pharmacie, created = Pharmacie.objects.get_or_create(
+        nom=pharmacie_data["nom"],
+        defaults=pharmacie_data
+    )
+    if created:
+        print(f"Created pharmacy: {pharmacie.nom}")
+
 print(f"Total clinics: {Clinique.objects.count()}")
-print(f"Total dentists: {Dentiste.objects.count()}")
 print(f"Total pharmacies: {Pharmacie.objects.count()}")
-print("Health facilities data population completed!")

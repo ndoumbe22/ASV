@@ -10,6 +10,7 @@ class SanteAppConfig(AppConfig):
     def ready(self):
         # Import here to avoid AppRegistryNotReady exception
         from .scheduler import scheduler
+        from . import signals  # Import signals to register them
         
         # Start the scheduler
         try:

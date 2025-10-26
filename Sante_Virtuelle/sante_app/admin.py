@@ -120,7 +120,7 @@ class ConstanteAdmin(admin.ModelAdmin):
 # -------------------- Mesures --------------------
 @admin.register(Mesure)
 class MesureAdmin(admin.ModelAdmin):
-    list_display = ("id_mesure", "constante", "valeur", "unite", "consultation")
+    list_display = ("id_mesure", "constante", "valeur", "unite")
     search_fields = ("constante__nom_constante",)
     list_filter = ("constante",)
 

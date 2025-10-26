@@ -90,10 +90,18 @@ class MedicationReminderScheduler:
         # For simplicity, we'll check if the current time is within a 1-minute window
         # of the reminder time
         reminder_time = reminder.heure_rappel
-        time_diff = abs(
-            current_time.hour * 60 + current_time.minute - 
-            reminder_time.hour * 60 - reminder_time.minute
-        )
+        
+        # Calculate time difference in minutes
+        current_minutes = current_time.hour * 60 + current_time.minute
+        reminder_minutes = reminder_time.hour * 60 + reminder_time.minute
+        
+        # Handle case where time difference crosses midnight
+        time_diff = abs(current_minutes - reminder_minutes)
+        
+        # If the difference is more than 12 hours, it means we've crossed midnight
+        # In that case, we need to calculate the shortest distance
+        if time_diff > 720:  # 12 hours in minutes
+            time_diff = 1440 - time_diff  # 24 hours - time_diff
         
         # Send reminder if within 1 minute of scheduled time
         return time_diff <= 1

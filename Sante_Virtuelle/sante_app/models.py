@@ -51,6 +51,259 @@ class Medecin(models.Model):
     def __str__(self):
         return f"Dr. {self.user.first_name} {self.user.last_name} ({self.specialite})"
 
+
+# -------------------- Disponibilité Médecin --------------------
+class DisponibiliteMedecin(models.Model):
+    JOURS_SEMAINE = [
+        ('lundi', 'Lundi'),
+        ('mardi', 'Mardi'),
+        ('mercredi', 'Mercredi'),
+        ('jeudi', 'Jeudi'),
+        ('vendredi', 'Vendredi'),
+        ('samedi', 'Samedi'),
+        ('dimanche', 'Dimanche'),
+    ]
+    
+    medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name='disponibilites')
+    jour = models.CharField(max_length=10, choices=JOURS_SEMAINE)
+    heure_debut = models.TimeField()
+    heure_fin = models.TimeField()
+    duree_consultation = models.IntegerField(default=30)  # en minutes
+    pause_dejeuner_debut = models.TimeField(null=True, blank=True)
+    pause_dejeuner_fin = models.TimeField(null=True, blank=True)
+    nb_max_consultations = models.IntegerField(default=10)
+    actif = models.BooleanField(default=True)
+    
+    class Meta:
+        db_table = 'DisponibiliteMedecin'
+        unique_together = ('medecin', 'jour')
+        verbose_name = 'Disponibilité Médecin'
+        verbose_name_plural = 'Disponibilités Médecins'
+    
+    def __str__(self):
+        return f"{self.medecin} - {self.get_jour_display()} ({self.heure_debut}-{self.heure_fin})"
+    
+    def generate_time_slots(self, date):
+        """
+        Génère tous les créneaux disponibles pour une date donnée
+        """
+        from django.utils import timezone
+        from datetime import datetime, timedelta
+        import calendar
+        
+        # Vérifier que la date correspond au jour de la semaine de cette disponibilité
+        day_names_fr = {
+            'lundi': 0, 'mardi': 1, 'mercredi': 2, 'jeudi': 3,
+            'vendredi': 4, 'samedi': 5, 'dimanche': 6
+        }
+        
+        if date.weekday() != day_names_fr[self.jour]:
+            return []
+        
+        # Générer les créneaux
+        slots = []
+        current_time = datetime.combine(date, self.heure_debut)
+        end_time = datetime.combine(date, self.heure_fin)
+        slot_duration = timedelta(minutes=self.duree_consultation)
+        
+        while current_time + slot_duration <= end_time:
+            slot_time = current_time.time()
+            
+            # Vérifier si ce créneau est pendant la pause déjeuner
+            if (self.pause_dejeuner_debut and self.pause_dejeuner_fin and
+                self.pause_dejeuner_debut <= slot_time < self.pause_dejeuner_fin):
+                current_time += slot_duration
+                continue
+            
+            # Vérifier si ce créneau est dans le passé
+            slot_datetime = datetime.combine(date, slot_time)
+            if slot_datetime < timezone.now():
+                current_time += slot_duration
+                continue
+            
+            slots.append(slot_time)
+            current_time += slot_duration
+        
+        return slots
+    
+    def is_available_at(self, datetime_check):
+        """
+        Vérifie si le médecin travaille à cette date/heure
+        """
+        from datetime import time
+        
+        # Vérifier que le jour correspond
+        day_names_fr = {
+            0: 'lundi', 1: 'mardi', 2: 'mercredi', 3: 'jeudi',
+            4: 'vendredi', 5: 'samedi', 6: 'dimanche'
+        }
+        
+        if self.jour != day_names_fr[datetime_check.weekday()]:
+            return False
+        
+        # Vérifier l'heure
+        check_time = datetime_check.time()
+        if not (self.heure_debut <= check_time <= self.heure_fin):
+            return False
+        
+        # Vérifier la pause déjeuner
+        if (self.pause_dejeuner_debut and self.pause_dejeuner_fin and
+            self.pause_dejeuner_debut <= check_time < self.pause_dejeuner_fin):
+            return False
+        
+        return True
+    
+    def get_next_available_slot(self, start_date=None):
+        """
+        Retourne le prochain créneau libre
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        import calendar
+        
+        if not start_date:
+            start_date = timezone.now().date()
+        
+        # Trouver le prochain jour correspondant à ce jour de la semaine
+        day_names_fr = {
+            'lundi': 0, 'mardi': 1, 'mercredi': 2, 'jeudi': 3,
+            'vendredi': 4, 'samedi': 5, 'dimanche': 6
+        }
+        
+        target_weekday = day_names_fr[self.jour]
+        days_ahead = target_weekday - start_date.weekday()
+        
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        
+        next_date = start_date + timedelta(days=days_ahead)
+        
+        # Générer les créneaux pour cette date
+        slots = self.generate_time_slots(next_date)
+        
+        if slots:
+            # Retourner le premier créneau disponible
+            return datetime.combine(next_date, slots[0])
+        
+        return None
+    
+    def clean(self):
+        """
+        Validation des données de la disponibilité
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        # Vérifier que l'heure de fin est > heure de début
+        if self.heure_fin <= self.heure_debut:
+            raise ValidationError("L'heure de fin doit être supérieure à l'heure de début")
+        
+        # Vérifier la durée de consultation
+        if self.duree_consultation < 15 or self.duree_consultation > 120:
+            raise ValidationError("La durée de consultation doit être entre 15 et 120 minutes")
+        
+        # Vérifier la pause déjeuner
+        if (self.pause_dejeuner_debut and self.pause_dejeuner_fin):
+            if self.pause_dejeuner_fin <= self.pause_dejeuner_debut:
+                raise ValidationError("L'heure de fin de pause doit être supérieure à l'heure de début de pause")
+            if (self.pause_dejeuner_debut < self.heure_debut or 
+                self.pause_dejeuner_fin > self.heure_fin):
+                raise ValidationError("La pause déjeuner doit être comprise entre l'heure de début et l'heure de fin")
+        
+        # Vérifier les chevauchements avec d'autres disponibilités
+        if self.medecin and self.jour:
+            overlapping_dispos = DisponibiliteMedecin.objects.filter(
+                medecin=self.medecin,
+                jour=self.jour
+            )
+            if self.pk:
+                overlapping_dispos = overlapping_dispos.exclude(pk=self.pk)
+            
+            for disp in overlapping_dispos:
+                if (disp.heure_debut < self.heure_fin and disp.heure_fin > self.heure_debut):
+                    raise ValidationError(
+                        f"Chevauchement avec une disponibilité existante : {disp.heure_debut} - {disp.heure_fin}"
+                    )
+    
+    def save(self, *args, **kwargs):
+        """
+        Sauvegarde avec validation
+        """
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class IndisponibiliteMedecin(models.Model):
+    TYPE_CHOICES = [
+        ('conges', 'Congés'),
+        ('formation', 'Formation'),
+        ('maladie', 'Maladie'),
+        ('autre', 'Autre'),
+    ]
+    
+    medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name='indisponibilites')
+    date_debut = models.DateField()
+    date_fin = models.DateField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='autre')
+    raison = models.CharField(max_length=200, blank=True)
+    toute_la_journee = models.BooleanField(default=True)
+    heure_debut = models.TimeField(null=True, blank=True)
+    heure_fin = models.TimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'IndisponibiliteMedecin'
+        verbose_name = 'Indisponibilité Médecin'
+        verbose_name_plural = 'Indisponibilités Médecins'
+    
+    def __str__(self):
+        if self.toute_la_journee:
+            return f"{self.medecin} - Indisponible du {self.date_debut} au {self.date_fin}"
+        else:
+            return f"{self.medecin} - Indisponible le {self.date_debut} de {self.heure_debut} à {self.heure_fin}"
+    
+    def clean(self):
+        """
+        Validation des données de l'indisponibilité
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        # Vérifier que la date de fin est >= date de début
+        if self.date_fin < self.date_debut:
+            raise ValidationError("La date de fin doit être supérieure ou égale à la date de début")
+        
+        # Vérifier que l'indisponibilité n'est pas dans le passé
+        if self.date_fin < timezone.now().date():
+            raise ValidationError("Impossible de créer une indisponibilité dans le passé")
+        
+        # Vérifier les heures si ce n'est pas toute la journée
+        if not self.toute_la_journee:
+            if not self.heure_debut or not self.heure_fin:
+                raise ValidationError("Les heures de début et de fin sont requises si ce n'est pas toute la journée")
+            if self.heure_fin <= self.heure_debut:
+                raise ValidationError("L'heure de fin doit être supérieure à l'heure de début")
+        
+        # Vérifier les chevauchements avec d'autres indisponibilités
+        if self.medecin:
+            overlapping_indispos = IndisponibiliteMedecin.objects.filter(
+                medecin=self.medecin
+            )
+            if self.pk:
+                overlapping_indispos = overlapping_indispos.exclude(pk=self.pk)
+            
+            for indisp in overlapping_indispos:
+                if (indisp.date_debut <= self.date_fin and indisp.date_fin >= self.date_debut):
+                    raise ValidationError(
+                        f"Chevauchement avec une indisponibilité existante : {indisp.date_debut} - {indisp.date_fin}"
+                    )
+    
+    def save(self, *args, **kwargs):
+        """
+        Sauvegarde avec validation
+        """
+        self.clean()
+        super().save(*args, **kwargs)
+
 # -------------------- Consultation --------------------
 class Consultation(models.Model):
     numero = models.AutoField(primary_key=True)
@@ -59,6 +312,15 @@ class Consultation(models.Model):
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="consultations")
     medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name="consultations")
     rendez_vous = models.OneToOneField('RendezVous', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Status for online consultations
+    STATUT_CHOICES = [
+        ('programmee', 'Programmée'),
+        ('en_cours', 'En cours'),
+        ('terminee', 'Terminée'),
+        ('annulee', 'Annulée'),
+    ]
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='programmee')
     
     # Ajouter des champs pour les données chiffrées
     notes_chiffrees = models.TextField(blank=True, verbose_name="Notes chiffrées")
@@ -80,6 +342,44 @@ class Consultation(models.Model):
         """Récupérer le diagnostic déchiffré"""
         return decrypt_field(self.diagnostic_chiffre)
 
+    def save(self, *args, **kwargs):
+        # Check if status is changing
+        old_statut = None
+        if self.numero:  # If this is an update, not a new object
+            try:
+                old_instance = Consultation.objects.get(numero=self.numero)
+                old_statut = old_instance.statut
+            except Consultation.DoesNotExist:
+                pass
+        
+        super().save(*args, **kwargs)
+        
+        # If status changed and there's an associated RDV, update it
+        if old_statut and old_statut != self.statut and self.rendez_vous:
+            self.update_associated_rdv()
+
+    def update_associated_rdv(self):
+        """Update the associated RDV based on consultation status"""
+        try:
+            rendez_vous = self.rendez_vous
+            
+            # Update RDV status based on consultation status
+            if self.statut == 'annulee':
+                rendez_vous.statut = "CANCELLED"
+            elif self.statut == 'terminee':
+                rendez_vous.statut = "TERMINE"
+            elif self.statut == 'en_cours':
+                rendez_vous.statut = "CONFIRMED"  # Or you might want a new "IN_PROGRESS" status
+            elif self.statut == 'programmee':
+                # Only update to CONFIRMED if it's not already cancelled or completed
+                if rendez_vous.statut not in ["CANCELLED", "TERMINE"]:
+                    rendez_vous.statut = "CONFIRMED"
+            
+            rendez_vous.save()
+        except RendezVous.DoesNotExist:
+            # No associated RDV, nothing to update
+            pass
+
     def __str__(self):
         return f"Consultation {self.numero} - {self.patient}"
     
@@ -95,6 +395,13 @@ class RendezVous(models.Model):
     date = models.DateField()
     heure = models.TimeField()
     description = models.TextField(blank=True, null=True)
+
+    # Add consultation type field
+    TYPE_CONSULTATION_CHOICES = [
+        ("cabinet", "Consultation au cabinet"),
+        ("teleconsultation", "Téléconsultation en ligne"),
+    ]
+    type_consultation = models.CharField(max_length=20, choices=TYPE_CONSULTATION_CHOICES, default="cabinet")
 
     STATUT_CHOICES = [
         ("CONFIRMED", "Confirmé"),
@@ -121,7 +428,44 @@ class RendezVous(models.Model):
             if not self.original_date:
                 self.original_date = original.date
                 self.original_heure = original.heure
+        
+        # Check if status is changing
+        old_statut = None
+        if self.numero:  # If this is an update, not a new object
+            try:
+                old_instance = RendezVous.objects.get(numero=self.numero)
+                old_statut = old_instance.statut
+            except RendezVous.DoesNotExist:
+                pass
+        
         super().save(*args, **kwargs)
+        
+        # If status changed, update associated teleconsultation if it exists
+        if old_statut and old_statut != self.statut:
+            self.update_associated_teleconsultation()
+
+    def update_associated_teleconsultation(self):
+        """Update the associated teleconsultation based on RDV status"""
+        try:
+            # Get the associated consultation through the rendez_vous foreign key
+            consultation = Consultation.objects.get(rendez_vous=self)
+            teleconsultation = Teleconsultation.objects.get(consultation=consultation)
+            
+            # Update teleconsultation status based on RDV status
+            if self.statut == "CANCELLED":
+                consultation.statut = 'annulee'
+                teleconsultation.ended_at = timezone.now()  # End the teleconsultation
+            elif self.statut == "TERMINE":
+                consultation.statut = 'terminee'
+                teleconsultation.ended_at = timezone.now()  # End the teleconsultation
+            elif self.statut == "CONFIRMED":
+                consultation.statut = 'programmee'
+            
+            consultation.save()
+            teleconsultation.save()
+        except (Consultation.DoesNotExist, Teleconsultation.DoesNotExist):
+            # No associated consultation or teleconsultation, nothing to update
+            pass
 
     def __str__(self):
         return f"{self.patient.username} - {self.date} {self.heure}"
@@ -189,14 +533,51 @@ class Mesure(models.Model):
     valeur = models.FloatField()
     unite = models.CharField(max_length=20)
     constante = models.ForeignKey(Constante, on_delete=models.CASCADE, related_name="mesures")
-    consultation = models.ForeignKey(Consultation, on_delete=models.CASCADE, related_name="mesures")
+
+# -------------------- Teleconsultation --------------------
+class Teleconsultation(models.Model):
+    id = models.AutoField(primary_key=True)
+    consultation = models.OneToOneField(Consultation, on_delete=models.CASCADE, related_name="teleconsultation")
+    channel_name = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    
+    def save(self, *args, **kwargs):
+        # Check if this is an update (not a new object) and if ended_at is being set
+        old_ended_at = None
+        if self.id:  # If this is an update, not a new object
+            try:
+                old_instance = Teleconsultation.objects.get(id=self.id)
+                old_ended_at = old_instance.ended_at
+            except Teleconsultation.DoesNotExist:
+                pass
+        
+        super().save(*args, **kwargs)
+        
+        # If ended_at was just set, update associated consultation and RDV
+        if self.ended_at and (not old_ended_at or old_ended_at != self.ended_at):
+            self.update_associated_entities()
+
+    def update_associated_entities(self):
+        """Update the associated consultation and RDV when teleconsultation ends"""
+        try:
+            # Update consultation status
+            self.consultation.statut = 'terminee'
+            self.consultation.save()
+            
+            # Update RDV status if it exists
+            if self.consultation.rendez_vous:
+                self.consultation.rendez_vous.statut = "TERMINE"
+                self.consultation.rendez_vous.save()
+        except Exception as e:
+            # Log the error but don't fail the save operation
+            print(f"Error updating associated entities: {e}")
 
     def __str__(self):
-        return f"{self.constante.nom_constante}: {self.valeur} {self.unite}"
+        return f"Teleconsultation {self.id} for Consultation {self.consultation.numero}"
     
-    class Meta :
-        db_table = 'Mesure'
-
+    class Meta:
+        db_table = 'Teleconsultation'
 
 # -------------------- Articles --------------------
 class Article(models.Model):
@@ -609,6 +990,26 @@ class MedicalDocument(models.Model):
     class Meta:
         db_table = 'MedicalDocument'
         ordering = ['-uploaded_at']
+
+
+# -------------------- Consultation Messages --------------------
+class ConsultationMessage(models.Model):
+    """Messages exchanged during online consultations"""
+    consultation = models.ForeignKey(Consultation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='consultation_messages')
+    content = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['timestamp']
+        db_table = 'ConsultationMessage'
+        verbose_name = "Message de consultation"
+        verbose_name_plural = "Messages de consultation"
+
+    def __str__(self):
+        return f"Message de {self.sender.username} pour consultation {self.consultation.numero}"
+
 
 # -------------------- Ratings & Reviews --------------------
 class Rating(models.Model):
