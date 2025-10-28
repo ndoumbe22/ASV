@@ -28,8 +28,15 @@ function MedecinGeneraliste() {
   const fetchDoctors = async () => {
     try {
       const response = await doctorAPI.getDoctors();
+
+      // Ensure we're working with an array
+      let doctorsData = [];
+      if (response && response.data) {
+        doctorsData = Array.isArray(response.data) ? response.data : [];
+      }
+
       // Filter for general practitioners only
-      const generalists = response.data.filter(
+      const generalists = doctorsData.filter(
         (doctor) =>
           !doctor.specialite ||
           doctor.specialite.toLowerCase() === "generaliste" ||

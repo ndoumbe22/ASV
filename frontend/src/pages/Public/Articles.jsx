@@ -8,6 +8,9 @@ function ArticlesPublics() {
   const [loading, setLoading] = useState(true);
   const [selectedCategorie, setSelectedCategorie] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   const categories = [
     { value: "all", label: "Toutes" },
@@ -22,24 +25,43 @@ function ArticlesPublics() {
   ];
 
   useEffect(() => {
-    loadArticles();
-  }, [selectedCategorie]);
+    loadArticles(1); // Reset to first page when filters change
+  }, [selectedCategorie, searchTerm]);
 
-  const loadArticles = async () => {
+  const loadArticles = async (page = currentPage) => {
     try {
       setLoading(true);
-      const filters = {};
+      const filters = {
+        page: page,
+        page_size: 12 // Articles per page
+      };
       if (selectedCategorie !== "all") filters.categorie = selectedCategorie;
       if (searchTerm) filters.search = searchTerm;
 
       const data = await articleService.getPublicArticles(filters);
       
-      // Separate featured articles from regular articles
-      const featured = data.filter(article => article.is_featured);
-      const regular = data.filter(article => !article.is_featured);
+      // Handle pagination data
+      if (data.results) {
+        // Separate featured articles from regular articles
+        const featured = data.results.filter(article => article.is_featured);
+        const regular = data.results.filter(article => !article.is_featured);
+        
+        setArticles(regular);
+        setFeaturedArticles(featured);
+        setTotalPages(Math.ceil(data.count / 12));
+        setTotalCount(data.count);
+      } else {
+        // Fallback for existing API format
+        const featured = data.filter(article => article.is_featured);
+        const regular = data.filter(article => !article.is_featured);
+        
+        setArticles(regular);
+        setFeaturedArticles(featured);
+        setTotalPages(1);
+        setTotalCount(data.length);
+      }
       
-      setFeaturedArticles(featured);
-      setArticles(regular);
+      setCurrentPage(page);
     } catch (error) {
       console.error("Erreur:", error);
       alert("Erreur lors du chargement des articles");
@@ -50,7 +72,13 @@ function ArticlesPublics() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    loadArticles();
+    loadArticles(1); // Reset to first page on search
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      loadArticles(newPage);
+    }
   };
 
   const formatDate = (dateString) => {
@@ -164,9 +192,14 @@ function ArticlesPublics() {
 
       {/* Articles List */}
       <section>
-        <h2 className="mb-4 pb-2 border-bottom">
-          <i className="bi bi-journal-text"></i> Tous les Articles
-        </h2>
+        <div className="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+          <h2 className="mb-0">
+            <i className="bi bi-journal-text"></i> Tous les Articles
+          </h2>
+          <small className="text-muted">
+            {totalCount} article{totalCount !== 1 ? 's' : ''} trouvé{totalCount !== 1 ? 's' : ''}
+          </small>
+        </div>
         
         {articles.length === 0 ? (
           <div className="text-center py-5">
@@ -179,49 +212,112 @@ function ArticlesPublics() {
             </p>
           </div>
         ) : (
-          <div className="row">
-            {articles.map((article) => (
-              <div key={article.id} className="col-lg-4 col-md-6 mb-4">
-                <div className="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
-                  {article.image ? (
-                    <img
-                      src={article.image}
-                      className="card-img-top"
-                      alt={article.titre}
-                      style={{ height: "200px", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <div className="bg-light d-flex align-items-center justify-content-center" style={{ height: "200px" }}>
-                      <i className="bi bi-file-text text-muted" style={{ fontSize: "3rem" }}></i>
+          <>
+            <div className="row">
+              {articles.map((article) => (
+                <div key={article.id} className="col-lg-4 col-md-6 mb-4">
+                  <div className="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
+                    {article.image ? (
+                      <img
+                        src={article.image}
+                        className="card-img-top"
+                        alt={article.titre}
+                        style={{ height: "200px", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <div className="bg-light d-flex align-items-center justify-content-center" style={{ height: "200px" }}>
+                        <i className="bi bi-file-text text-muted" style={{ fontSize: "3rem" }}></i>
+                      </div>
+                    )}
+                    <div className="card-body d-flex flex-column">
+                      <div className="mb-2">
+                        <span className="badge bg-secondary">{article.categorie}</span>
+                      </div>
+                      <h5 className="card-title">{article.titre}</h5>
+                      <p className="card-text text-muted flex-grow-1">{article.resume}</p>
+                      <div className="d-flex justify-content-between align-items-center mt-3">
+                        <small className="text-muted">
+                          <i className="bi bi-person"></i> {article.auteur_nom}
+                        </small>
+                        <small className="text-muted">
+                          <i className="bi bi-calendar"></i> {formatDate(article.date_publication)}
+                        </small>
+                      </div>
                     </div>
-                  )}
-                  <div className="card-body d-flex flex-column">
-                    <div className="mb-2">
-                      <span className="badge bg-secondary">{article.categorie}</span>
+                    <div className="card-footer bg-white border-0">
+                      <Link
+                        to={`/articles/${article.slug}`}
+                        className="btn btn-outline-primary w-100"
+                      >
+                        Lire <i className="bi bi-arrow-right ms-1"></i>
+                      </Link>
                     </div>
-                    <h5 className="card-title">{article.titre}</h5>
-                    <p className="card-text text-muted flex-grow-1">{article.resume}</p>
-                    <div className="d-flex justify-content-between align-items-center mt-3">
-                      <small className="text-muted">
-                        <i className="bi bi-person"></i> {article.auteur_nom}
-                      </small>
-                      <small className="text-muted">
-                        <i className="bi bi-calendar"></i> {formatDate(article.date_publication)}
-                      </small>
-                    </div>
-                  </div>
-                  <div className="card-footer bg-white border-0">
-                    <Link
-                      to={`/articles/${article.slug}`}
-                      className="btn btn-outline-primary w-100"
-                    >
-                      Lire <i className="bi bi-arrow-right ms-1"></i>
-                    </Link>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <nav aria-label="Pagination des articles" className="mt-4">
+                <ul className="pagination justify-content-center">
+                  <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                    <button 
+                      className="page-link" 
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      Précédent
+                    </button>
+                  </li>
+                  
+                  {/* Page numbers */}
+                  {[...Array(totalPages)].map((_, i) => {
+                    const pageNum = i + 1;
+                    // Show first, last, current, and nearby pages
+                    if (
+                      pageNum === 1 || 
+                      pageNum === totalPages || 
+                      Math.abs(pageNum - currentPage) <= 2
+                    ) {
+                      return (
+                        <li 
+                          key={pageNum} 
+                          className={`page-item ${currentPage === pageNum ? 'active' : ''}`}
+                        >
+                          <button 
+                            className="page-link" 
+                            onClick={() => handlePageChange(pageNum)}
+                          >
+                            {pageNum}
+                          </button>
+                        </li>
+                      );
+                    }
+                    // Show ellipsis for gaps
+                    else if (pageNum === currentPage - 3 || pageNum === currentPage + 3) {
+                      return (
+                        <li key={pageNum} className="page-item disabled">
+                          <span className="page-link">...</span>
+                        </li>
+                      );
+                    }
+                    return null;
+                  })}
+                  
+                  <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                    <button 
+                      className="page-link" 
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Suivant
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+            )}
+          </>
         )}
       </section>
 

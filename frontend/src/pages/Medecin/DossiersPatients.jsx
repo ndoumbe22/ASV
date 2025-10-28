@@ -16,12 +16,16 @@ function DossiersPatients() {
     const fetchPatients = async () => {
       try {
         setLoading(true);
-        
-        // Get patients from the API
         const response = await patientAPI.getPatients();
         
+        // Ensure we're working with an array
+        let patientsData = [];
+        if (response && response.data) {
+          patientsData = Array.isArray(response.data) ? response.data : [];
+        }
+        
         // Transform the data to match the expected format
-        const formattedPatients = response.data.map(patient => ({
+        const formattedPatients = patientsData.map(patient => ({
           id: patient.user.id,
           nom: patient.user.last_name || "",
           prenom: patient.user.first_name || "",

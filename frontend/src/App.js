@@ -1,9 +1,14 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Outlet,
+} from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import Layout from "./components/Layout";
 import Accueil from "./pages/Accueil";
 import Cliniques from "./pages/Public/Cliniques";
@@ -38,7 +43,7 @@ import BoiteMessagesPatient from "./pages/Patient/BoiteMessages";
 import MedicationReminders from "./pages/Patient/MedicationReminders"; // Added medication reminders
 import LocaliserCentres from "./pages/Patient/LocaliserCentres"; // Added LocaliserCentres
 import ValiderRendezVous from "./pages/Patient/ValiderRendezVous"; // Added ValiderRendezVous
-import MessageriePatient from "./pages/Patient/Messagerie"; // Added patient messaging
+// import MessageriePatient from "./pages/Patient/Messagerie"; // Removed patient messaging
 
 // Medecin Dashboard Components
 import DashboardMedecin from "./pages/Medecin/DashboardMedecin";
@@ -52,7 +57,7 @@ import DisponibilitesMedecin from "./pages/Medecin/Disponibilites";
 import NotificationsMedecin from "./pages/Medecin/Notifications";
 import ProfileMedecin from "./pages/Medecin/Profile";
 import PatientsList from "./pages/Medecin/PatientsList"; // Added PatientsList
-import MessagerieMedecin from "./pages/Medecin/Messagerie"; // Added doctor messaging
+// import MessagerieMedecin from "./pages/Medecin/Messagerie"; // Removed doctor messaging
 
 // Admin Dashboard Components
 import DashboardAdmin from "./pages/Admin/DashboardAdmin";
@@ -82,6 +87,14 @@ import UrgencesDashboard from "./pages/Medecin/UrgencesDashboard";
 import PolitiqueConfidentialite from "./pages/Public/PolitiqueConfidentialite"; // Updated extension
 import LocaliserServices from "./pages/Public/LocaliserServices"; // Added visitor localization
 import SearchResults from "./pages/Public/SearchResults"; // Added search results
+
+// Consultation Components
+import ConsultationPage from "./pages/Consultation/ConsultationPage";
+import ConsultationList from "./pages/Consultation/ConsultationList";
+
+// Teleconsultation Components
+import SalleDAttente from "./pages/Teleconsultation/SalleDAttente";
+import TeleconsultationRoom from "./pages/Teleconsultation/TeleconsultationRoom";
 
 function App() {
   return (
@@ -143,136 +156,424 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* Patient Dashboard Routes */}
-            <Route
-              path="patient/*"
-              element={
-                <ProtectedRoute allowedRoles={["patient"]}>
-                  <Routes>
-                    <Route index element={<DashboardPatient />} />
-                    <Route path="dashboard" element={<DashboardPatient />} />
-                    <Route
-                      path="dashboard-v2"
-                      element={<EnhancedDashboardPatientV2 />}
-                    />
-                    <Route path="rendez-vous" element={<RendezVousPatient />} />
-                    <Route
-                      path="prise-rendez-vous"
-                      element={<PriseDeRendezVous />}
-                    />
-                    <Route
-                      path="dossier-medical"
-                      element={<DossierMedical />}
-                    />
-                    <Route
-                      path="document-partage"
-                      element={<DocumentPartage />}
-                    />
-                    <Route path="profile" element={<ProfilePatient />} />
-                    <Route
-                      path="boite-email"
-                      element={<BoiteMessagesPatient />}
-                    />
-                    <Route
-                      path="medication-reminders"
-                      element={<MedicationReminders />}
-                    />
-                    <Route path="urgence" element={<UrgenceSOS />} />
-                    <Route path="notifications" element={<Notifications />} />
-                    <Route path="messagerie" element={<MessageriePatient />} />
-                    <Route
-                      path="localiser-centres"
-                      element={<LocaliserCentres />}
-                    />
-                    <Route
-                      path="rendez-vous/:id/valider"
-                      element={<ValiderRendezVous />}
-                    />
-                  </Routes>
-                </ProtectedRoute>
-              }
-            />
+
             {/* Medecin Dashboard Routes */}
-            <Route
-              path="medecin/*"
-              element={
-                <ProtectedRoute allowedRoles={["medecin"]}>
-                  <Routes>
-                    <Route index element={<DashboardMedecin />} />
-                    <Route path="dashboard" element={<DashboardMedecin />} />
-                    <Route
-                      path="dashboard-v2"
-                      element={<EnhancedDashboardMedecinV2 />}
-                    />
-                    <Route path="dossiers" element={<DossiersMedecin />} />
-                    <Route
-                      path="dossiers-patients"
-                      element={<DossiersPatients />}
-                    />
-                    <Route
-                      path="document-partage"
-                      element={<DocumentPartageMedecin />}
-                    />
-                    <Route path="rendez-vous" element={<RendezVousMedecin />} />
-                    <Route
-                      path="disponibilites"
-                      element={<DisponibilitesMedecin />}
-                    />
-                    <Route
-                      path="notifications"
-                      element={<NotificationsMedecin />}
-                    />
-                    <Route path="profile" element={<ProfileMedecin />} />
-                    <Route path="urgences" element={<UrgencesDashboard />} />
-                    <Route path="patients" element={<PatientsList />} />
-                    <Route
-                      path="messagerie"
-                      element={<MessagerieMedecin />}
-                    />
-                    {/* Medecin Article Routes */}
-                    <Route path="articles" element={<MesArticles />} />
-                    <Route path="articles/nouveau" element={<ArticleForm />} />
-                    <Route
-                      path="articles/:id/modifier"
-                      element={<ArticleForm />}
-                    />
-                  </Routes>
-                </ProtectedRoute>
-              }
-            />
+            <Route path="medecin">
+              <Route
+                index
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <DashboardMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <DashboardMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dashboard-v2"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <EnhancedDashboardMedecinV2 />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dossiers"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <DossiersMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dossiers-patients"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <DossiersPatients />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="document-partage"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <DocumentPartageMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="rendez-vous"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <RendezVousMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="disponibilites"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <DisponibilitesMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="notifications"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <NotificationsMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="profile"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <ProfileMedecin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="urgences"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <UrgencesDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="patients"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <PatientsList />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Route path="messagerie" element={<ProtectedRoute allowedRoles={["medecin"]}><MessagerieMedecin /></ProtectedRoute>} /> Removed doctor messaging */}
+              {/* Medecin Article Routes */}
+              <Route
+                path="articles"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <MesArticles />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="articles/nouveau"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <ArticleForm />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="articles/:id/modifier"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <ArticleForm />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="consultations"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <ConsultationList />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="consultations/:id"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin"]}>
+                    <ConsultationPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Teleconsultation Routes */}
+              <Route
+                path="teleconsultation/salle-attente/:consultationId"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin", "patient"]}>
+                    <SalleDAttente />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="teleconsultation/:id"
+                element={
+                  <ProtectedRoute allowedRoles={["medecin", "patient"]}>
+                    <TeleconsultationRoom />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+
+            {/* Patient Dashboard Routes */}
+            <Route path="patient">
+              <Route
+                index
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <DashboardPatient />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <DashboardPatient />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dashboard-v2"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <EnhancedDashboardPatientV2 />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="rendez-vous"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <RendezVousPatient />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="prise-rendez-vous"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <PriseDeRendezVous />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dossier-medical"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <DossierMedical />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="document-partage"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <DocumentPartage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="profile"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <ProfilePatient />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="boite-email"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <BoiteMessagesPatient />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="medication-reminders"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <MedicationReminders />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="urgence"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <UrgenceSOS />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="notifications"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <Notifications />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Route path="messagerie" element={<ProtectedRoute allowedRoles={["patient"]}><MessageriePatient /></ProtectedRoute>} /> Removed patient messaging */}
+              <Route
+                path="localiser-centres"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <LocaliserCentres />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="rendez-vous/:id/valider"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <ValiderRendezVous />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="consultations"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <ConsultationList />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="consultations/:id"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <ConsultationPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Teleconsultation Routes */}
+              <Route
+                path="teleconsultation/salle-attente/:consultationId"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <SalleDAttente />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="teleconsultation/:id"
+                element={
+                  <ProtectedRoute allowedRoles={["patient"]}>
+                    <TeleconsultationRoom />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+
             {/* Admin Dashboard Routes */}
-            <Route
-              path="admin/*"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <Routes>
-                    <Route index element={<DashboardAdmin />} />
-                    <Route path="dashboard" element={<DashboardAdmin />} />
-                    <Route
-                      path="dashboard-v2"
-                      element={<EnhancedDashboardAdminV2 />}
-                    />
-                    <Route path="utilisateurs" element={<UtilisateursAdmin />} />
-                    <Route path="medecins" element={<MedecinsAdmin />} />
-                    <Route
-                      path="medecins-specialite"
-                      element={<MedecinsSpecialiteAdmin />}
-                    />
-                    <Route path="secretaires" element={<SecretairesAdmin />} />
-                    <Route path="patients" element={<PatientsAdmin />} />
-                    <Route path="specialite" element={<SpecialiteAdmin />} />
-                    <Route path="messages" element={<MessagesAdmin />} />
-                    <Route
-                      path="messagerie-monitoring"
-                      element={<MessagerieMonitoring />}
-                    />
-                    <Route path="appointments" element={<AppointmentManagement />} />
-                    {/* Admin Article Routes */}
-                    <Route path="articles" element={<ArticlesModeration />} />
-                  </Routes>
-                </ProtectedRoute>
-              }
-            />
+            <Route path="admin">
+              <Route
+                index
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <DashboardAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <DashboardAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="dashboard-v2"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <EnhancedDashboardAdminV2 />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="utilisateurs"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <UtilisateursAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="medecins"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <MedecinsAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="medecins-specialite"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <MedecinsSpecialiteAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="secretaires"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <SecretairesAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="patients"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <PatientsAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="specialite"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <SpecialiteAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="messages"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <MessagesAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="messagerie-monitoring"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <MessagerieMonitoring />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="appointments"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <AppointmentManagement />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Admin Article Routes */}
+              <Route
+                path="articles"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <ArticlesModeration />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
             {/* Test routes removed for cleanup */}
             <Route path="unauthorized" element={<Unauthorized />} />
           </Routes>

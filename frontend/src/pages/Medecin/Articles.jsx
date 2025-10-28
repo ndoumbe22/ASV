@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { FaPlus, FaEdit, FaEye, FaPaperPlane, FaSearch } from "react-icons/fa";
+import { toast } from "react-toastify";
 import articleService from "../../services/articleService";
 
 function Articles() {
@@ -22,11 +23,12 @@ function Articles() {
   const loadArticles = async () => {
     try {
       setLoading(true);
-      const data = await articleService.getDoctorArticles(statusFilter);
+      const data = await articleService.getMyArticles({ statut: statusFilter === "all" ? undefined : statusFilter });
       setArticles(data);
     } catch (err) {
       setError("Erreur lors du chargement des articles: " + (err.response?.data?.error || err.message));
       console.error(err);
+      toast.error("Erreur lors du chargement des articles");
     } finally {
       setLoading(false);
     }
@@ -70,11 +72,11 @@ function Articles() {
   const handleSubmitForReview = async (articleId) => {
     if (window.confirm("Êtes-vous sûr de vouloir soumettre cet article pour validation ?")) {
       try {
-        await articleService.submitArticleForReview(articleId);
+        await articleService.soumettreValidation(articleId);
         loadArticles(); // Refresh the list
-        alert("Article soumis pour validation");
+        toast.success("Article soumis pour validation");
       } catch (err) {
-        alert("Erreur lors de la soumission: " + (err.response?.data?.error || err.message));
+        toast.error("Erreur lors de la soumission: " + (err.response?.data?.error || err.response?.data?.message || err.message));
         console.error(err);
       }
     }
@@ -96,7 +98,7 @@ function Articles() {
         <div className="col-12">
           <div className="d-flex justify-content-between align-items-center mb-4">
             <h2>Articles de Santé</h2>
-            <Link to="/medecin/articles/create" className="btn btn-primary">
+            <Link to="/medecin/articles/nouveau" className="btn btn-primary">
               <FaPlus className="me-2" />
               Créer un article
             </Link>
@@ -154,7 +156,7 @@ function Articles() {
                   ? "Vous n'avez pas encore créé d'articles." 
                   : `Aucun article avec le statut "${statusFilter}"`}
               </p>
-              <Link to="/medecin/articles/create" className="btn btn-primary">
+              <Link to="/medecin/articles/nouveau" className="btn btn-primary">
                 <FaPlus className="me-2" />
                 Créer votre premier article
               </Link>
@@ -194,7 +196,7 @@ function Articles() {
                           <FaEye />
                         </Link>
                         <Link 
-                          to={`/medecin/articles/${article.id}/edit`} 
+                          to={`/medecin/articles/${article.id}/modifier`} 
                           className="btn btn-outline-success btn-sm"
                           title="Modifier"
                         >

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   FaUserInjured, FaCalendar, FaFileAlt, FaClock, 
   FaChartBar, FaBell, FaChevronRight, FaPlus, FaFilter,
-  FaUserMd, FaRobot
+  FaUserMd, FaRobot, FaVideo
 } from "react-icons/fa";
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, 
@@ -57,19 +57,26 @@ function DonezoMedecinDashboard() {
         // Fetch appointments
         try {
           const appointmentsResponse = await appointmentAPI.getAppointments();
-          const appointmentsData = appointmentsResponse?.data || [];
+          // Ensure appointmentsData is an array
+          const appointmentsData = Array.isArray(appointmentsResponse?.data) 
+            ? appointmentsResponse.data 
+            : [];
           setAppointments(appointmentsData);
           
-          // Update stats
+          // Update stats with proper validation
           setStats(prev => ({
             ...prev,
             todayAppointments: appointmentsData.length,
-            pendingRequests: appointmentsData.filter(app => app.status === 'pending').length
+            pendingRequests: Array.isArray(appointmentsData) 
+              ? appointmentsData.filter(app => app.status === 'pending').length 
+              : 0
           }));
           
           // Fetch patients (this would need a specific endpoint)
           // For now, we'll simulate with appointment data
-          const uniquePatients = [...new Set(appointmentsData.map(app => app.patient_name || app.patient || 'Patient inconnu'))];
+          const uniquePatients = Array.isArray(appointmentsData) 
+            ? [...new Set(appointmentsData.map(app => app.patient_name || app.patient || 'Patient inconnu'))]
+            : [];
           setPatients(uniquePatients.map((name, index) => ({
             id: index + 1,
             name: name,
@@ -85,6 +92,12 @@ function DonezoMedecinDashboard() {
         } catch (appointmentsError) {
           console.error("Error fetching appointments:", appointmentsError);
           setAppointments([]);
+          setStats(prev => ({
+            ...prev,
+            todayAppointments: 0,
+            pendingRequests: 0,
+            totalPatients: 0
+          }));
         }
         
       } catch (err) {
@@ -109,19 +122,19 @@ function DonezoMedecinDashboard() {
 
   // Appointment statistics
   const appointmentStats = [
-    { name: 'Confirmés', value: appointments.filter(app => app.status === 'confirmed').length },
-    { name: 'En attente', value: appointments.filter(app => app.status === 'pending').length },
-    { name: 'Annulés', value: appointments.filter(app => app.status === 'cancelled').length }
+    { name: 'Confirmés', value: Array.isArray(appointments) ? appointments.filter(app => app.status === 'confirmed').length : 0 },
+    { name: 'En attente', value: Array.isArray(appointments) ? appointments.filter(app => app.status === 'pending').length : 0 },
+    { name: 'Annulés', value: Array.isArray(appointments) ? appointments.filter(app => app.status === 'cancelled').length : 0 }
   ];
 
   // Filter appointments based on active tab
-  const filteredAppointments = appointments.filter(app => {
+  const filteredAppointments = Array.isArray(appointments) ? appointments.filter(app => {
     if (activeTab === 'today') return true;
     if (activeTab === 'pending') return app.status === 'pending';
     if (activeTab === 'validated') return app.status === 'confirmed';
     if (activeTab === 'completed') return app.status === 'completed';
     return true;
-  });
+  }) : [];
 
   // Stat cards data
   const statCards = [
@@ -134,7 +147,7 @@ function DonezoMedecinDashboard() {
   // Quick access buttons for main functionalities
   const quickAccessButtons = [
     { title: "Mes disponibilités", icon: <FaClock />, color: "bg-blue-100 text-blue-600", onClick: () => navigate("/medecin/disponibilites") },
-    { title: "Messagerie patients", icon: <FaBell />, color: "bg-green-100 text-green-600", onClick: () => navigate("/medecin/messagerie") },
+    { title: "Téléconsultation", icon: <FaVideo />, color: "bg-green-100 text-green-600", onClick: () => navigate("/medecin/consultations") },
     { title: "Mes articles", icon: <FaFileAlt />, color: "bg-purple-100 text-purple-600", onClick: () => navigate("/medecin/articles") },
     { title: "Dossiers patients", icon: <FaUserInjured />, color: "bg-red-100 text-red-600", onClick: () => navigate("/medecin/dossiers-patients") }
   ];
@@ -448,7 +461,7 @@ function DonezoMedecinDashboard() {
               </div>
               
               <div className="space-y-3">
-                {appointments && appointments.length > 0 ? (
+                {Array.isArray(appointments) && appointments.length > 0 ? (
                   appointments.filter(app => app.status === 'pending').slice(0, 3).map(app => (
                     <div key={app.id || app.appointment_id} className="p-3 border rounded-lg bg-yellow-50">
                       <div className="flex justify-between">
@@ -485,7 +498,7 @@ function DonezoMedecinDashboard() {
                 ) : (
                   <p className="text-gray-500 italic text-center py-4">Aucune demande en attente</p>
                 )}
-                {appointments.filter(app => app.status === 'pending').length === 0 && (
+                {Array.isArray(appointments) && appointments.filter(app => app.status === 'pending').length === 0 && (
                   <p className="text-gray-500 italic text-center py-4">Aucune demande en attente</p>
                 )}
               </div>

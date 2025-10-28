@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import articleService from "../../services/articleService";
 
 function ArticleForm() {
@@ -27,41 +28,60 @@ function ArticleForm() {
     { value: "autre", label: "Autre" },
   ];
 
-  useEffect(() => {
-    if (isEdit) {
-      loadArticle();
-    }
-  }, [id]);
-
-  const loadArticle = async () => {
+  const loadArticle = useCallback(async () => {
     try {
-      const data = await articleService.getDoctorArticle(id);
+      setLoading(true);
+      const data = await articleService.getMyArticleDetail(id);
       setFormData({
-        titre: data.titre,
-        resume: data.resume,
-        contenu: data.contenu,
-        categorie: data.categorie,
+        titre: data.titre || "",
+        resume: data.resume || "",
+        contenu: data.contenu || "",
+        categorie: data.categorie || "autre",
         tags: data.tags || "",
       });
     } catch (error) {
       console.error("Erreur:", error);
-      alert("Erreur lors du chargement de l'article");
+      toast.error("Erreur lors du chargement de l'article");
       navigate("/medecin/articles");
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    if (isEdit) {
+      loadArticle();
+    }
+  }, [isEdit, loadArticle]);
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
+  };
+
+  const validateForm = () => {
+    if (!formData.titre.trim()) {
+      toast.error("Veuillez remplir le titre");
+      return false;
+    }
+    if (!formData.resume.trim()) {
+      toast.error("Veuillez remplir le résumé");
+      return false;
+    }
+    if (!formData.contenu.trim()) {
+      toast.error("Veuillez remplir le contenu");
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.titre || !formData.resume || !formData.contenu) {
-      alert("Veuillez remplir tous les champs obligatoires");
+    if (!validateForm()) {
       return;
     }
 
@@ -70,24 +90,24 @@ function ArticleForm() {
 
       if (isEdit) {
         await articleService.updateArticle(id, formData);
-        alert("Article mis à jour");
+        toast.success("Article mis à jour avec succès");
       } else {
         await articleService.createArticle(formData);
-        alert("Article créé");
+        toast.success("Article créé avec succès");
       }
 
       navigate("/medecin/articles");
     } catch (error) {
       console.error("Erreur:", error);
-      alert(error.response?.data?.error || "Erreur lors de l'enregistrement");
+      toast.error(error.response?.data?.error || error.response?.data?.message || "Erreur lors de l'enregistrement");
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveDraft = async () => {
-    if (!formData.titre && !formData.resume && !formData.contenu) {
-      alert("Veuillez remplir au moins un champ avant d'enregistrer");
+    if (!formData.titre.trim() && !formData.resume.trim() && !formData.contenu.trim()) {
+      toast.error("Veuillez remplir au moins un champ avant d'enregistrer");
       return;
     }
 
@@ -101,27 +121,69 @@ function ArticleForm() {
 
       if (isEdit) {
         await articleService.updateArticle(id, draftData);
-        alert("Brouillon mis à jour");
+        toast.success("Brouillon mis à jour avec succès");
       } else {
         await articleService.createArticle(draftData);
-        alert("Brouillon enregistré");
+        toast.success("Brouillon enregistré avec succès");
       }
 
       navigate("/medecin/articles");
     } catch (error) {
       console.error("Erreur:", error);
-      alert(error.response?.data?.error || "Erreur lors de l'enregistrement");
+      toast.error(error.response?.data?.error || error.response?.data?.message || "Erreur lors de l'enregistrement");
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSubmitForReview = async () => {
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      if (isEdit) {
+        // First update the article
+        await articleService.updateArticle(id, formData);
+        // Then submit for review
+        await articleService.soumettreValidation(id);
+        toast.success("Article soumis pour validation avec succès");
+      } else {
+        // First create the article
+        const article = await articleService.createArticle(formData);
+        // Then submit for review
+        await articleService.soumettreValidation(article.id);
+        toast.success("Article soumis pour validation avec succès");
+      }
+
+      navigate("/medecin/articles");
+    } catch (error) {
+      console.error("Erreur:", error);
+      toast.error(error.response?.data?.error || error.response?.data?.message || "Erreur lors de la soumission");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !isEdit) {
+    return (
+      <div className="container py-4">
+        <div className="d-flex justify-content-center">
+          <div className="spinner-border" role="status">
+            <span className="visually-hidden">Chargement...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-4">
       <div className="row">
         <div className="col-lg-8 mx-auto">
           <h2 className="mb-4">
-            <i className="bi bi-file-text"></i>{" "}
             {isEdit ? "Modifier l'article" : "Nouvel Article"}
           </h2>
 
@@ -219,7 +281,7 @@ function ArticleForm() {
                 className="btn btn-secondary mb-2"
                 onClick={() => navigate("/medecin/articles")}
               >
-                <i className="bi bi-x-circle"></i> Annuler
+                Annuler
               </button>
 
               <div className="d-flex flex-wrap">
@@ -238,8 +300,9 @@ function ArticleForm() {
                 </button>
 
                 <button
-                  type="submit"
-                  className="btn btn-primary mb-2"
+                  type="button"
+                  className="btn btn-warning mb-2 me-2"
+                  onClick={handleSubmitForReview}
                   disabled={loading}
                 >
                   {loading ? (
@@ -247,7 +310,20 @@ function ArticleForm() {
                   ) : (
                     <i className="bi bi-send me-2"></i>
                   )}
-                  {isEdit ? "Mettre à jour" : "Soumettre pour validation"}
+                  Soumettre pour validation
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary mb-2"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="spinner-border spinner-border-sm me-2"></span>
+                  ) : (
+                    <i className="bi bi-floppy me-2"></i>
+                  )}
+                  {isEdit ? "Mettre à jour" : "Enregistrer"}
                 </button>
               </div>
             </div>

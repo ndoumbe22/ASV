@@ -12,6 +12,7 @@ from .views import CliniqueViewSet, DentisteViewSet, HopitalViewSet, PharmacieVi
 # Routes API principales
 # --------------------
 router = DefaultRouter()
+router.register(r'users', views.UserViewSet)  # Add UserViewSet
 router.register(r'patients', views.PatientViewSet)
 router.register(r'medecins', views.MedecinViewSet)
 router.register(r'rendezvous', views.RendezVousViewSet)
@@ -45,7 +46,17 @@ urlpatterns = [
     path("appointments/<int:pk>/cancel/", views.cancel_appointment, name="cancel_appointment"),
     path("appointments/<int:pk>/reschedule/", views.reschedule_appointment, name="reschedule_appointment"),
     path("appointments/<int:pk>/propose-reschedule/", views.propose_reschedule, name="propose_reschedule"),
-    path("medications/", views.patient_medications, name="patient_medications"),
+    path("medications/", views.get_patient_medications, name="patient_medications"),
+    path("medications/<int:patient_id>/", views.get_patient_medications, name="get_patient_medications"),
+
+    # Explicit routes for appointment scheduling endpoints to ensure they work correctly
+    path("medecins/<int:pk>/prochains-creneaux/", views.MedecinViewSet.as_view({'get': 'prochains_creneaux'}), name="medecin-prochains-creneaux"),
+    path("medecins/mes-disponibilites/", views.MedecinViewSet.as_view({'get': 'mes_disponibilites'}), name="medecin-mes-disponibilites"),
+    path("medecins/mes-indisponibilites/", views.MedecinViewSet.as_view({'get': 'mes_indisponibilites'}), name="medecin-mes-indisponibilites"),
+    path("rendezvous/creneaux_disponibles/", views.RendezVousViewSet.as_view({'get': 'creneaux_disponibles'}), name="rendezvous-creneaux-disponibles"),
+
+    # User profile endpoints
+    path("users/profile/", views.UserViewSet.as_view({'get': 'profile', 'put': 'update_profile', 'patch': 'update_profile'}), name="user-profile"),
 
     # API Routes (removed the 'api/' prefix since it's already included in the main urls.py)
     path('', include(router.urls)),
@@ -53,6 +64,9 @@ urlpatterns = [
     # Chatbot (protégé par JWT)
     path("chatbot/", views.ChatbotAPIView.as_view(), name="chatbot"),
     path("chatbot/history/", views.ChatbotAPIView.as_view(), name="chatbot_history"),
+
+    # Public Statistics
+    path('statistics/public/', views.public_statistics, name='public-statistics'),
 
     # Medication Reminders
     path("medication-reminders/", views.medication_reminders, name="medication_reminders"),

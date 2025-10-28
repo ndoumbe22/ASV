@@ -14,26 +14,30 @@ export const NotificationProvider = ({ children }) => {
   // Load notifications when component mounts
   useEffect(() => {
     loadNotifications();
-    connectWebSocket();
+    // connectWebSocket();
     initAppointmentReminders();
 
     // Cleanup on unmount
     return () => {
-      webSocketService.disconnect();
+      // webSocketService.disconnect();
       appointmentReminderService.stopPeriodicCheck();
     };
   }, []);
 
   const initAppointmentReminders = () => {
     appointmentReminderService.init();
-    
+
     // Listen for appointment reminders
-    window.addEventListener('appointmentReminder', (event) => {
+    window.addEventListener("appointmentReminder", (event) => {
       addNotification(event.detail);
     });
   };
 
   const connectWebSocket = () => {
+    // WebSocket désactivé temporairement
+    return;
+
+    /*
     // In a real implementation, you would use the actual user ID
     const userId = localStorage.getItem("user_id") || "1";
     const wsUrl = `ws://localhost:8000/ws/notifications/${userId}/`;
@@ -88,6 +92,7 @@ export const NotificationProvider = ({ children }) => {
         console.log("Sound playback failed:", e);
       }
     });
+    */
   };
 
   const loadNotifications = async () => {

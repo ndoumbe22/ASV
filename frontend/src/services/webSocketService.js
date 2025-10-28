@@ -9,6 +9,10 @@ class WebSocketService {
   }
 
   connect(url) {
+    // WebSocket désactivé temporairement
+    return;
+
+    /*
     if (this.socket && this.isConnected) {
       console.log("WebSocket already connected");
       return;
@@ -59,17 +63,27 @@ class WebSocketService {
       console.error("Error creating WebSocket connection:", error);
       this.emit("error", error);
     }
+    */
   }
 
   disconnect() {
+    // WebSocket désactivé temporairement
+    return;
+
+    /*
     if (this.socket) {
       this.socket.close();
       this.socket = null;
       this.isConnected = false;
     }
+    */
   }
 
   send(data) {
+    // WebSocket désactivé temporairement
+    return;
+
+    /*
     if (this.isConnected && this.socket) {
       try {
         this.socket.send(JSON.stringify(data));
@@ -79,6 +93,7 @@ class WebSocketService {
     } else {
       console.warn("WebSocket not connected. Cannot send message.");
     }
+    */
   }
 
   // Event listener methods

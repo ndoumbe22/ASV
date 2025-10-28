@@ -1,14 +1,52 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { patientAPI, appointmentAPI } from "../../services/api";
-import { FaCalendarCheck, FaUserMd, FaSearch, FaEdit } from "react-icons/fa";
+import { FaCalendarCheck, FaUserMd, FaSearch, FaEdit, FaVideo } from "react-icons/fa";
 import appointmentReminderService from "../../services/appointmentReminderService";
 
 function RendezVous() {
+  const navigate = useNavigate();
   const [rendezvous, setRendezvous] = useState([]);
   const [filteredRdv, setFilteredRdv] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [todaysAppointments, setTodaysAppointments] = useState([]);
+
+  // Check for today's appointments
+  useEffect(() => {
+    if (rendezvous && Array.isArray(rendezvous)) {
+      // Filter for confirmed appointments that are today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const todaysConfirmedAppointments = rendezvous.filter(rdv => {
+        if (rdv.statut !== "CONFIRMED") return false;
+        
+        // Parse appointment date
+        let appointmentDate;
+        if (typeof rdv.date === 'string') {
+          if (rdv.date.includes('-')) {
+            appointmentDate = new Date(rdv.date);
+          } else if (rdv.date.includes('/')) {
+            const parts = rdv.date.split('/');
+            appointmentDate = new Date(parts[2], parts[1] - 1, parts[0]);
+          } else {
+            appointmentDate = new Date(rdv.date);
+          }
+        } else {
+          appointmentDate = new Date(rdv.date);
+        }
+        
+        if (isNaN(appointmentDate.getTime())) return false;
+        
+        appointmentDate.setHours(0, 0, 0, 0);
+        return today.getTime() === appointmentDate.getTime();
+      });
+      
+      setTodaysAppointments(todaysConfirmedAppointments);
+    }
+  }, [rendezvous]);
 
   // Charger les rendez-vous depuis l'API
   useEffect(() => {
@@ -261,6 +299,48 @@ function RendezVous() {
     return "#f5f6fa"; // neutre
   };
 
+  // Vérifier si un rendez-vous est aujourd'hui
+  const isToday = (dateString) => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      let appointmentDate;
+      if (dateString instanceof Date) {
+        appointmentDate = dateString;
+      } else if (typeof dateString === 'string') {
+        if (dateString.includes('/')) {
+          // Format: DD/MM/YYYY
+          const parts = dateString.split('/');
+          appointmentDate = new Date(parts[2], parts[1] - 1, parts[0]);
+        } else if (dateString.includes('-')) {
+          // Format: YYYY-MM-DD
+          appointmentDate = new Date(dateString);
+        } else {
+          appointmentDate = new Date(dateString);
+        }
+      } else {
+        appointmentDate = new Date(dateString);
+      }
+      
+      if (isNaN(appointmentDate.getTime())) {
+        return false;
+      }
+      
+      appointmentDate.setHours(0, 0, 0, 0);
+      return today.getTime() === appointmentDate.getTime();
+    } catch (error) {
+      console.error("Error in isToday function:", error);
+      return false;
+    }
+  };
+
+  // Accéder à la téléconsultation
+  const goToTeleconsultation = (appointment) => {
+    // Navigate to the consultation list where teleconsultation can be accessed
+    navigate("/patient/consultations");
+  };
+
   if (loading) {
     return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Chargement...</div>;
   }
@@ -271,6 +351,26 @@ function RendezVous() {
 
   return (
     <div className="container-fluid">
+      {/* Teleconsultation Banner */}
+      {todaysAppointments.length > 0 && (
+        <div className="alert alert-info alert-dismissible fade show mb-4" role="alert">
+          <div className="d-flex align-items-center">
+            <FaVideo className="me-2" />
+            <div>
+              <strong>Téléconsultation disponible!</strong> Vous avez {todaysAppointments.length} rendez-vous aujourd'hui. 
+              Vous pouvez démarrer une téléconsultation avec votre médecin.
+              <button 
+                className="btn btn-sm btn-info ms-3"
+                onClick={() => navigate("/patient/consultations")}
+              >
+                Accéder aux téléconsultations
+              </button>
+            </div>
+          </div>
+          <button type="button" className="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      )}
+      
       <div className="row">
         {/* Sidebar */}
         <div className="col-md-3">
@@ -316,8 +416,8 @@ function RendezVous() {
             </div>
           ) : (
             <div className="row g-3">
-              {filteredRdv.map((rdv) => (
-                <div key={rdv.id} className="col-md-6">
+              {filteredRdv.map((rdv, index) => (
+                <div key={`rdv-${rdv.id || rdv.numero || index}`} className="col-md-6">
                   <div className="card shadow-sm p-3" style={{ backgroundColor: getStatusBg(rdv.statut) }}>
                     <div className="d-flex justify-content-between align-items-start">
                       {/* Info rendez-vous */}
@@ -332,11 +432,24 @@ function RendezVous() {
                           {rdv.statut === "CANCELLED" && <span style={{ color: "red" }}>✖ Annulé</span>}
                           {rdv.statut === "PENDING" && <span style={{ color: "#1976d2" }}>⏳ En attente</span>}
                         </p>
+                        <p className="mb-1" style={{ fontSize: "13px", color: "#6c757d" }}>
+                          Type :{" "}
+                          {rdv.type_consultation === "teleconsultation" ? (
+                            <span style={{ color: "#17a2b8" }}>📹 Téléconsultation en ligne</span>
+                          ) : (
+                            <span style={{ color: "#28a745" }}>🏥 Consultation au cabinet</span>
+                          )}
+                        </p>
                       </div>
 
                       {/* Actions */}
                       {rdv.statut === "CONFIRMED" && (
                         <div className="d-flex flex-column gap-2">
+                          {isToday(rdv.date) && (
+                            <button className="btn btn-sm btn-info" onClick={() => goToTeleconsultation(rdv)}>
+                              <FaVideo className="me-1" /> Téléconsultation
+                            </button>
+                          )}
                           {canReschedule(rdv) ? (
                             <>
                               <button className="btn btn-sm btn-warning" onClick={() => proposeReschedule(rdv)}>
@@ -372,6 +485,11 @@ function RendezVous() {
                       
                       {rdv.statut === "RESCHEDULED" && (
                         <div className="d-flex flex-column gap-2">
+                          {isToday(rdv.date) && (
+                            <button className="btn btn-sm btn-info" onClick={() => goToTeleconsultation(rdv)}>
+                              <FaVideo className="me-1" /> Téléconsultation
+                            </button>
+                          )}
                           <button className="btn btn-sm btn-warning" onClick={() => proposeReschedule(rdv)}>
                             <FaEdit className="me-1" /> Proposer un autre changement
                           </button>

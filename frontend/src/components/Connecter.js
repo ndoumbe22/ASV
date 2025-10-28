@@ -67,9 +67,15 @@ function Connecter() {
 
       let errorMessage = "Une erreur est survenue. Veuillez réessayer.";
 
-      if (error.response) {
+      // Check if it's a network error
+      if (!error.response && !error.request) {
+        errorMessage = error.message;
+      }
+      // Handle API response errors
+      else if (error.response) {
         const errorData = error.response.data;
 
+        // Use the error message from the API if available
         if (errorData.error) {
           errorMessage = errorData.error;
         } else if (error.response.status === 401) {
@@ -77,14 +83,14 @@ function Connecter() {
         } else if (error.response.status === 403) {
           errorMessage =
             "Ce compte est désactivé. Veuillez contacter l'administrateur.";
-        } else if (error.response.status === 500) {
+        } else if (error.response.status >= 500) {
           errorMessage = "Erreur serveur. Veuillez réessayer plus tard.";
         }
-      } else if (error.request) {
+      }
+      // Handle network errors
+      else if (error.request) {
         errorMessage =
           "Impossible de contacter le serveur. Vérifiez votre connexion.";
-      } else if (error.message) {
-        errorMessage = error.message;
       }
 
       setError(errorMessage);
@@ -185,7 +191,7 @@ function Connecter() {
             ) : (
               <>
                 <i className="bi bi-box-arrow-in-right me-2"></i>
-                Se connecter
+                Commencer
               </>
             )}
           </button>
@@ -193,7 +199,7 @@ function Connecter() {
 
         <div className="auth-footer">
           <p>
-            Pas encore de compte ?{" "}
+            Vous n'avez pas de compte ?{" "}
             <Link to="/inscrire" className="auth-link">
               S'inscrire
             </Link>

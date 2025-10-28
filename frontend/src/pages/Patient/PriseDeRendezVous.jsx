@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { doctorAPI, appointmentAPI, specialtyAPI, userAPI } from "../../services/api";
+import { doctorAPI, appointmentAPI, specialtyAPI, userAPI, disponibiliteMedecinAPI } from "../../services/api";
 import { FaUserMd, FaCalendarAlt, FaClock, FaStethoscope, FaArrowLeft, FaCheckCircle } from "react-icons/fa";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
@@ -16,8 +16,10 @@ function PriseDeRendezVous() {
   const [selectedMedecin, setSelectedMedecin] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [availableSlots, setAvailableSlots] = useState([]);
+  const [nextSlots, setNextSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState("");
   const [motif, setMotif] = useState("");
+  const [typeConsultation, setTypeConsultation] = useState("cabinet"); // Add this line
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -33,18 +35,36 @@ function PriseDeRendezVous() {
   useEffect(() => {
     const fetchSpecialites = async () => {
       try {
+        setLoading(true);
         const response = await doctorAPI.getDoctors();
+        console.log("Doctors API response:", response);
+        
+        // Ensure we're working with an array from the results field
+        let doctorsData = [];
+        if (response && response.data && response.data.results) {
+          doctorsData = Array.isArray(response.data.results) ? response.data.results : [];
+        } else if (response && response.data) {
+          // Fallback in case results field doesn't exist
+          doctorsData = Array.isArray(response.data) ? response.data : [];
+        }
+        
+        console.log("Doctors data extracted:", doctorsData);
+        
         // Extract unique specialties from doctors
         const specialtiesSet = new Set();
-        response.data.forEach(doctor => {
+        doctorsData.forEach(doctor => {
           const specialty = doctor.specialite || doctor.specialty || doctor.pathologie || "Spécialité non spécifiée";
+          console.log("Doctor specialty:", specialty, "for doctor:", doctor);
           specialtiesSet.add(specialty);
         });
-        const specialtiesData = Array.from(specialtiesSet);
-        setSpecialites(specialtiesData);
+        const specialtiesArray = Array.from(specialtiesSet);
+        console.log("Specialties array:", specialtiesArray);
+        setSpecialites(specialtiesArray);
+        setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement des spécialités: " + (err.response?.data?.detail || err.response?.data?.error || err.message));
         console.error("Erreur lors du chargement des spécialités :", err);
+        setLoading(false);
       }
     };
 
@@ -61,8 +81,17 @@ function PriseDeRendezVous() {
           setLoading(true);
           const response = await doctorAPI.getDoctors();
           
+          // Ensure we're working with an array from the results field
+          let doctorsData = [];
+          if (response && response.data && response.data.results) {
+            doctorsData = Array.isArray(response.data.results) ? response.data.results : [];
+          } else if (response && response.data) {
+            // Fallback in case results field doesn't exist
+            doctorsData = Array.isArray(response.data) ? response.data : [];
+          }
+          
           // Filter doctors by selected specialty (case insensitive)
-          const filteredDoctors = response.data.filter(doctor => {
+          const filteredDoctors = doctorsData.filter(doctor => {
             // Check multiple possible field names for specialty
             const doctorSpecialty = doctor.specialite || doctor.specialty || doctor.pathologie || "";
             return doctorSpecialty && 
@@ -84,47 +113,93 @@ function PriseDeRendezVous() {
 
   // Charger les disponibilités quand un médecin est sélectionné
   useEffect(() => {
-    if (selectedMedecin) {
-      // Dans une vraie application, cela viendrait de l'API
-      // Pour le moment, utilisons des créneaux dynamiques basés sur l'heure actuelle
-      const now = new Date();
-      const slots = [];
-      
-      // Créneaux matin
-      for (let hour = 9; hour <= 11; hour++) {
-        slots.push(`${hour}:00`, `${hour}:30`);
-      }
-      
-      // Créneaux après-midi
-      for (let hour = 14; hour <= 16; hour++) {
-        slots.push(`${hour}:00`, `${hour}:30`);
-      }
-      
-      // Filtrer les créneaux passés si la date sélectionnée est aujourd'hui
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const selectedDateObj = new Date(selectedDate);
-      selectedDateObj.setHours(0, 0, 0, 0);
-      
-      if (selectedDateObj.getTime() === today.getTime()) {
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        
-        const filteredSlots = slots.filter(slot => {
-          const [hour, minute] = slot.split(':').map(Number);
-          if (hour < currentHour) return false;
-          if (hour === currentHour && minute <= currentMinute) return false;
-          return true;
-        });
-        
-        setAvailableSlots(filteredSlots);
-      } else {
-        setAvailableSlots(slots);
-      }
+    if (selectedMedecin && selectedDate) {
+      const fetchAvailableSlots = async () => {
+        try {
+          setLoading(true);
+          console.log('🔄 Récupération créneaux TEMPS RÉEL...');
+          console.log(' Médecin:', selectedMedecin.user.id, 'Date:', selectedDate);
+
+          const dateFormatted = selectedDate instanceof Date
+            ? selectedDate.toISOString().split('T')[0]
+            : selectedDate;
+
+          const response = await disponibiliteMedecinAPI.getCreneauxDisponibles(
+            selectedMedecin.user.id,
+            dateFormatted
+          );
+
+          console.log('✅ Créneaux reçus:', response.data?.slots?.length);
+          console.log('   Disponibles:', response.data?.slots?.filter(s => s.disponible).length);
+
+          if (response && response.data && response.data.slots) {
+            setAvailableSlots(response.data.slots);
+          } else {
+            setAvailableSlots([]);
+          }
+
+        } catch (error) {
+          console.error('❌ Erreur récupération créneaux:', error);
+          setError("Erreur lors du chargement des créneaux disponibles: " + (error.response?.data?.error || error.message));
+          setAvailableSlots([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchAvailableSlots();
     }
   }, [selectedMedecin, selectedDate]);
+  
+  // Charger les prochains créneaux disponibles
+  const fetchNextSlots = async () => {
+    if (selectedMedecin) {
+      try {
+        setLoading(true);
+        const response = await disponibiliteMedecinAPI.getProchainsCreneaux(selectedMedecin.user.id, 5);
+        
+        if (response && response.data && response.data.creneaux) {
+          setNextSlots(response.data.creneaux);
+        } else {
+          setNextSlots([]);
+        }
+        
+        setLoading(false);
+      } catch (err) {
+        console.error("Erreur lors du chargement des prochains créneaux:", err);
+        // More detailed error handling
+        let errorMessage = "Erreur lors du chargement des prochains créneaux";
+        if (err.response) {
+          if (err.response.data && err.response.data.error) {
+            errorMessage += ": " + err.response.data.error;
+          } else if (err.response.data && err.response.data.message) {
+            errorMessage += ": " + err.response.data.message;
+          } else if (err.response.status === 404) {
+            errorMessage += ": Médecin non trouvé";
+          } else if (err.response.status === 400) {
+            errorMessage += ": Données invalides";
+          }
+        } else if (err.request) {
+          errorMessage += ": Problème de connexion au serveur";
+        } else {
+          errorMessage += ": " + err.message;
+        }
+        setError(errorMessage);
+        setNextSlots([]);
+        setLoading(false);
+      }
+    }
+  };
+  
+  // Charger les prochains créneaux quand un médecin est sélectionné
+  useEffect(() => {
+    if (selectedMedecin) {
+      fetchNextSlots();
+    }
+  }, [selectedMedecin]);
 
   const handleSpecialiteSelect = (specialite) => {
+    console.log("Specialty selected:", specialite);
     setSelectedSpecialite(specialite);
     setStep(2);
   };
@@ -152,8 +227,10 @@ function PriseDeRendezVous() {
     setError(null);
   };
 
-  const handleSlotSelect = (slot) => {
-    setSelectedSlot(slot);
+  const handleSlotSelect = (heure) => {
+    console.log('🕐 FONCTION handleSlotSelect appelée avec:', heure);
+    setSelectedSlot(heure);
+    console.log('✅ selectedSlot mis à jour:', heure);
   };
 
   const handleConfirm = async () => {
@@ -218,14 +295,15 @@ function PriseDeRendezVous() {
         medecin: medecinId, // Using doctor ID as integer
         date: formattedDate,
         heure: selectedSlot,
-        description: motif
+        description: motif,
+        type_consultation: typeConsultation // Add this line
       };
       
-      console.log("Sending appointment data:", appointmentData);
+      console.log("📤 Payload envoyé:", appointmentData);
       
       const response = await appointmentAPI.createAppointment(appointmentData);
       
-      console.log("Appointment creation response:", response);
+      console.log("✅ Réponse API:", response.data);
       
       // Show success message
       setSuccess(true);
@@ -240,6 +318,7 @@ function PriseDeRendezVous() {
       let errorMessage = "Erreur lors de la prise de rendez-vous";
       
       console.error("Full error object:", err);
+      console.error("❌ Erreur API:", err.response?.data);
       
       if (err.response) {
         console.log("Error response:", err.response);
@@ -324,7 +403,7 @@ function PriseDeRendezVous() {
                 <h2 className="mb-3">🔐 Authentification requise</h2>
                 <p className="mb-4 text-muted">Vous devez être connecté pour prendre un rendez-vous.</p>
                 <Link to="/connecter" className="btn btn-primary btn-lg px-4 py-2">
-                  Se connecter
+                  Commencer
                 </Link>
               </div>
             </div>
@@ -457,8 +536,17 @@ function PriseDeRendezVous() {
                       <div key={index} className="col-md-6 col-lg-3">
                         <div 
                           className="card border-0 shadow-sm h-100 rounded-3 cursor-pointer hover-lift"
-                          style={{ transition: "all 0.3s ease" }}
+                          style={{ transition: "all 0.3s ease", cursor: "pointer" }}
                           onClick={() => handleSpecialiteSelect(specialite)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSpecialiteSelect(specialite);
+                            }
+                          }}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`Sélectionner la spécialité ${specialite}`}
                         >
                           <div className="card-body text-center p-4">
                             <div className="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3 mx-auto" style={{ width: "60px", height: "60px" }}>
@@ -474,8 +562,14 @@ function PriseDeRendezVous() {
                   <div className="alert alert-info rounded-3">
                     <div className="text-center">
                       <i className="bi bi-info-circle-fill me-2"></i>
-                      <span>Aucune spécialité disponible pour le moment.</span>
-                      <p className="mb-0 mt-2">Veuillez contacter l'administrateur pour ajouter des spécialités.</p>
+                      {loading ? (
+                        <span>Chargement des spécialités...</span>
+                      ) : (
+                        <>
+                          <span>Aucune spécialité disponible pour le moment.</span>
+                          <p className="mb-0 mt-2">Veuillez contacter l'administrateur pour ajouter des spécialités.</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -583,6 +677,11 @@ function PriseDeRendezVous() {
                             value={selectedDate}
                             className="border-0 w-100"
                             minDate={new Date()} // This blocks past dates
+                            maxDate={null} // Remove any maximum date restriction
+                            navigationAriaLabel="Navigation du calendrier"
+                            navigationLabel={({ date }) => 
+                              date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+                            }
                             tileClassName={({ date, view }) => {
                               // Highlight today
                               const today = new Date();
@@ -611,36 +710,89 @@ function PriseDeRendezVous() {
                         
                         <div className="mb-4">
                           <h6 className="mb-3">Créneaux disponibles pour le {selectedDate.toLocaleDateString('fr-FR')}</h6>
-                          <div className="row g-2">
-                            {availableSlots.map((slot, index) => (
-                              <div key={index} className="col-4">
-                                <button
-                                  className={`btn w-100 rounded-pill ${selectedSlot === slot ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                  onClick={() => handleSlotSelect(slot)}
-                                >
-                                  {slot}
-                                </button>
+                          
+                          {loading ? (
+                            <div className="text-center py-3">
+                              <div className="spinner-border text-primary" role="status">
+                                <span className="visually-hidden">Chargement des disponibilités...</span>
                               </div>
-                            ))}
-                          </div>
+                              <p className="mt-2">Chargement des disponibilités...</p>
+                            </div>
+                          ) : availableSlots.length === 0 ? (
+                            <div className="alert alert-info">
+                              <p className="mb-2">Aucun créneau disponible ce jour. Le Dr. {selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name} ne consulte pas ou tous les créneaux sont réservés.</p>
+                              
+                              {nextSlots.length > 0 && (
+                                <>
+                                  <h6 className="mt-3">Prochaines disponibilités :</h6>
+                                  <div className="d-flex flex-wrap gap-2">
+                                    {nextSlots.map((creneau, index) => (
+                                      <button
+                                        key={index}
+                                        className="btn btn-outline-primary btn-sm"
+                                        onClick={() => {
+                                          // Convert date string to Date object and set it
+                                          const dateObj = new Date(creneau.date);
+                                          setSelectedDate(dateObj);
+                                          // The useEffect will automatically trigger and load available slots
+                                        }}
+                                      >
+                                        {new Date(creneau.date).toLocaleDateString('fr-FR')} à {creneau.heure}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="row g-2">
+                              {availableSlots.map((slot, index) => (
+                                <div key={index} className="col-4">
+                                  <button
+                                    className={`btn w-100 rounded-pill ${
+                                      slot.disponible 
+                                        ? (selectedSlot === slot.heure ? 'btn-primary' : 'btn-outline-secondary') 
+                                        : 'btn-secondary disabled'
+                                    }`}
+                                    onClick={() => {
+                                      if (slot.disponible) {
+                                        console.log('🖱️ CLIC sur créneau:', slot.heure);
+                                        handleSlotSelect(slot.heure);
+                                      }
+                                    }}
+                                    disabled={!slot.disponible}
+                                    title={slot.disponible ? '' : slot.motif_indisponibilite}
+                                  >
+                                    {slot.heure}
+                                    {!slot.disponible && (
+                                      <span className="badge bg-dark ms-1">
+                                        <small>❌</small>
+                                      </span>
+                                    )}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         
-                        <div className="mt-4">
-                          <h5 className="mb-3">Motif de consultation</h5>
-                          <textarea
-                            className="form-control rounded-3"
-                            rows="4"
-                            placeholder="Décrivez brièvement le motif de votre consultation..."
-                            value={motif}
-                            onChange={(e) => setMotif(e.target.value)}
-                            required
-                          ></textarea>
-                        </div>
+                        {selectedSlot && (
+                          <div className="alert alert-success mt-3">
+                            Créneau sélectionné : {selectedSlot}
+                          </div>
+                        )}
                         
                         <button
                           className="btn btn-primary w-100 mt-4 rounded-pill py-2"
-                          onClick={() => setStep(4)}
-                          disabled={!selectedSlot || !motif}
+                          onClick={() => {
+                            console.log('🚀 DONNÉES ENVOYÉES:', {
+                              date: selectedDate,
+                              slot: selectedSlot,
+                              medecin: selectedMedecin?.id,
+                              motif: motif
+                            });
+                            setStep(4);
+                          }}
                         >
                           Continuer vers la confirmation
                         </button>
@@ -725,6 +877,22 @@ function PriseDeRendezVous() {
                               <div>
                                 <small className="text-muted">Motif</small>
                                 <p className="mb-0 fw-medium">{motif || "Non spécifié"}</p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Add consultation type display */}
+                          <div className="col-12">
+                            <div className="d-flex">
+                              <div className="bg-light rounded-circle d-inline-flex align-items-center justify-content-center me-3" 
+                                   style={{ width: "40px", height: "40px", minWidth: "40px" }}>
+                                <i className={`bi ${typeConsultation === 'teleconsultation' ? 'bi-camera-video' : 'bi-building'} text-primary`}></i>
+                              </div>
+                              <div>
+                                <small className="text-muted">Type de consultation</small>
+                                <p className="mb-0 fw-medium">
+                                  {typeConsultation === 'teleconsultation' ? '📹 Téléconsultation en ligne' : '🏥 Consultation au cabinet'}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -813,7 +981,7 @@ function PriseDeRendezVous() {
       </div>
       
       {/* Custom Styles */}
-      <style jsx>{`
+      <style>{`
         .hover-lift {
           cursor: pointer;
         }

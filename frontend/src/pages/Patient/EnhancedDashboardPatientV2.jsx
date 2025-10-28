@@ -6,7 +6,7 @@ import {
   FaCog, FaSignOutAlt, FaUser, FaSearch, FaBell, 
   FaPills, FaRobot, FaChartLine, FaQrcode, FaStar,
   FaChevronLeft, FaChevronRight, FaStethoscope, FaHospital,
-  FaPrescriptionBottle, FaHeartbeat, FaNotesMedical
+  FaPrescriptionBottle, FaHeartbeat, FaNotesMedical, FaVideo
 } from "react-icons/fa";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -18,6 +18,8 @@ import RatingComponent from "../../components/RatingComponent";
 import DoctorRating from "../../components/DoctorRating";
 import MedicationTodayWidget from "../../components/MedicationTodayWidget";
 import NotificationCenter from "../../components/NotificationCenter";
+import PatientCalendar from "../../components/PatientCalendar";
+import RecentAppointmentsWidget from "../../components/RecentAppointmentsWidget";
 
 function EnhancedDashboardPatientV2() {
   const navigate = useNavigate();
@@ -47,6 +49,12 @@ function EnhancedDashboardPatientV2() {
       path: "/patient/prise-rendez-vous"
     },
     { 
+      title: "Mes consultations", 
+      icon: <FaVideo size={24} />, 
+      color: "info",
+      path: "/patient/consultations"
+    },
+    { 
       title: "Mes médicaments", 
       icon: <FaPills size={24} />, 
       color: "success",
@@ -63,21 +71,23 @@ function EnhancedDashboardPatientV2() {
       icon: <FaHeartbeat size={24} />, 
       color: "danger",
       path: "/patient/urgence"
-    },
-    { 
-      title: "Mes médecins", 
-      icon: <FaUserMd size={24} />, 
-      color: "warning",
-      path: "/patient/mes-medecins"
     }
   ];
+
+  // Teleconsultation quick action
+  const teleconsultationAction = { 
+    title: "Téléconsultation", 
+    icon: <FaVideo size={24} />, 
+    color: "success",
+    path: "/patient/consultations"
+  };
 
   // Health tips
   const healthTips = [
     "Buvez au moins 8 verres d'eau par jour pour rester hydraté.",
     "Faites 30 minutes d'exercice quotidien pour maintenir votre santé.",
     "Mangez 5 portions de fruits et légumes par jour.",
-    "Dormez 7-8 heures par nuit pour un bon rétablissement.",
+    "Dormez 7-88 heures par nuit pour un bon rétablissement.",
     "Lavez-vous les mains régulièrement pour prévenir les infections."
   ];
 
@@ -158,6 +168,43 @@ function EnhancedDashboardPatientV2() {
     setAppointmentHistoryData(mockAppointmentHistory);
     setMedicationAdherenceData(mockMedicationAdherence);
   }, []);
+
+  // Check for today's appointments that can be used for teleconsultation
+  const [todaysAppointments, setTodaysAppointments] = useState([]);
+  
+  useEffect(() => {
+    if (appointments && Array.isArray(appointments)) {
+      // Filter for confirmed appointments that are today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const todaysConfirmedAppointments = appointments.filter(app => {
+        if (app.statut !== "CONFIRMED") return false;
+        
+        // Parse appointment date
+        let appointmentDate;
+        if (typeof app.date === 'string') {
+          if (app.date.includes('-')) {
+            appointmentDate = new Date(app.date);
+          } else if (app.date.includes('/')) {
+            const parts = app.date.split('/');
+            appointmentDate = new Date(parts[2], parts[1] - 1, parts[0]);
+          } else {
+            appointmentDate = new Date(app.date);
+          }
+        } else {
+          appointmentDate = new Date(app.date);
+        }
+        
+        if (isNaN(appointmentDate.getTime())) return false;
+        
+        appointmentDate.setHours(0, 0, 0, 0);
+        return today.getTime() === appointmentDate.getTime();
+      });
+      
+      setTodaysAppointments(todaysConfirmedAppointments);
+    }
+  }, [appointments]);
 
   // Charger les rendez-vous du patient
   useEffect(() => {
@@ -432,66 +479,50 @@ function EnhancedDashboardPatientV2() {
         </div>
 
         {/* ===== Quick Actions Carousel ===== */}
-        <div className="card mb-4">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h5 className="mb-0">Actions rapides</h5>
-            <div className="d-flex">
-              <button className="btn btn-sm btn-outline-secondary me-1" onClick={prevSlide}>
-                <FaChevronLeft />
-              </button>
-              <button className="btn btn-sm btn-outline-secondary" onClick={nextSlide}>
-                <FaChevronRight />
-              </button>
-            </div>
-          </div>
-          <div className="card-body">
-            <div className="d-flex overflow-hidden">
-              <div 
-                className="d-flex" 
-                style={{ 
-                  transform: `translateX(-${currentSlide * 100}%)`, 
-                  transition: "transform 0.5s ease-in-out",
-                  width: `${Math.ceil(quickActions.length / 3) * 100}%`
-                }}
-              >
-                {Array(Math.ceil(quickActions.length / 3)).fill().map((_, groupIndex) => (
-                  <div key={groupIndex} className="d-flex" style={{ width: "100%" }}>
-                    {quickActions.slice(groupIndex * 3, (groupIndex + 1) * 3).map((action, index) => (
-                      <div key={index} className="col-md-4 mb-3 px-2">
-                        <Link 
-                          to={action.path}
-                          className="text-decoration-none"
-                        >
-                          <div 
-                            className="card h-100 text-center border-0 shadow-sm"
-                            style={{ 
-                              backgroundColor: `var(--bs-${action.color})`,
-                              color: "white",
-                              transition: "transform 0.2s"
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.05)"}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
-                          >
-                            <div className="card-body d-flex flex-column justify-content-center align-items-center">
-                              <div className="mb-2">{action.icon}</div>
-                              <h6 className="card-title mb-0">{action.title}</h6>
-                            </div>
+        <div className="col-12 mb-4">
+          <div className="card border-0 shadow-sm rounded-3">
+            <div className="card-body p-4">
+              <div className="d-flex justify-content-between align-items-center mb-4">
+                <h3 className="mb-0">Actions rapides</h3>
+                <div className="d-flex gap-2">
+                  <button 
+                    className="btn btn-outline-secondary rounded-circle p-2"
+                    onClick={() => setCurrentSlide(prev => Math.max(0, prev - 1))}
+                  >
+                    <FaChevronLeft />
+                  </button>
+                  <button 
+                    className="btn btn-outline-secondary rounded-circle p-2"
+                    onClick={() => setCurrentSlide(prev => Math.min(Math.ceil((quickActions.length + 1) / 5) - 1, prev + 1))}
+                  >
+                    <FaChevronRight />
+                  </button>
+                </div>
+              </div>
+              
+              <div className="position-relative">
+                <div className="row g-3">
+                  {/* Display 5 quick actions per slide (including teleconsultation) */}
+                  {[...quickActions, teleconsultationAction].slice(currentSlide * 5, (currentSlide * 5) + 5).map((action, index) => (
+                    <div key={index} className="col-md-6 col-lg-4 col-xl-2_4">
+                      <Link 
+                        to={action.path}
+                        className={`card border-0 shadow-sm h-100 text-decoration-none rounded-3 quick-action-card quick-action-card-${action.color}`}
+                        style={{ transition: "all 0.3s ease" }}
+                      >
+                        <div className="card-body text-center p-3">
+                          <div className={`bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-2 mx-auto`} 
+                               style={{ width: "50px", height: "50px" }}>
+                            {action.icon}
                           </div>
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                          <h6 className="card-title mb-0 small">{action.title}</h6>
+                        </div>
+                      </Link>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* ===== Health Tip of the Day ===== */}
-        <div className="alert alert-info d-flex align-items-center mb-4">
-          <FaNotesMedical size={24} className="me-2" />
-          <div>
-            <strong>Conseil santé du jour:</strong> {healthTips[Math.floor(Math.random() * healthTips.length)]}
           </div>
         </div>
 
@@ -525,133 +556,57 @@ function EnhancedDashboardPatientV2() {
 
         {/* ===== Overview Tab ===== */}
         {activeTab === "overview" && (
-          <div>
-            <div className="row mb-4">
-              <div className="col-md-3">
-                <div className="card bg-primary text-white">
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <h5 className="card-title">Rendez-vous</h5>
-                        <h2>{appointments.length}</h2>
-                      </div>
-                      <FaCalendarCheck size={30} />
-                    </div>
+          <div className="row">
+            <div className="col-md-6 mb-4">
+              <div className="card border-0 shadow-sm rounded-3 h-100">
+                <div className="card-body p-4">
+                  <div className="d-flex align-items-center mb-3">
+                    <FaRobot className="text-primary me-2" />
+                    <h5 className="mb-0">Bienvenue</h5>
                   </div>
+                  <p className="mb-0">AssitoSanté est votre assistant de santé personnalisé. Vous pouvez utiliser les actions rapides ci-dessus pour prendre rendez-vous, consulter votre dossier médical et plus encore.</p>
                 </div>
               </div>
-              <div className="col-md-3">
-                <div className="card bg-success text-white">
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <h5 className="card-title">Médicaments</h5>
-                        <h2>{medications.length}</h2>
-                      </div>
-                      <FaPills size={30} />
-                    </div>
+            </div>
+            
+            {/* Health Tips */}
+            <div className="col-md-6 mb-4">
+              <div className="card border-0 shadow-sm rounded-3 h-100">
+                <div className="card-body p-4">
+                  <div className="d-flex align-items-center mb-3">
+                    <FaStar className="text-warning me-2" />
+                    <h5 className="mb-0">Conseils santé</h5>
                   </div>
-                </div>
-              </div>
-              <div className="col-md-3">
-                <div className="card bg-info text-white">
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <h5 className="card-title">Médecins</h5>
-                        <h2>{confirmedDoctorsCount}</h2>
-                        <small>avec RDV confirmé</small>
-                      </div>
-                      <FaUserMd size={30} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-3">
-                <div className="card bg-warning text-dark">
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <h5 className="card-title">Notifications</h5>
-                        <h2>0</h2>
-                      </div>
-                      <FaBell size={30} />
-                    </div>
+                  <div className="bg-light rounded-3 p-3">
+                    <p className="mb-0 text-muted">
+                      <em>"{healthTips[Math.floor(Math.random() * healthTips.length)]}"</em>
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
-
-            <div className="row">
-              <div className="col-md-8">
-                <div className="card mb-4">
-                  <div className="card-header">
-                    <h5>Historique des rendez-vous</h5>
-                  </div>
-                  <div className="card-body">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={appointmentHistoryData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="mois" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="rendez_vous" stroke="#8884d8" activeDot={{ r: 8 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
+            
+            {/* Teleconsultation Widget */}
+            {todaysAppointments.length > 0 && (
+              <div className="col-md-6 mb-4">
+                <div className="card border-0 shadow-sm rounded-3 h-100">
+                  <div className="card-body p-4">
+                    <div className="d-flex align-items-center mb-3">
+                      <FaVideo className="text-info me-2" />
+                      <h5 className="mb-0">Téléconsultation disponible</h5>
+                    </div>
+                    <p>Vous avez {todaysAppointments.length} rendez-vous aujourd'hui. Vous pouvez démarrer une téléconsultation avec votre médecin.</p>
+                    <button 
+                      className="btn btn-info w-100"
+                      onClick={() => navigate("/patient/consultations")}
+                    >
+                      <FaVideo className="me-2" />
+                      Accéder aux téléconsultations
+                    </button>
                   </div>
                 </div>
               </div>
-              <div className="col-md-4">
-                <div className="card mb-4">
-                  <div className="card-header">
-                    <h5>Prochains rendez-vous</h5>
-                  </div>
-                  <div className="card-body">
-                    {appointments.filter(app => app.statut === "CONFIRMED").length === 0 ? (
-                      <p className="text-muted">Aucun rendez-vous confirmé</p>
-                    ) : (
-                      appointments.filter(app => app.statut === "CONFIRMED").map(app => (
-                        <div key={app.id} className="mb-3 p-3 border rounded">
-                          <div className="d-flex justify-content-between align-items-start">
-                            <div>
-                              <div className="d-flex align-items-center">
-                                <strong>{app.medecin_nom}</strong>
-                                {app.rating && (
-                                  <span className="ms-2">
-                                    <RatingComponent 
-                                      initialRating={app.rating}
-                                      readonly={true}
-                                      size="sm"
-                                    />
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-muted small">{app.specialite}</div>
-                              <div>{app.date} à {app.heure}</div>
-                            </div>
-                            <span className="badge bg-success">Confirmé</span>
-                          </div>
-                          {!app.rating && (
-                            <button 
-                              className="btn btn-sm btn-outline-primary mt-2"
-                              onClick={() => handleRateDoctor(app)}
-                            >
-                              <FaStar className="me-1" /> Noter
-                            </button>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-                
-                {/* Medication Today Widget */}
-                <div className="mb-4">
-                  <MedicationTodayWidget />
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -659,6 +614,12 @@ function EnhancedDashboardPatientV2() {
         {activeTab === "appointments" && (
           <div>
             <div className="row">
+              <div className="col-md-12">
+                <PatientCalendar />
+              </div>
+            </div>
+            
+            <div className="row mt-4">
               <div className="col-md-12">
                 <div className="card">
                   <div className="card-header">
@@ -673,6 +634,7 @@ function EnhancedDashboardPatientV2() {
                             <th>Heure</th>
                             <th>Médecin</th>
                             <th>Spécialité</th>
+                            <th>Type</th>
                             <th>Statut</th>
                             <th>Note</th>
                             <th>Actions</th>
@@ -685,6 +647,17 @@ function EnhancedDashboardPatientV2() {
                               <td>{app.heure}</td>
                               <td>{app.medecin_nom}</td>
                               <td>{app.specialite}</td>
+                              <td>
+                                {app.type_consultation === "teleconsultation" ? (
+                                  <span className="badge bg-info">
+                                    📹 Téléconsultation
+                                  </span>
+                                ) : (
+                                  <span className="badge bg-success">
+                                    🏥 Au cabinet
+                                  </span>
+                                )}
+                              </td>
                               <td>
                                 <span className={`badge ${
                                   app.statut === "CONFIRMED" ? "bg-success" :

@@ -1,20 +1,33 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { disponibiliteMedecinAPI, indisponibiliteMedecinAPI } from "../../services/api";
 import { FaClock, FaPlus, FaTrash, FaEdit } from "react-icons/fa";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 
 function Disponibilites() {
   const [disponibilites, setDisponibilites] = useState([]);
+  const [indisponibilites, setIndisponibilites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddIndisponibiliteModal, setShowAddIndisponibiliteModal] = useState(false);
   const [currentDisponibilite, setCurrentDisponibilite] = useState(null);
   const [newDisponibilite, setNewDisponibilite] = useState({
     jour: "",
-    heureDebut: "",
-    heureFin: "",
-    recurrence: "aucune"
+    heure_debut: "",
+    heure_fin: "",
+    duree_consultation: 30,
+    pause_dejeuner_debut: "",
+    pause_dejeuner_fin: "",
+    nb_max_consultations: 10
+  });
+  const [newIndisponibilite, setNewIndisponibilite] = useState({
+    date_debut: "",
+    date_fin: "",
+    raison: "",
+    toute_la_journee: true,
+    heure_debut: "",
+    heure_fin: ""
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -24,60 +37,13 @@ function Disponibilites() {
     const fetchDisponibilites = async () => {
       try {
         setLoading(true);
-        // Dans une vraie application, ces données viendraient de l'API
-        // Pour l'instant, utilisons des données statiques
-        const mockDisponibilites = [
-          {
-            id: 1,
-            jour: "Lundi",
-            date: "2023-10-16",
-            heureDebut: "09:00",
-            heureFin: "17:00",
-            recurrence: "hebdomadaire"
-          },
-          {
-            id: 2,
-            jour: "Mardi",
-            date: "2023-10-17",
-            heureDebut: "09:00",
-            heureFin: "17:00",
-            recurrence: "hebdomadaire"
-          },
-          {
-            id: 3,
-            jour: "Mercredi",
-            date: "2023-10-18",
-            heureDebut: "09:00",
-            heureFin: "17:00",
-            recurrence: "hebdomadaire"
-          },
-          {
-            id: 4,
-            jour: "Jeudi",
-            date: "2023-10-19",
-            heureDebut: "09:00",
-            heureFin: "17:00",
-            recurrence: "hebdomadaire"
-          },
-          {
-            id: 5,
-            jour: "Vendredi",
-            date: "2023-10-20",
-            heureDebut: "09:00",
-            heureFin: "17:00",
-            recurrence: "hebdomadaire"
-          },
-          {
-            id: 6,
-            jour: "Samedi",
-            date: "2023-10-21",
-            heureDebut: "09:00",
-            heureFin: "12:00",
-            recurrence: "hebdomadaire"
-          }
-        ];
+        const [dispoResponse, indispoResponse] = await Promise.all([
+          disponibiliteMedecinAPI.getMesDisponibilites(),
+          indisponibiliteMedecinAPI.getMesIndisponibilites()
+        ]);
         
-        setDisponibilites(mockDisponibilites);
+        setDisponibilites(dispoResponse.data);
+        setIndisponibilites(indispoResponse.data);
         setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement des disponibilités");
@@ -92,28 +58,20 @@ function Disponibilites() {
   const handleAddDisponibilite = async (e) => {
     e.preventDefault();
     try {
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // const response = await axios.post('/api/medecin/disponibilites/', newDisponibilite, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
-      
-      // Simulation d'une nouvelle disponibilité
-      const newDisp = {
-        id: disponibilites.length + 1,
-        ...newDisponibilite,
-        date: selectedDate.toISOString().split('T')[0]
-      };
-      
-      setDisponibilites(prev => [...prev, newDisp]);
+      const response = await disponibiliteMedecinAPI.createDisponibilite(newDisponibilite);
+      setDisponibilites(prev => [...prev, response.data]);
       setNewDisponibilite({
         jour: "",
-        heureDebut: "",
-        heureFin: "",
-        recurrence: "aucune"
+        heure_debut: "",
+        heure_fin: "",
+        duree_consultation: 30,
+        pause_dejeuner_debut: "",
+        pause_dejeuner_fin: "",
+        nb_max_consultations: 10
       });
       setShowAddModal(false);
     } catch (err) {
-      setError("Erreur lors de l'ajout de la disponibilité");
+      setError("Erreur lors de l'ajout de la disponibilité: " + (err.response?.data?.detail || err.message));
       console.error("Erreur lors de l'ajout de la disponibilité :", err);
     }
   };
@@ -121,35 +79,57 @@ function Disponibilites() {
   const handleUpdateDisponibilite = async (e) => {
     e.preventDefault();
     try {
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // await axios.put(`/api/medecin/disponibilites/${currentDisponibilite.id}/`, currentDisponibilite, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
-      
+      const response = await disponibiliteMedecinAPI.updateDisponibilite(currentDisponibilite.id, currentDisponibilite);
       setDisponibilites(prev => 
         prev.map(disp => 
-          disp.id === currentDisponibilite.id ? currentDisponibilite : disp
+          disp.id === currentDisponibilite.id ? response.data : disp
         )
       );
       setShowEditModal(false);
       setCurrentDisponibilite(null);
     } catch (err) {
-      setError("Erreur lors de la mise à jour de la disponibilité");
+      setError("Erreur lors de la mise à jour de la disponibilité: " + (err.response?.data?.detail || err.message));
       console.error("Erreur lors de la mise à jour de la disponibilité :", err);
     }
   };
 
   const handleDeleteDisponibilite = async (id) => {
     try {
-      // Dans une vraie application, cela enverrait une requête à l'API
-      // await axios.delete(`/api/medecin/disponibilites/${id}/`, {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      // });
-      
+      await disponibiliteMedecinAPI.deleteDisponibilite(id);
       setDisponibilites(prev => prev.filter(disp => disp.id !== id));
     } catch (err) {
-      setError("Erreur lors de la suppression de la disponibilité");
+      setError("Erreur lors de la suppression de la disponibilité: " + (err.response?.data?.detail || err.message));
       console.error("Erreur lors de la suppression de la disponibilité :", err);
+    }
+  };
+
+  const handleAddIndisponibilite = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await indisponibiliteMedecinAPI.createIndisponibilite(newIndisponibilite);
+      setIndisponibilites(prev => [...prev, response.data]);
+      setNewIndisponibilite({
+        date_debut: "",
+        date_fin: "",
+        raison: "",
+        toute_la_journee: true,
+        heure_debut: "",
+        heure_fin: ""
+      });
+      setShowAddIndisponibiliteModal(false);
+    } catch (err) {
+      setError("Erreur lors de l'ajout de l'indisponibilité: " + (err.response?.data?.detail || err.message));
+      console.error("Erreur lors de l'ajout de l'indisponibilité :", err);
+    }
+  };
+
+  const handleDeleteIndisponibilite = async (id) => {
+    try {
+      await indisponibiliteMedecinAPI.deleteIndisponibilite(id);
+      setIndisponibilites(prev => prev.filter(indispo => indispo.id !== id));
+    } catch (err) {
+      setError("Erreur lors de la suppression de l'indisponibilité: " + (err.response?.data?.detail || err.message));
+      console.error("Erreur lors de la suppression de l'indisponibilité :", err);
     }
   };
 
@@ -157,6 +137,16 @@ function Disponibilites() {
     setCurrentDisponibilite(disponibilite);
     setShowEditModal(true);
   };
+
+  const joursSemaine = [
+    { value: 'lundi', label: 'Lundi' },
+    { value: 'mardi', label: 'Mardi' },
+    { value: 'mercredi', label: 'Mercredi' },
+    { value: 'jeudi', label: 'Jeudi' },
+    { value: 'vendredi', label: 'Vendredi' },
+    { value: 'samedi', label: 'Samedi' },
+    { value: 'dimanche', label: 'Dimanche' }
+  ];
 
   if (loading) {
     return <div className="d-flex justify-content-center align-items-center" style={{ height: "100vh" }}>Chargement...</div>;
@@ -188,8 +178,11 @@ function Disponibilites() {
             >
               <FaPlus className="me-2" /> Ajouter une disponibilité
             </button>
-            <button className="btn btn-outline-secondary w-100">
-              <FaClock className="me-2" /> Voir les congés
+            <button 
+              className="btn btn-warning w-100 mb-2"
+              onClick={() => setShowAddIndisponibiliteModal(true)}
+            >
+              <FaClock className="me-2" /> Ajouter une indisponibilité
             </button>
           </div>
         </div>
@@ -200,41 +193,49 @@ function Disponibilites() {
             <h2>Gestion des Disponibilités</h2>
             <div>
               <button 
-                className="btn btn-success"
+                className="btn btn-success me-2"
                 onClick={() => setShowAddModal(true)}
               >
-                <FaPlus className="me-2" /> Ajouter
+                <FaPlus className="me-2" /> Ajouter Disponibilité
+              </button>
+              <button 
+                className="btn btn-warning"
+                onClick={() => setShowAddIndisponibiliteModal(true)}
+              >
+                <FaClock className="me-2" /> Ajouter Indisponibilité
               </button>
             </div>
           </div>
 
+          {/* Disponibilités */}
+          <h4 className="mb-3">Disponibilités</h4>
           {disponibilites.length === 0 ? (
-            <div className="card shadow-sm p-5 text-center">
-              <h4>Aucune disponibilité définie</h4>
-              <p>Vous n'avez pas encore défini de disponibilités.</p>
-              <button 
-                className="btn btn-success"
-                onClick={() => setShowAddModal(true)}
-              >
-                <FaPlus className="me-2" /> Ajouter une disponibilité
-              </button>
+            <div className="card shadow-sm p-4 mb-4">
+              <p className="text-muted">Aucune disponibilité définie</p>
             </div>
           ) : (
-            <div className="row">
+            <div className="row mb-4">
               {disponibilites.map((disponibilite) => (
                 <div key={disponibilite.id} className="col-md-6 mb-3">
                   <div className="card shadow-sm p-3">
                     <div className="d-flex justify-content-between align-items-start">
                       <div>
-                        <h6 className="mb-1">{disponibilite.jour}</h6>
-                        <p className="mb-1 text-muted">{disponibilite.date}</p>
+                        <h6 className="mb-1">{joursSemaine.find(j => j.value === disponibilite.jour)?.label || disponibilite.jour}</h6>
                         <p className="mb-1">
                           <FaClock className="me-2" /> 
-                          {disponibilite.heureDebut} - {disponibilite.heureFin}
+                          {disponibilite.heure_debut} - {disponibilite.heure_fin}
                         </p>
+                        <p className="mb-1 text-muted">
+                          Durée consultation: {disponibilite.duree_consultation} min
+                        </p>
+                        {disponibilite.pause_dejeuner_debut && disponibilite.pause_dejeuner_fin && (
+                          <p className="mb-1 text-muted">
+                            Pause déjeuner: {disponibilite.pause_dejeuner_debut} - {disponibilite.pause_dejeuner_fin}
+                          </p>
+                        )}
                         <p className="mb-0">
-                          <span className="badge bg-info">
-                            {disponibilite.recurrence === "hebdomadaire" ? "Hebdomadaire" : "Aucune"}
+                          <span className={`badge ${disponibilite.actif ? 'bg-success' : 'bg-secondary'}`}>
+                            {disponibilite.actif ? 'Actif' : 'Inactif'}
                           </span>
                         </p>
                       </div>
@@ -258,13 +259,52 @@ function Disponibilites() {
               ))}
             </div>
           )}
+
+          {/* Indisponibilités */}
+          <h4 className="mb-3">Indisponibilités</h4>
+          {indisponibilites.length === 0 ? (
+            <div className="card shadow-sm p-4">
+              <p className="text-muted">Aucune indisponibilité définie</p>
+            </div>
+          ) : (
+            <div className="row">
+              {indisponibilites.map((indisponibilite) => (
+                <div key={indisponibilite.id} className="col-md-6 mb-3">
+                  <div className="card shadow-sm p-3">
+                    <div className="d-flex justify-content-between align-items-start">
+                      <div>
+                        <h6 className="mb-1">Indisponible</h6>
+                        <p className="mb-1">
+                          Du {indisponibilite.date_debut} au {indisponibilite.date_fin}
+                        </p>
+                        {indisponibilite.raison && (
+                          <p className="mb-1 text-muted">{indisponibilite.raison}</p>
+                        )}
+                        {!indisponibilite.toute_la_journee && (
+                          <p className="mb-1 text-muted">
+                            De {indisponibilite.heure_debut} à {indisponibilite.heure_fin}
+                          </p>
+                        )}
+                      </div>
+                      <button 
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => handleDeleteIndisponibilite(indisponibilite.id)}
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       
-      {/* Modal d'ajout */}
+      {/* Modal d'ajout de disponibilité */}
       {showAddModal && (
         <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog">
+          <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Ajouter une disponibilité</h5>
@@ -285,49 +325,103 @@ function Disponibilites() {
                       required
                     >
                       <option value="">Sélectionner un jour</option>
-                      <option value="Lundi">Lundi</option>
-                      <option value="Mardi">Mardi</option>
-                      <option value="Mercredi">Mercredi</option>
-                      <option value="Jeudi">Jeudi</option>
-                      <option value="Vendredi">Vendredi</option>
-                      <option value="Samedi">Samedi</option>
-                      <option value="Dimanche">Dimanche</option>
+                      {joursSemaine.map(jour => (
+                        <option key={jour.value} value={jour.value}>{jour.label}</option>
+                      ))}
                     </select>
                   </div>
                   
-                  <div className="mb-3">
-                    <label className="form-label">Heure de début</label>
-                    <input
-                      type="time"
-                      className="form-control"
-                      value={newDisponibilite.heureDebut}
-                      onChange={(e) => setNewDisponibilite(prev => ({ ...prev, heureDebut: e.target.value }))}
-                      required
-                    />
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Heure de début</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={newDisponibilite.heure_debut}
+                          onChange={(e) => setNewDisponibilite(prev => ({ ...prev, heure_debut: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Heure de fin</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={newDisponibilite.heure_fin}
+                          onChange={(e) => setNewDisponibilite(prev => ({ ...prev, heure_fin: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="mb-3">
-                    <label className="form-label">Heure de fin</label>
-                    <input
-                      type="time"
-                      className="form-control"
-                      value={newDisponibilite.heureFin}
-                      onChange={(e) => setNewDisponibilite(prev => ({ ...prev, heureFin: e.target.value }))}
-                      required
-                    />
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Durée de consultation (min)</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={newDisponibilite.duree_consultation}
+                          onChange={(e) => setNewDisponibilite(prev => ({ ...prev, duree_consultation: parseInt(e.target.value) }))}
+                          min="10"
+                          max="120"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Nombre max de consultations</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={newDisponibilite.nb_max_consultations}
+                          onChange={(e) => setNewDisponibilite(prev => ({ ...prev, nb_max_consultations: parseInt(e.target.value) }))}
+                          min="1"
+                          max="50"
+                        />
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="mb-3">
-                    <label className="form-label">Récurrence</label>
-                    <select
-                      className="form-select"
-                      value={newDisponibilite.recurrence}
-                      onChange={(e) => setNewDisponibilite(prev => ({ ...prev, recurrence: e.target.value }))}
-                    >
-                      <option value="aucune">Aucune</option>
-                      <option value="hebdomadaire">Hebdomadaire</option>
-                      <option value="mensuelle">Mensuelle</option>
-                    </select>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Début pause déjeuner (optionnel)</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={newDisponibilite.pause_dejeuner_debut}
+                          onChange={(e) => setNewDisponibilite(prev => ({ ...prev, pause_dejeuner_debut: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Fin pause déjeuner (optionnel)</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={newDisponibilite.pause_dejeuner_fin}
+                          onChange={(e) => setNewDisponibilite(prev => ({ ...prev, pause_dejeuner_fin: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-3 form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="actif"
+                      checked={newDisponibilite.actif}
+                      onChange={(e) => setNewDisponibilite(prev => ({ ...prev, actif: e.target.checked }))}
+                    />
+                    <label className="form-check-label" htmlFor="actif">Disponibilité active</label>
                   </div>
                 </div>
                 <div className="modal-footer">
@@ -348,10 +442,10 @@ function Disponibilites() {
         </div>
       )}
       
-      {/* Modal d'édition */}
+      {/* Modal d'édition de disponibilité */}
       {showEditModal && currentDisponibilite && (
         <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog">
+          <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Modifier une disponibilité</h5>
@@ -375,49 +469,103 @@ function Disponibilites() {
                       required
                     >
                       <option value="">Sélectionner un jour</option>
-                      <option value="Lundi">Lundi</option>
-                      <option value="Mardi">Mardi</option>
-                      <option value="Mercredi">Mercredi</option>
-                      <option value="Jeudi">Jeudi</option>
-                      <option value="Vendredi">Vendredi</option>
-                      <option value="Samedi">Samedi</option>
-                      <option value="Dimanche">Dimanche</option>
+                      {joursSemaine.map(jour => (
+                        <option key={jour.value} value={jour.value}>{jour.label}</option>
+                      ))}
                     </select>
                   </div>
                   
-                  <div className="mb-3">
-                    <label className="form-label">Heure de début</label>
-                    <input
-                      type="time"
-                      className="form-control"
-                      value={currentDisponibilite.heureDebut}
-                      onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, heureDebut: e.target.value }))}
-                      required
-                    />
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Heure de début</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={currentDisponibilite.heure_debut}
+                          onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, heure_debut: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Heure de fin</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={currentDisponibilite.heure_fin}
+                          onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, heure_fin: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="mb-3">
-                    <label className="form-label">Heure de fin</label>
-                    <input
-                      type="time"
-                      className="form-control"
-                      value={currentDisponibilite.heureFin}
-                      onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, heureFin: e.target.value }))}
-                      required
-                    />
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Durée de consultation (min)</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={currentDisponibilite.duree_consultation}
+                          onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, duree_consultation: parseInt(e.target.value) }))}
+                          min="10"
+                          max="120"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Nombre max de consultations</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={currentDisponibilite.nb_max_consultations}
+                          onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, nb_max_consultations: parseInt(e.target.value) }))}
+                          min="1"
+                          max="50"
+                        />
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="mb-3">
-                    <label className="form-label">Récurrence</label>
-                    <select
-                      className="form-select"
-                      value={currentDisponibilite.recurrence}
-                      onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, recurrence: e.target.value }))}
-                    >
-                      <option value="aucune">Aucune</option>
-                      <option value="hebdomadaire">Hebdomadaire</option>
-                      <option value="mensuelle">Mensuelle</option>
-                    </select>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Début pause déjeuner (optionnel)</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={currentDisponibilite.pause_dejeuner_debut || ""}
+                          onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, pause_dejeuner_debut: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Fin pause déjeuner (optionnel)</label>
+                        <input
+                          type="time"
+                          className="form-control"
+                          value={currentDisponibilite.pause_dejeuner_fin || ""}
+                          onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, pause_dejeuner_fin: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-3 form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="actifEdit"
+                      checked={currentDisponibilite.actif}
+                      onChange={(e) => setCurrentDisponibilite(prev => ({ ...prev, actif: e.target.checked }))}
+                    />
+                    <label className="form-check-label" htmlFor="actifEdit">Disponibilité active</label>
                   </div>
                 </div>
                 <div className="modal-footer">
@@ -433,6 +581,115 @@ function Disponibilites() {
                   </button>
                   <button type="submit" className="btn btn-success">
                     Mettre à jour
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal d'ajout d'indisponibilité */}
+      {showAddIndisponibiliteModal && (
+        <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Ajouter une indisponibilité</h5>
+                <button 
+                  type="button" 
+                  className="btn-close" 
+                  onClick={() => setShowAddIndisponibiliteModal(false)}
+                ></button>
+              </div>
+              <form onSubmit={handleAddIndisponibilite}>
+                <div className="modal-body">
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Date de début</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={newIndisponibilite.date_debut}
+                          onChange={(e) => setNewIndisponibilite(prev => ({ ...prev, date_debut: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Date de fin</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={newIndisponibilite.date_fin}
+                          onChange={(e) => setNewIndisponibilite(prev => ({ ...prev, date_fin: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label">Raison (optionnel)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={newIndisponibilite.raison}
+                      onChange={(e) => setNewIndisponibilite(prev => ({ ...prev, raison: e.target.value }))}
+                      placeholder="Congés, formation, etc."
+                    />
+                  </div>
+                  
+                  <div className="mb-3 form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="touteLaJournee"
+                      checked={newIndisponibilite.toute_la_journee}
+                      onChange={(e) => setNewIndisponibilite(prev => ({ ...prev, toute_la_journee: e.target.checked }))}
+                    />
+                    <label className="form-check-label" htmlFor="touteLaJournee">Toute la journée</label>
+                  </div>
+                  
+                  {!newIndisponibilite.toute_la_journee && (
+                    <div className="row">
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Heure de début</label>
+                          <input
+                            type="time"
+                            className="form-control"
+                            value={newIndisponibilite.heure_debut}
+                            onChange={(e) => setNewIndisponibilite(prev => ({ ...prev, heure_debut: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Heure de fin</label>
+                          <input
+                            type="time"
+                            className="form-control"
+                            value={newIndisponibilite.heure_fin}
+                            onChange={(e) => setNewIndisponibilite(prev => ({ ...prev, heure_fin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => setShowAddIndisponibiliteModal(false)}
+                  >
+                    Annuler
+                  </button>
+                  <button type="submit" className="btn btn-warning">
+                    Ajouter
                   </button>
                 </div>
               </form>

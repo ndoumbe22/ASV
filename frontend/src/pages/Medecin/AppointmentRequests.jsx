@@ -15,8 +15,15 @@ function AppointmentRequests() {
     try {
       setLoading(true);
       const response = await appointmentAPI.getAppointments();
+      
+      // Ensure we're working with an array
+      let appointmentsData = [];
+      if (response && response.data) {
+        appointmentsData = Array.isArray(response.data) ? response.data : [];
+      }
+      
       // Filter for pending appointments
-      const pendingAppointments = response.data.filter(app => app.statut === "PENDING");
+      const pendingAppointments = appointmentsData.filter(app => app.statut === "PENDING");
       setRequests(pendingAppointments);
     } catch (err) {
       setError("Erreur lors du chargement des demandes");

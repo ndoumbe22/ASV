@@ -40,7 +40,7 @@ class Patient(models.Model):
 
 # -------------------- Médecin --------------------
 class Medecin(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='medecin_profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='medecin')
     disponibilite = models.BooleanField(default=True)
 
     specialite = models.CharField(max_length=100)
@@ -64,21 +64,17 @@ class DisponibiliteMedecin(models.Model):
         ('dimanche', 'Dimanche'),
     ]
     
-    medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name='disponibilites')
-    jour = models.CharField(max_length=10, choices=JOURS_SEMAINE)
+    medecin = models.ForeignKey('Medecin', on_delete=models.CASCADE, related_name='disponibilites')
+    jour = models.CharField(max_length=20, choices=JOURS_SEMAINE)
     heure_debut = models.TimeField()
     heure_fin = models.TimeField()
-    duree_consultation = models.IntegerField(default=30)  # en minutes
+    duree_consultation = models.IntegerField(default=30, help_text="Durée en minutes")
     pause_dejeuner_debut = models.TimeField(null=True, blank=True)
     pause_dejeuner_fin = models.TimeField(null=True, blank=True)
-    nb_max_consultations = models.IntegerField(default=10)
     actif = models.BooleanField(default=True)
     
     class Meta:
-        db_table = 'DisponibiliteMedecin'
-        unique_together = ('medecin', 'jour')
-        verbose_name = 'Disponibilité Médecin'
-        verbose_name_plural = 'Disponibilités Médecins'
+        unique_together = ['medecin', 'jour']
     
     def __str__(self):
         return f"{self.medecin} - {self.get_jour_display()} ({self.heure_debut}-{self.heure_fin})"
@@ -116,7 +112,7 @@ class DisponibiliteMedecin(models.Model):
                 continue
             
             # Vérifier si ce créneau est dans le passé
-            slot_datetime = datetime.combine(date, slot_time)
+            slot_datetime = timezone.make_aware(datetime.combine(date, slot_time))
             if slot_datetime < timezone.now():
                 current_time += slot_duration
                 continue
@@ -1107,3 +1103,5 @@ class ChatbotKnowledgeBase(models.Model):
     
     def __str__(self):
         return f"{self.keyword} - {self.get_category_display()}"
+
+

@@ -24,10 +24,14 @@ function DocumentPartage() {
     try {
       setLoading(true);
       const response = await medicalDocumentAPI.getDocuments();
-      setDocuments(response.data);
+      // Ensure documents is an array
+      const documentsData = Array.isArray(response.data) ? response.data : [];
+      setDocuments(documentsData);
     } catch (err) {
       setError("Erreur lors du chargement des documents");
       console.error(err);
+      // Set documents to empty array on error
+      setDocuments([]);
     } finally {
       setLoading(false);
     }

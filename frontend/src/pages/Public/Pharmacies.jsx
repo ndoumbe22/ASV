@@ -11,7 +11,12 @@ function Pharmacie() {
     const fetchPharmacies = async () => {
       try {
         const response = await pharmacyAPI.getPharmacies();
-        setPharmacies(response.data);
+        // Ensure we're working with an array
+        const pharmaciesData = Array.isArray(response.data) 
+          ? response.data 
+          : response.data.results || response.data.pharmacies || [];
+        
+        setPharmacies(pharmaciesData);
       } catch (error) {
         console.error("Error fetching pharmacies:", error);
         // Fallback to mock data if API fails
@@ -48,11 +53,14 @@ function Pharmacie() {
     fetchPharmacies();
   }, []);
 
-  const filteredPharmacies = pharmacies.filter(
-    (pharmacie) =>
-      pharmacie.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pharmacie.adresse.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Ensure pharmacies is always an array before filtering
+  const filteredPharmacies = Array.isArray(pharmacies) 
+    ? pharmacies.filter(
+        (pharmacie) =>
+          pharmacie.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          pharmacie.adresse.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
 
   // Initialize map with proper cleanup
   useEffect(() => {
@@ -255,7 +263,7 @@ function Pharmacie() {
               </tr>
             </thead>
             <tbody>
-              {filteredPharmacies.length > 0 ? (
+              {Array.isArray(filteredPharmacies) && filteredPharmacies.length > 0 ? (
                 filteredPharmacies.map((pharmacie) => (
                   <tr key={pharmacie.id}>
                     <td>{pharmacie.nom}</td>

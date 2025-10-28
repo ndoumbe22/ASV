@@ -4,10 +4,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, permission_classes
 from django.http import JsonResponse
-from django.db.models import Q
+from django.db.models import Q, Case, When
 import json
 import requests
 import time
+import uuid
 from .forms import MessageContactForm
 from django.contrib import messages
 from .serializers import (
@@ -18,10 +19,11 @@ from .serializers import (
     StructureDeSanteSerializer, ServiceSerializer, ContactFooterSerializer, 
     ChatbotConversationSerializer, MedicalDocumentSerializer, ChatbotKnowledgeBaseSerializer, 
     RendezVousCreateSerializer, DisponibiliteMedecinSerializer, IndisponibiliteMedecinSerializer,
-    RegisterSerializer
+    RegisterSerializer, TeleconsultationSerializer, UserSerializer
 )
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import get_user_model, authenticate
+
+User = get_user_model()
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -33,14 +35,73 @@ from .notifications import NotificationService
 
 # Add these imports for admin statistics
 from django.db.models import Count
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, time as datetime_time
+from django.utils import timezone
 from .models import log_action, Patient, Medecin, RendezVous, Consultation, Medicament, Pathologie, Traitement, Constante, Mesure, Article, StructureDeSante, Service, Hopital, Clinique, Dentiste, Pharmacie, ChatbotConversation, ContactFooter, MedicalDocument, ChatbotKnowledgeBase, ConsultationMessage, Teleconsultation, DisponibiliteMedecin, IndisponibiliteMedecin
+from .permissions import IsMedecin
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
-logger = logging.getLogger(__name__)
+# Utility function for robust conflict detection
+def check_appointment_conflict(medecin_user, date_rdv, heure_rdv, duration_minutes, exclude_rdv_id=None):
+    """
+    Check if there's a conflict with existing appointments
+    Returns tuple: (has_conflict, conflicting_appointment)
+    """
+    # Calculate time range for the new appointment
+    new_start = datetime.combine(date_rdv, heure_rdv)
+    new_end = new_start + timedelta(minutes=duration_minutes)
+    
+    # Get existing appointments for this doctor on this date that are not cancelled or finished
+    existing_appointments = RendezVous.objects.filter(
+        medecin=medecin_user,
+        date=date_rdv
+    ).exclude(
+        statut__in=['CANCELLED', 'TERMINE']
+    )
+    
+    # Exclude the current appointment if we're updating
+    if exclude_rdv_id:
+        existing_appointments = existing_appointments.exclude(id=exclude_rdv_id)
+    
+    # Check each existing appointment for time overlap
+    for appointment in existing_appointments:
+        # Get the doctor's availability for this appointment's day to get the correct duration
+        appt_jour_semaine = appointment.date.strftime('%A').lower()
+        jour_mapping = {
+            'monday': 'lundi',
+            'tuesday': 'mardi',
+            'wednesday': 'mercredi',
+            'thursday': 'jeudi',
+            'friday': 'vendredi',
+            'saturday': 'samedi',
+            'sunday': 'dimanche'
+        }
+        appt_jour_fr = jour_mapping.get(appt_jour_semaine, '')
+        
+        try:
+            # Get the doctor's availability for this day to determine appointment duration
+            medecin = Medecin.objects.get(user=medecin_user)
+            appt_disponibilite = DisponibiliteMedecin.objects.get(
+                medecin=medecin, 
+                jour=appt_jour_fr, 
+                actif=True
+            )
+            appt_duree = timedelta(minutes=appt_disponibilite.duree_consultation)
+        except (Medecin.DoesNotExist, DisponibiliteMedecin.DoesNotExist):
+            # Fallback to default 30 minutes if no availability found
+            appt_duree = timedelta(minutes=30)
+        
+        # Calculate appointment time range
+        appt_start = datetime.combine(appointment.date, appointment.heure)
+        appt_end = appt_start + appt_duree
+        
+        # Check for time overlap using strict overlap detection
+        # Two intervals [a,b) and [c,d) overlap if a < d and c < b
+        if new_start < appt_end and appt_start < new_end:
+            return True, appointment
+    
+    return False, None
 
 # --------------------
 # Patients
@@ -69,135 +130,97 @@ class MedecinViewSet(viewsets.ModelViewSet):
         return Medecin.objects.all()
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            return [AllowAny()]
-        return [IsAuthenticated()]
-
-# --------------------
-# Rendez-vous
-# --------------------
-class RendezVousViewSet(viewsets.ModelViewSet):
-    queryset = RendezVous.objects.all()
-    serializer_class = RendezVousSerializer
-
-    def get_queryset(self):
-        return RendezVous.objects.all()
-
-    def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'prochains_creneaux']:
             return [AllowAny()]
         return [IsAuthenticated()]
     
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return RendezVousCreateSerializer
-        return RendezVousSerializer
-    
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
-    def creneaux_disponibles(self, request):
-        """
-        Get available time slots for a doctor on a specific date
-        Query parameters: medecin_id, date
-        """
-        from .models import DisponibiliteMedecin, IndisponibiliteMedecin, RendezVous
-        from django.utils import timezone
-        import datetime
-        
-        medecin_id = request.query_params.get('medecin_id')
-        date_str = request.query_params.get('date')
-        
-        if not medecin_id or not date_str:
-            return Response({'error': 'medecin_id and date are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+    @action(detail=False, methods=['get'], url_path='mes-disponibilites', permission_classes=[IsAuthenticated, IsMedecin])
+    def mes_disponibilites(self, request):
+        """GET /api/medecins/mes-disponibilites/"""
         try:
-            # Get the doctor
-            medecin = Medecin.objects.get(id=medecin_id)
-            date_obj = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-        except Medecin.DoesNotExist:
-            return Response({'error': 'Médecin non trouvé'}, status=status.HTTP_404_NOT_FOUND)
-        except ValueError:
-            return Response({'error': 'Format de date invalide'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if the date is in the past
-        if date_obj < timezone.now().date():
-            return Response({'error': 'Impossible de réserver dans le passé'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check for doctor's unavailability
-        indisponible = IndisponibiliteMedecin.objects.filter(
-            medecin=medecin,
-            date_debut__lte=date_obj,
-            date_fin__gte=date_obj
-        ).exists()
-        
-        if indisponible:
-            return Response({'creneaux': [], 'message': 'Le médecin est indisponible à cette date'})
-        
-        # Get doctor's availability for the day
-        jour_semaine = date_obj.strftime('%A').lower()
-        jour_mapping = {
-            'monday': 'lundi',
-            'tuesday': 'mardi',
-            'wednesday': 'mercredi',
-            'thursday': 'jeudi',
-            'friday': 'vendredi',
-            'saturday': 'samedi',
-            'sunday': 'dimanche'
-        }
-        jour_fr = jour_mapping.get(jour_semaine, '')
-        
-        try:
-            disponibilite = DisponibiliteMedecin.objects.get(medecin=medecin, jour=jour_fr, actif=True)
-        except DisponibiliteMedecin.DoesNotExist:
-            return Response({'creneaux': [], 'message': f'Le médecin n\'est pas disponible le {jour_fr}'})
-        
-        # Generate available time slots with detailed information
-        creneaux_details = []
-        heure_courante = disponibilite.heure_debut
-        duree_consultation = datetime.timedelta(minutes=disponibilite.duree_consultation)
-        
-        while heure_courante < disponibilite.heure_fin:
-            # Check if this time slot is during lunch break
-            if disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
-                if disponibilite.pause_dejeuner_debut <= heure_courante < disponibilite.pause_dejeuner_fin:
-                    heure_courante = (datetime.datetime.combine(date_obj, heure_courante) + duree_consultation).time()
-                    continue
+            # Debug : afficher l'utilisateur connecté
+            print(f"User: {request.user}")
+            print(f"Is authenticated: {request.user.is_authenticated}")
+            print(f"Has medecin attr: {hasattr(request.user, 'medecin')}")
+            print(f"Authorization header: {request.META.get('HTTP_AUTHORIZATION')}")
             
-            # Check if this time slot is already booked
-            conflit = RendezVous.objects.filter(
-                medecin=medecin.user,
-                date=date_obj,
-                heure=heure_courante,
-                statut__in=['CONFIRMED', 'PENDING']
-            ).exists()
+            if not hasattr(request.user, 'medecin'):
+                return Response({
+                    'error': 'Utilisateur non médecin',
+                    'user_id': request.user.id,
+                    'username': request.user.username
+                }, status=status.HTTP_403_FORBIDDEN)
             
-            # Check if the slot is at least 2 hours in the future
-            slot_datetime = datetime.datetime.combine(date_obj, heure_courante)
-            is_future = slot_datetime >= timezone.now() + datetime.timedelta(hours=2)
+            medecin = request.user.medecin
+            disponibilites = DisponibiliteMedecin.objects.filter(
+                medecin=medecin,
+                actif=True
+            ).order_by(
+                Case(
+                    When(jour='lundi', then=1),
+                    When(jour='mardi', then=2),
+                    When(jour='mercredi', then=3),
+                    When(jour='jeudi', then=4),
+                    When(jour='vendredi', then=5),
+                    When(jour='samedi', then=6),
+                    When(jour='dimanche', then=7),
+                )
+            )
             
-            if not conflit and is_future:
-                creneaux_details.append({
-                    "heure": heure_courante.strftime('%H:%M'),
-                    "disponible": True,
-                    "motif_indisponibilite": None
-                })
-            elif conflit:
-                creneaux_details.append({
-                    "heure": heure_courante.strftime('%H:%M'),
-                    "disponible": False,
-                    "motif_indisponibilite": "Déjà réservé"
-                })
-            elif not is_future:
-                creneaux_details.append({
-                    "heure": heure_courante.strftime('%H:%M'),
-                    "disponible": False,
-                    "motif_indisponibilite": "Dans le passé"
-                })
+            serializer = DisponibiliteMedecinSerializer(disponibilites, many=True)
             
-            heure_courante = (datetime.datetime.combine(date_obj, heure_courante) + duree_consultation).time()
-        
-        return Response({'creneaux': creneaux_details})
+            return Response({
+                'success': True,
+                'disponibilites': serializer.data
+            })
+        except Exception as e:
+            import traceback
+            print(f"Erreur: {str(e)}")
+            print(traceback.format_exc())
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['get'], url_path='mes-indisponibilites', permission_classes=[IsAuthenticated, IsMedecin])
+    def mes_indisponibilites(self, request):
+        """GET /api/medecins/mes-indisponibilites/"""
+        try:
+            # Debug : afficher l'utilisateur connecté
+            print(f"User: {request.user}")
+            print(f"Is authenticated: {request.user.is_authenticated}")
+            print(f"Has medecin attr: {hasattr(request.user, 'medecin')}")
+            print(f"Authorization header: {request.META.get('HTTP_AUTHORIZATION')}")
+            
+            if not hasattr(request.user, 'medecin'):
+                return Response({
+                    'error': 'Utilisateur non médecin',
+                    'user_id': request.user.id,
+                    'username': request.user.username
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            medecin = request.user.medecin
+
+            # Récupérer les indisponibilités futures
+            indisponibilites = IndisponibiliteMedecin.objects.filter(
+                medecin=medecin,
+                date_debut__gte=timezone.now().date()
+            ).order_by('date_debut')
+
+            serializer = IndisponibiliteMedecinSerializer(indisponibilites, many=True)
+
+            return Response({
+                'success': True,
+                'indisponibilites': serializer.data
+            })
+        except Exception as e:
+            import traceback
+            print(f"Erreur: {str(e)}")
+            print(traceback.format_exc())
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'], permission_classes=[AllowAny])
     def prochains_creneaux(self, request, pk=None):
         """
         Get next available slots for a doctor
@@ -210,8 +233,8 @@ class RendezVousViewSet(viewsets.ModelViewSet):
         limit = int(request.query_params.get('limit', 5))
         
         try:
-            # Get the doctor
-            medecin = Medecin.objects.get(id=pk)
+            # Get the doctor - pk is the user ID, not the medecin ID
+            medecin = Medecin.objects.get(user_id=pk)
         except Medecin.DoesNotExist:
             return Response({'error': 'Médecin non trouvé'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -263,17 +286,22 @@ class RendezVousViewSet(viewsets.ModelViewSet):
                         heure_courante = (datetime.datetime.combine(check_date, heure_courante) + duree_consultation).time()
                         continue
                 
-                # Check if this time slot is already booked
-                conflit = RendezVous.objects.filter(
-                    medecin=medecin.user,
-                    date=check_date,
-                    heure=heure_courante,
-                    statut__in=['CONFIRMED', 'PENDING']
-                ).exists()
+                # Use the robust conflict detection function
+                conflit, _ = check_appointment_conflict(
+                    medecin.user,
+                    check_date,  # Fixed: was date_obj
+                    heure_courante,
+                    disponibilite.duree_consultation
+                )
                 
-                # Check if the slot is at least 2 hours in the future
-                slot_datetime = datetime.datetime.combine(check_date, heure_courante)
-                is_future = slot_datetime >= timezone.now() + datetime.timedelta(hours=2)
+                # Check if the slot is at least 5 minutes in the future (more realistic for booking)
+                slot_datetime = timezone.make_aware(datetime.datetime.combine(check_date, heure_courante))  # Fixed: was date_obj and added timezone awareness
+                is_future = slot_datetime >= timezone.now() + datetime.timedelta(minutes=5)
+                
+                # Also check if slot is today but time has passed
+                is_today = check_date == timezone.now().date()  # Fixed: was date_obj
+                if is_today and heure_courante <= timezone.now().time():
+                    is_future = False
                 
                 if not conflit and is_future:
                     creneaux_trouves.append({
@@ -291,6 +319,174 @@ class RendezVousViewSet(viewsets.ModelViewSet):
                 break
         
         return Response({'creneaux': creneaux_trouves})
+
+# --------------------
+# Rendez-vous
+# --------------------
+class RendezVousViewSet(viewsets.ModelViewSet):
+    queryset = RendezVous.objects.all()
+    serializer_class = RendezVousSerializer
+
+    def get_queryset(self):
+        return RendezVous.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return RendezVousCreateSerializer
+        return RendezVousSerializer
+    
+    @action(detail=False, methods=['get'], url_path='creneaux_disponibles')
+    def creneaux_disponibles(self, request):
+        """
+        Retourne les créneaux disponibles pour un médecin à une date donnée.
+        Un créneau est indisponible UNIQUEMENT si un RDV confirmé/en_attente existe.
+        """
+        from django.utils import timezone
+        from datetime import datetime, timedelta, time
+        from .models import Medecin, DisponibiliteMedecin, RendezVous
+
+        try:
+            # 1. VALIDATION DES PARAMÈTRES
+            # Handle both REST framework Request and WSGIRequest
+            if hasattr(request, 'query_params'):
+                # REST framework Request
+                medecin_id = request.query_params.get('medecin_id')
+                date_str = request.query_params.get('date')
+            else:
+                # WSGIRequest
+                medecin_id = request.GET.get('medecin_id')
+                date_str = request.GET.get('date')
+
+            if not medecin_id or not date_str:
+                return Response({
+                    'error': 'medecin_id et date sont requis'
+                }, status=400)
+
+            # 2. PARSE ET VALIDATION DE LA DATE
+            try:
+                date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({
+                    'error': 'Format de date invalide. Utilisez YYYY-MM-DD'
+                }, status=400)
+
+            # Vérifier que ce n'est pas une date passée
+            if date_obj < timezone.now().date():
+                return Response({
+                    'error': 'Impossible de réserver dans le passé'
+                }, status=400)
+
+            # 3. RÉCUPÉRER LE MÉDECIN
+            try:
+                medecin = Medecin.objects.get(user_id=medecin_id)
+            except Medecin.DoesNotExist:
+                return Response({
+                    'error': 'Médecin introuvable'
+                }, status=404)
+
+            # 4. RÉCUPÉRER LE JOUR DE LA SEMAINE
+            jours_mapping = {
+                0: 'lundi', 1: 'mardi', 2: 'mercredi', 3: 'jeudi',
+                4: 'vendredi', 5: 'samedi', 6: 'dimanche'
+            }
+            jour = jours_mapping[date_obj.weekday()]
+
+            # 5. RÉCUPÉRER LA DISPONIBILITÉ DU MÉDECIN POUR CE JOUR
+            disponibilite = DisponibiliteMedecin.objects.filter(
+                medecin=medecin,
+                jour=jour,
+                actif=True
+            ).first()
+
+            if not disponibilite:
+                return Response({
+                    'date': date_str,
+                    'medecin_id': medecin_id,
+                    'slots': [],
+                    'message': f'Le médecin ne travaille pas le {jour}'
+                }, status=200)
+
+            # 6. RÉCUPÉRER TOUS LES RDV CONFIRMÉS OU EN ATTENTE POUR CE MÉDECIN CE JOUR
+            rdv_existants = RendezVous.objects.filter(
+                medecin=medecin.user,  # Note: medecin is a User instance
+                date=date_obj,
+                statut__in=['CONFIRMED', 'PENDING']  # CRITIQUE: Seulement ces statuts
+            ).values_list('heure', flat=True)
+
+            # Convertir en set d'heures (HH:MM) pour comparaison rapide
+            heures_reservees = {
+                rdv.strftime('%H:%M')
+                for rdv in rdv_existants
+            }
+
+            print(f"📅 Date: {date_str}, Jour: {jour}")
+            print(f"🕐 Heures réservées: {heures_reservees}")
+
+            # 7. GÉNÉRER TOUS LES CRÉNEAUX
+            slots = []
+            heure_debut = disponibilite.heure_debut
+            heure_fin = disponibilite.heure_fin
+            duree_minutes = disponibilite.duree_consultation or 30
+
+            current_time = datetime.combine(date_obj, heure_debut)
+            end_time = datetime.combine(date_obj, heure_fin)
+            delta = timedelta(minutes=duree_minutes)
+
+            maintenant = timezone.now()
+
+            while current_time < end_time:
+                heure_str = current_time.time().strftime('%H:%M')
+
+                # VÉRIFICATIONS D'INDISPONIBILITÉ
+                est_disponible = True
+                motif_indisponibilite = None
+
+                # A. Vérifier si dans le passé (pour aujourd'hui)
+                if date_obj == maintenant.date():
+                    if current_time.time() <= maintenant.time():
+                        est_disponible = False
+                        motif_indisponibilite = "Heure passée"
+
+                # B. Vérifier pause déjeuner
+                if est_disponible and disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
+                    if disponibilite.pause_dejeuner_debut <= current_time.time() < disponibilite.pause_dejeuner_fin:
+                        est_disponible = False
+                        motif_indisponibilite = "Pause déjeuner"
+
+                # C. Vérifier si RDV existe déjà (CRITIQUE)
+                if est_disponible and heure_str in heures_reservees:
+                    est_disponible = False
+                    motif_indisponibilite = "Déjà réservé"
+
+                slots.append({
+                    'heure': heure_str,
+                    'disponible': est_disponible,
+                    'motif_indisponibilite': motif_indisponibilite
+                })
+
+                current_time += delta
+
+            print(f"✅ {len(slots)} créneaux générés, {sum(1 for s in slots if s['disponible'])} disponibles")
+
+            return Response({
+                'date': date_str,
+                'medecin_id': medecin_id,
+                'medecin_nom': f"{medecin.user.first_name} {medecin.user.last_name}",
+                'slots': slots
+            }, status=200)
+
+        except Exception as e:
+            import traceback
+            print(f"❌ ERREUR creneaux_disponibles: {str(e)}")
+            print(traceback.format_exc())
+            return Response({
+                'error': f'Erreur serveur: {str(e)}'
+            }, status=500)
     
     def perform_create(self, serializer):
         # Auto-assign patient from authenticated user if not provided
@@ -397,6 +593,45 @@ try:
 except ImportError:
     RtcTokenBuilder = None
     AGORA_AVAILABLE = False
+
+class TeleconsultationViewSet(viewsets.ModelViewSet):
+    queryset = Teleconsultation.objects.all()
+    serializer_class = TeleconsultationSerializer
+
+# -------------------- User Profile --------------------
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = get_user_model().objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Users can only access their own profile
+        return get_user_model().objects.filter(id=self.request.user.id)
+
+    def get_permissions(self):
+        # For profile operations, user must be authenticated
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        elif self.action in ['update', 'partial_update']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def profile(self, request):
+        """Get the current user's profile"""
+        user = request.user
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['put', 'patch'], permission_classes=[IsAuthenticated])
+    def update_profile(self, request):
+        """Update the current user's profile"""
+        user = request.user
+        serializer = self.get_serializer(user, data=request.data, partial=request.method == 'PATCH')
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class TeleconsultationViewSet(viewsets.ModelViewSet):
     queryset = Teleconsultation.objects.all()
@@ -1003,24 +1238,39 @@ def upcoming_appointments(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def patient_medications(request):
-    """Récupérer les rappels de médicaments du patient (avec audit)"""
+def get_patient_medications(request, patient_id=None):
+    """Get medications for a specific patient by patient ID or for the authenticated patient"""
     try:
-        patient = Patient.objects.get(user=request.user)
-        
-        # LOG D'AUDIT
-        log_action(
-            user=request.user,
-            action='read',
-            model_name='MedicationReminders',
-            object_id=patient.id,
-            details={'patient': patient.user.username},
-            request=request
-        )
-        
-        rappels = RappelMedicament.objects.filter(patient=patient, actif=True)
-        serializer = RappelMedicamentSerializer(rappels, many=True)
-        return Response(serializer.data)
+        # If no patient_id is provided, get medications for the authenticated patient
+        if patient_id is None:
+            # This is for the original patient_medications functionality
+            patient = Patient.objects.get(user=request.user)
+            rappels = RappelMedicament.objects.filter(patient=patient, actif=True)
+            serializer = RappelMedicamentSerializer(rappels, many=True)
+            return Response(serializer.data)
+        else:
+            # Check if the requesting user is authorized to view this patient's medications
+            # Either the patient themselves or an admin/doctor
+            if request.user.role == 'patient':
+                # Patient can only view their own medications
+                patient = Patient.objects.get(user=request.user)
+                if patient.id != patient_id:
+                    return Response({'error': 'Accès non autorisé'}, status=403)
+            elif request.user.role == 'medecin':
+                # Doctors can view medications of their patients
+                # In a real implementation, you might want to check if this patient is actually
+                # assigned to this doctor
+                pass
+            elif request.user.role != 'admin':
+                return Response({'error': 'Accès non autorisé'}, status=403)
+            
+            # Get the patient by ID
+            patient = get_object_or_404(Patient, id=patient_id)
+            
+            # Get medications for this patient
+            rappels = RappelMedicament.objects.filter(patient=patient, actif=True)
+            serializer = RappelMedicamentSerializer(rappels, many=True)
+            return Response(serializer.data)
     except Patient.DoesNotExist:
         return Response({'error': 'Patient non trouvé'}, status=404)
 
@@ -1119,6 +1369,21 @@ def doctor_reschedule_appointment(request, pk):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def appointment_history(request):
+    """Get appointment history for the authenticated patient"""
+    patient = request.user
+    rdvs = RendezVous.objects.filter(
+        patient=patient
+    ).exclude(
+        statut="PENDING"
+    ).order_by("-date", "-heure")
+
+    serializer = RendezVousSerializer(rdvs, many=True)
+    return Response(serializer.data)
+
 # --------------------
 # Medication Reminder APIs
 # --------------------
@@ -1208,6 +1473,53 @@ def mark_medication_taken(request, pk):
     serializer = HistoriquePriseMedicamentSerializer(history_entry)
     return Response(serializer.data)
 
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def propose_reschedule(request, pk):
+    """Patient proposes a new date/time for an appointment"""
+    try:
+        rdv = RendezVous.objects.get(pk=pk, patient=request.user)
+        
+        # Check if appointment can be rescheduled
+        if rdv.statut in ["CANCELLED"]:
+            return Response({"error": "Impossible de reprogrammer un rendez-vous annulé"}, status=400)
+        
+        # Get proposed new date and time
+        new_date = request.data.get("new_date")
+        new_heure = request.data.get("new_heure")
+        reason = request.data.get("reason", "")
+        
+        if not new_date or not new_heure:
+            return Response({"error": "Veuillez fournir une nouvelle date et heure"}, status=400)
+        
+        # Create a rescheduling request (doesn't change the original appointment yet)
+        # In a real implementation, you might want to create a separate model for rescheduling requests
+        # For now, we'll update the appointment with a special status
+        
+        # Store original details if not already stored
+        if not rdv.original_date:
+            rdv.original_date = rdv.date
+            rdv.original_heure = rdv.heure
+            
+        # Update with proposed new date/time
+        rdv.date = new_date
+        rdv.heure = new_heure
+        rdv.statut = "RESCHEDULED"
+        rdv.description = f"Demande de reprogrammation: {reason}" if reason else rdv.description
+        rdv.save()
+        
+        # Send notification to the doctor about the rescheduling request
+        NotificationService.send_reschedule_request(rdv)
+        
+        serializer = RendezVousSerializer(rdv)
+        return Response(serializer.data)
+        
+    except RendezVous.DoesNotExist:
+        return Response({"error": "Rendez-vous non trouvé"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def admin_statistics(request):
@@ -1234,6 +1546,36 @@ def admin_statistics(request):
         'total_consultations': Consultation.objects.count(),
         'total_pathologies': Pathologie.objects.count(),
         'total_medicaments': Medicament.objects.count(),
+    }
+
+    return Response(stats)
+
+# ---------- Public Statistics ----------
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_statistics(request):
+    """Public statistics for the homepage (no authentication required)"""
+    from django.db.models import Count
+    from datetime import date, timedelta
+
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
+
+    stats = {
+        'total_users': User.objects.count(),
+        'total_patients': Patient.objects.count(),
+        'total_doctors': Medecin.objects.count(),
+        'total_clinics': Clinique.objects.count(),
+        'total_pharmacies': Pharmacie.objects.count(),
+        'total_hospitals': Hopital.objects.count(),
+        'total_dentists': Dentiste.objects.count(),
+        'total_appointments': RendezVous.objects.count(),
+        'appointments_today': RendezVous.objects.filter(date=today).count(),
+        'appointments_week': RendezVous.objects.filter(date__gte=week_ago).count(),
+        'appointments_month': RendezVous.objects.filter(date__gte=month_ago).count(),
+        'new_users_week': User.objects.filter(date_joined__gte=week_ago).count(),
+        'new_users_month': User.objects.filter(date_joined__gte=month_ago).count(),
     }
 
     return Response(stats)
@@ -1386,6 +1728,163 @@ def article_soumettre_validation(request, pk):
         'message': 'Article soumis pour validation avec succès',
         'statut': article.statut
     })
+
+
+# -------------------- Ratings & Reviews --------------------
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def validate_appointment(request, pk):
+    """Valider un rendez-vous terminé et créer une évaluation"""
+    try:
+        patient = request.user.patient_profile
+        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+        
+        # Vérifier que le rendez-vous est terminé
+        if rdv.statut != "CONFIRMED":
+            return Response({"error": "Seuls les rendez-vous confirmés peuvent être validés"}, status=400)
+            
+        # Marquer le rendez-vous comme terminé
+        rdv.statut = "TERMINE"
+        rdv.save()
+        
+        # Créer ou mettre à jour l'évaluation
+        note = request.data.get('note')
+        commentaire = request.data.get('commentaire', '')
+        
+        if note is not None:
+            # Vérifier que la note est valide (1-5)
+            if not isinstance(note, int) or note < 1 or note > 5:
+                return Response({"error": "La note doit être un entier entre 1 et 5"}, status=400)
+                
+            # Créer ou mettre à jour l'évaluation
+            rating_data = {
+                'medecin': rdv.medecin.id,
+                'rendez_vous': rdv.id,
+                'note': note,
+                'commentaire': commentaire
+            }
+            
+            # Vérifier si une évaluation existe déjà
+            try:
+                rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
+                # Mettre à jour l'évaluation existante
+                for key, value in rating_data.items():
+                    setattr(rating, key, value)
+                rating.save()
+                serializer = RatingSerializer(rating)
+            except Rating.DoesNotExist:
+                # Créer une nouvelle évaluation
+                serializer = RatingSerializer(data=rating_data, context={'request': request})
+                if serializer.is_valid():
+                    serializer.save()
+                else:
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Send notification to the doctor about the new rating
+            NotificationService.send_rating_notification(rdv.medecin, note, commentaire)
+            
+            return Response({
+                "message": "Rendez-vous validé et évaluation enregistrée avec succès",
+                "rating": serializer.data
+            })
+        else:
+            return Response({
+                "message": "Rendez-vous validé avec succès"
+            })
+            
+    except Patient.DoesNotExist:
+        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- Ratings & Reviews --------------------
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def validate_appointment(request, pk):
+    """Valider un rendez-vous terminé et créer une évaluation"""
+    try:
+        patient = request.user.patient_profile
+        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+        
+        # Vérifier que le rendez-vous est terminé
+        if rdv.statut != "CONFIRMED":
+            return Response({"error": "Seuls les rendez-vous confirmés peuvent être validés"}, status=400)
+            
+        # Marquer le rendez-vous comme terminé
+        rdv.statut = "TERMINE"
+        rdv.save()
+        
+        # Créer ou mettre à jour l'évaluation
+        note = request.data.get('note')
+        commentaire = request.data.get('commentaire', '')
+        
+        if note is not None:
+            # Vérifier que la note est valide (1-5)
+            if not isinstance(note, int) or note < 1 or note > 5:
+                return Response({"error": "La note doit être un entier entre 1 et 5"}, status=400)
+                
+            # Créer ou mettre à jour l'évaluation
+            rating_data = {
+                'medecin': rdv.medecin.id,
+                'rendez_vous': rdv.id,
+                'note': note,
+                'commentaire': commentaire
+            }
+            
+            # Vérifier si une évaluation existe déjà
+            try:
+                rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
+                # Mettre à jour l'évaluation existante
+                for key, value in rating_data.items():
+                    setattr(rating, key, value)
+                rating.save()
+                serializer = RatingSerializer(rating)
+            except Rating.DoesNotExist:
+                # Créer une nouvelle évaluation
+                serializer = RatingSerializer(data=rating_data, context={'request': request})
+                if serializer.is_valid():
+                    serializer.save()
+                else:
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Send notification to the doctor about the new rating
+            NotificationService.send_rating_notification(rdv.medecin, note, commentaire)
+            
+            return Response({
+                "message": "Rendez-vous validé et évaluation enregistrée avec succès",
+                "rating": serializer.data
+            })
+        else:
+            return Response({
+                "message": "Rendez-vous validé avec succès"
+            })
+            
+    except Patient.DoesNotExist:
+        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_appointment_rating(request, pk):
+    """Récupérer l'évaluation d'un rendez-vous"""
+    try:
+        patient = request.user.patient_profile
+        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+        
+        try:
+            rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
+            serializer = RatingSerializer(rating)
+            return Response(serializer.data)
+        except Rating.DoesNotExist:
+            return Response({"message": "Aucune évaluation trouvée pour ce rendez-vous"}, status=404)
+            
+    except Patient.DoesNotExist:
+        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ========== ARTICLES ADMIN (Modération) ==========
@@ -1765,650 +2264,300 @@ def health_facilities(request):
     return Response(facilities)
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def nearby_health_facilities(request):
-    """Liste des centres de santé à proximité d'une position donnée"""
-    try:
-        lat = float(request.GET.get('lat', 14.6937))
-        lng = float(request.GET.get('lng', -17.444))
-        radius = float(request.GET.get('radius', 10))  # Rayon en km, par défaut 10km
-    except ValueError:
-        return Response({'error': 'Paramètres de localisation invalides'}, status=400)
-    
-    # Fonction pour calculer la distance entre deux points (formule de Haversine)
-    def calculate_distance(lat1, lon1, lat2, lon2):
-        from math import radians, cos, sin, asin, sqrt
-        # Convertir les degrés en radians
-        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-        
-        # Formule de Haversine
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-        c = 2 * asin(sqrt(a))
-        r = 6371  # Rayon de la Terre en km
-        return c * r
-    
-    # Récupérer tous les centres de santé
-    facilities = []
-    
-    # Récupérer les hôpitaux
-    hopitaux = Hopital.objects.all()
-    for hopital in hopitaux:
-        if hopital.latitude and hopital.longitude:
-            distance = calculate_distance(lat, lng, float(hopital.latitude), float(hopital.longitude))
-            if distance <= radius:
-                facilities.append({
-                    'id': f'hopital_{hopital.id}',
-                    'nom': hopital.nom,
-                    'type': 'hopital',
-                    'adresse': getattr(hopital, 'adresse', ''),
-                    'latitude': float(hopital.latitude),
-                    'longitude': float(hopital.longitude),
-                    'telephone': getattr(hopital, 'telephone', ''),
-                    'horaires': getattr(hopital, 'horaires', ''),
-                    'distance': round(distance, 2)
-                })
-
-    # Récupérer les cliniques
-    cliniques = Clinique.objects.all()
-    for clinique in cliniques:
-        if clinique.latitude and clinique.longitude:
-            distance = calculate_distance(lat, lng, float(clinique.latitude), float(clinique.longitude))
-            if distance <= radius:
-                facilities.append({
-                    'id': f'clinique_{clinique.id}',
-                    'nom': clinique.nom,
-                    'type': 'clinique',
-                    'adresse': getattr(clinique, 'adresse', ''),
-                    'latitude': float(clinique.latitude),
-                    'longitude': float(clinique.longitude),
-                    'telephone': getattr(clinique, 'telephone', ''),
-                    'horaires': getattr(clinique, 'horaires', ''),
-                    'distance': round(distance, 2)
-                })
-
-    # Récupérer les pharmacies
-    pharmacies = Pharmacie.objects.all()
-    for pharmacie in pharmacies:
-        if pharmacie.latitude and pharmacie.longitude:
-            distance = calculate_distance(lat, lng, float(pharmacie.latitude), float(pharmacie.longitude))
-            if distance <= radius:
-                facilities.append({
-                    'id': f'pharmacie_{pharmacie.id}',
-                    'nom': pharmacie.nom,
-                    'type': 'pharmacie',
-                    'adresse': getattr(pharmacie, 'adresse', ''),
-                    'latitude': float(pharmacie.latitude),
-                    'longitude': float(pharmacie.longitude),
-                    'telephone': getattr(pharmacie, 'telephone', ''),
-                    'horaires': getattr(pharmacie, 'horaires', ''),
-                    'distance': round(distance, 2)
-                })
-
-    # Récupérer les dentistes
-    dentistes = Dentiste.objects.all()
-    for dentiste in dentistes:
-        if dentiste.latitude and dentiste.longitude:
-            distance = calculate_distance(lat, lng, float(dentiste.latitude), float(dentiste.longitude))
-            if distance <= radius:
-                facilities.append({
-                    'id': f'dentiste_{dentiste.id}',
-                    'nom': dentiste.nom,
-                    'type': 'dentiste',
-                    'adresse': getattr(dentiste, 'adresse', ''),
-                    'latitude': float(dentiste.latitude),
-                    'longitude': float(dentiste.longitude),
-                    'telephone': getattr(dentiste, 'telephone', ''),
-                    'horaires': getattr(dentiste, 'horaires', ''),
-                    'distance': round(distance, 2)
-                })
-    
-    # Trier par distance
-    facilities.sort(key=lambda x: x['distance'])
-    
-    return Response(facilities)
-
-# ========== URGENCES PATIENT ==========
-
-@api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
-def urgences_patient(request):
-    """Gestion des urgences pour les patients"""
-    if request.user.role != 'patient':
-        return Response({'error': 'Accès réservé aux patients'}, status=403)
-
-    try:
-        patient = Patient.objects.get(user=request.user)
-    except Patient.DoesNotExist:
-        return Response({'error': 'Profil patient non trouvé'}, status=404)
-
-    if request.method == 'GET':
-        urgences = Urgence.objects.filter(patient=patient).order_by('-date_creation')
-        serializer = UrgenceSerializer(urgences, many=True)
-        return Response(serializer.data)
-
-    elif request.method == 'POST':
-        data = request.data.copy()
-        data['patient'] = patient.id
-
-        serializer = UrgenceSerializer(data=data)
-        if serializer.is_valid():
-            urgence = serializer.save()
-
-            # Envoyer notifications aux médecins disponibles
-            notifier_medecins_urgence(urgence)
-
-            # Envoyer email au patient
-            from .notifications import NotificationService
-            NotificationService.send_urgence_confirmation(urgence)
-
-            return Response(UrgenceSerializer(urgence).data, status=201)
-        return Response(serializer.errors, status=400)
-
-
-def notifier_medecins_urgence(urgence):
-    """Envoyer des notifications aux médecins disponibles"""
-    # Récupérer les médecins disponibles (vous pouvez affiner la logique)
-    medecins = Medecin.objects.filter(disponibilite='disponible')[:5]  # Top 5
-
-    for medecin in medecins:
-        NotificationUrgence.objects.create(
-            urgence=urgence,
-            medecin=medecin
-        )
-
-        # Envoyer email au médecin
-        from .notifications import NotificationService
-        NotificationService.send_urgence_notification_medecin(urgence, medecin)
-
-
-# ========== URGENCES MÉDECIN ==========
-
+# -------------------- Admin Chatbot Management --------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def urgences_medecin(request):
-    """Liste des urgences pour les médecins"""
-    if request.user.role != 'medecin':
-        return Response({'error': 'Accès réservé aux médecins'}, status=403)
-
-    try:
-        medecin = Medecin.objects.get(user=request.user)
-    except Medecin.DoesNotExist:
-        return Response({'error': 'Profil médecin non trouvé'}, status=404)
-
-    statut = request.GET.get('statut', 'en_attente')
-
-    if statut == 'mes_prises_en_charge':
-        urgences = Urgence.objects.filter(medecin_charge=medecin)
-    else:
-        urgences = Urgence.objects.filter(statut=statut)
-
-    urgences = urgences.order_by('-priorite', '-date_creation')
-    serializer = UrgenceSerializer(urgences, many=True)
+def admin_chatbot_knowledge_base(request):
+    """Get all chatbot knowledge base entries for admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    entries = ChatbotKnowledgeBase.objects.all().order_by('-created_at')
+    serializer = ChatbotKnowledgeBaseSerializer(entries, many=True)
     return Response(serializer.data)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def urgence_prendre_en_charge(request, pk):
-    """Prendre en charge une urgence"""
-    if request.user.role != 'medecin':
-        return Response({'error': 'Accès réservé aux médecins'}, status=403)
-
-    try:
-        medecin = Medecin.objects.get(user=request.user)
-        urgence = Urgence.objects.get(pk=pk)
-    except Medecin.DoesNotExist:
-        return Response({'error': 'Profil médecin non trouvé'}, status=404)
-    except Urgence.DoesNotExist:
-        return Response({'error': 'Urgence non trouvée'}, status=404)
-
-    if urgence.statut != 'en_attente':
-        return Response({'error': 'Cette urgence a déjà été prise en charge'}, status=400)
-
-    urgence.statut = 'prise_en_charge'
-    urgence.medecin_charge = medecin
-    urgence.date_prise_en_charge = timezone.now()
-    urgence.save()
-
-    # Notifier le patient
-    from .notifications import NotificationService
-    NotificationService.send_urgence_prise_en_charge(urgence)
-
-    return Response({
-        'message': 'Urgence prise en charge',
-        'urgence': UrgenceSerializer(urgence).data
-    })
+def admin_create_chatbot_entry(request):
+    """Create a new chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
-def urgence_resoudre(request, pk):
-    """Marquer une urgence comme résolue"""
-    if request.user.role != 'medecin':
-        return Response({'error': 'Accès réservé aux médecins'}, status=403)
-
+def admin_update_chatbot_entry(request, pk):
+    """Update a chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
     try:
-        medecin = Medecin.objects.get(user=request.user)
-        urgence = Urgence.objects.get(pk=pk, medecin_charge=medecin)
-    except Urgence.DoesNotExist:
-        return Response({'error': 'Urgence non trouvée ou non autorisée'}, status=404)
+        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
+    except ChatbotKnowledgeBase.DoesNotExist:
+        return Response({'error': 'Entrée non trouvée'}, status=404)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(entry, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    urgence.statut = 'resolue'
-    urgence.notes_medecin = request.data.get('notes', '')
-    urgence.save()
 
-    return Response({
-        'message': 'Urgence marquée comme résolue',
-        'urgence': UrgenceSerializer(urgence).data
-    })
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def admin_delete_chatbot_entry(request, pk):
+    """Delete a chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
+        entry.delete()
+        return Response({'message': 'Entrée supprimée avec succès'}, status=status.HTTP_204_NO_CONTENT)
+    except ChatbotKnowledgeBase.DoesNotExist:
+        return Response({'error': 'Entrée non trouvée'}, status=404)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def notifications_urgences_medecin(request):
-    """Récupérer les notifications d'urgences pour un médecin"""
-    if request.user.role != 'medecin':
-        return Response({'error': 'Accès réservé aux médecins'}, status=403)
+def admin_chatbot_statistics(request):
+    """Get chatbot statistics for admin dashboard"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    from django.db.models import Count
+    
+    # Get top questions from conversation history
+    top_questions = ChatbotConversation.objects.values('message_user').annotate(
+        count=Count('message_user')
+    ).order_by('-count')[:10]
+    
+    stats = {
+        'total_conversations': ChatbotConversation.objects.count(),
+        'total_users': ChatbotConversation.objects.values('patient').distinct().count(),
+        'avg_response_time': '2.3s',  # This would need to be calculated in a real implementation
+        'top_questions': [
+            {'question': item['message_user'], 'count': item['count']} 
+            for item in top_questions
+        ]
+    }
+    
+    return Response(stats)
 
-    try:
-        medecin = Medecin.objects.get(user=request.user)
-    except Medecin.DoesNotExist:
-        return Response({'error': 'Profil médecin non trouvé'}, status=404)
 
-    # Notifications non lues en premier
-    notifications = NotificationUrgence.objects.filter(
-        medecin=medecin
-    ).order_by('lue', '-date_envoi')[:20]
-
-    serializer = NotificationUrgenceSerializer(notifications, many=True)
+# -------------------- Admin Chatbot Management --------------------
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_chatbot_knowledge_base(request):
+    """Get all chatbot knowledge base entries for admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    entries = ChatbotKnowledgeBase.objects.all().order_by('-created_at')
+    serializer = ChatbotKnowledgeBaseSerializer(entries, many=True)
     return Response(serializer.data)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def notification_marquer_lue(request, pk):
-    """Marquer une notification comme lue"""
-    if request.user.role != 'medecin':
-        return Response({'error': 'Accès réservé aux médecins'}, status=403)
+def admin_create_chatbot_entry(request):
+    """Create a new chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def admin_update_chatbot_entry(request, pk):
+    """Update a chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
     try:
-        medecin = Medecin.objects.get(user=request.user)
-        notification = NotificationUrgence.objects.get(pk=pk, medecin=medecin)
+        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
+    except ChatbotKnowledgeBase.DoesNotExist:
+        return Response({'error': 'Entrée non trouvée'}, status=404)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(entry, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        notification.lue = True
-        notification.date_lecture = timezone.now()
-        notification.save()
 
-        return Response({'message': 'Notification marquée comme lue'})
-    except NotificationUrgence.DoesNotExist:
-        return Response({'error': 'Notification non trouvée'}, status=404)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_create_chatbot_entry(request):
+    """Create a new chatbot knowledge base entry"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    serializer = ChatbotKnowledgeBaseSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ========== URGENCES ADMIN ==========
-
+# -------------------- Admin Appointment Management --------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def urgences_admin_dashboard(request):
-    """Dashboard des urgences pour l'admin"""
+def admin_appointments_list(request):
+    """List all appointments for admin dashboard"""
     if request.user.role != 'admin':
         return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
 
-    stats = {
-        'total': Urgence.objects.count(),
-        'en_attente': Urgence.objects.filter(statut='en_attente').count(),
-        'prise_en_charge': Urgence.objects.filter(statut='prise_en_charge').count(),
-        'resolues': Urgence.objects.filter(statut='resolue').count(),
-        'critiques': Urgence.objects.filter(priorite='critique', statut__in=['en_attente', 'prise_en_charge']).count(),
-        'par_priorite': list(Urgence.objects.values('priorite').annotate(count=models.Count('id'))),
-        'temps_moyen_prise_en_charge': 'À calculer',  # TODO
-    }
-
-    # Urgences récentes
-    urgences_recentes = Urgence.objects.all().order_by('-date_creation')[:10]
-
-    return Response({
-        'statistics': stats,
-        'urgences_recentes': UrgenceSerializer(urgences_recentes, many=True).data
-    })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def consultation_dossier_medical(request, patient_id):
-    """Consulter un dossier médical (avec audit)"""
-    try:
-        patient = Patient.objects.get(id=patient_id)
-
-        # LOG D'AUDIT
-        log_action(
-            user=request.user,
-            action='read',
-            model_name='DossierMedical',
-            object_id=patient_id,
-            details={'patient': patient.user.username},
-            request=request
-        )
-
-        return Response({'message': 'Dossier médical consulté'})
-
-    except Patient.DoesNotExist:
-        return Response({'error': 'Patient non trouvé'}, status=404)
-
-
-# ========== EXPORT DONNÉES RGPD ==========
-
-import json
-from django.http import HttpResponse
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def export_mes_donnees(request):
-    """Exporter toutes les données de l'utilisateur (RGPD)"""
-    user = request.user
-
-    # Collecter toutes les données
-    data = {
-        'utilisateur': {
-            'username': user.username,
-            'email': user.email,
-            'prenom': user.first_name,
-            'nom': user.last_name,
-            'role': user.role,
-            'date_inscription': user.date_joined.isoformat(),
-        }
-    }
-
-    # Si patient
-    if user.role == 'patient':
-        try:
-            patient = Patient.objects.get(user=user)
-            data['patient'] = {
-                'adresse': patient.adresse,
-            }
-
-            # Rendez-vous
-            rendez_vous = RendezVous.objects.filter(patient=patient)
-            data['rendez_vous'] = list(rendez_vous.values())
-
-            # Consultations
-            consultations = Consultation.objects.filter(patient=patient)
-            data['consultations'] = list(consultations.values())
-
-        except Patient.DoesNotExist:
-            pass
-
-    # LOG D'AUDIT
-    log_action(
-        user=user,
-        action='export',
-        model_name='UserData',
-        details={'export_type': 'full'},
-        request=request
-    )
-
-    # Créer le fichier JSON
-    response = HttpResponse(
-        json.dumps(data, indent=2, ensure_ascii=False, default=str),
-        content_type='application/json'
-    )
-    response['Content-Disposition'] = f'attachment; filename="mes_donnees_assistosante.json"'
-
-    return response
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def appointment_history(request):
-    """Get appointment history for the authenticated patient"""
-    patient = request.user
-    rdvs = RendezVous.objects.filter(
-        patient=patient
-    ).exclude(
-        statut="PENDING"
-    ).order_by("-date", "-heure")
-
-    serializer = RendezVousSerializer(rdvs, many=True)
+    # Get all appointments with related data
+    appointments = RendezVous.objects.select_related('patient', 'medecin').all().order_by('-date_creation')
+    
+    # Apply filters if provided
+    status = request.GET.get('status')
+    if status:
+        appointments = appointments.filter(statut=status)
+    
+    date_from = request.GET.get('date_from')
+    if date_from:
+        appointments = appointments.filter(date__gte=date_from)
+        
+    date_to = request.GET.get('date_to')
+    if date_to:
+        appointments = appointments.filter(date__lte=date_to)
+    
+    serializer = RendezVousSerializer(appointments, many=True)
     return Response(serializer.data)
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def propose_reschedule(request, pk):
-    """Patient proposes a new date/time for an appointment"""
-    try:
-        rdv = RendezVous.objects.get(pk=pk, patient=request.user)
-        
-        # Check if appointment can be rescheduled
-        if rdv.statut in ["CANCELLED"]:
-            return Response({"error": "Impossible de reprogrammer un rendez-vous annulé"}, status=400)
-        
-        # Get proposed new date and time
-        new_date = request.data.get("new_date")
-        new_heure = request.data.get("new_heure")
-        reason = request.data.get("reason", "")
-        
-        if not new_date or not new_heure:
-            return Response({"error": "Veuillez fournir une nouvelle date et heure"}, status=400)
-        
-        # Create a rescheduling request (doesn't change the original appointment yet)
-        # In a real implementation, you might want to create a separate model for rescheduling requests
-        # For now, we'll update the appointment with a special status
-        
-        # Store original details if not already stored
-        if not rdv.original_date:
-            rdv.original_date = rdv.date
-            rdv.original_heure = rdv.heure
-            
-        # Update with proposed new date/time
-        rdv.date = new_date
-        rdv.heure = new_heure
-        rdv.statut = "RESCHEDULED"
-        rdv.description = f"Demande de reprogrammation: {reason}" if reason else rdv.description
-        rdv.save()
-        
-        # Send notification to the doctor about the rescheduling request
-        NotificationService.send_reschedule_request(rdv)
-        
-        serializer = RendezVousSerializer(rdv)
-        return Response(serializer.data)
-        
-    except RendezVous.DoesNotExist:
-        return Response({"error": "Rendez-vous non trouvé"}, status=404)
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
-
-# -------------------- Ratings & Reviews --------------------
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def validate_appointment(request, pk):
-    """Valider un rendez-vous terminé et créer une évaluation"""
+def admin_validate_appointment(request, pk):
+    """Validate an appointment by admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
     try:
-        patient = request.user.patient_profile
-        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
+        appointment = RendezVous.objects.get(pk=pk)
         
-        # Vérifier que le rendez-vous est terminé
-        if rdv.statut != "CONFIRMED":
-            return Response({"error": "Seuls les rendez-vous confirmés peuvent être validés"}, status=400)
-            
-        # Marquer le rendez-vous comme terminé
-        rdv.statut = "TERMINE"
-        rdv.save()
+        # Only validate confirmed appointments
+        if appointment.statut != 'CONFIRMED':
+            return Response({'error': 'Seuls les rendez-vous confirmés peuvent être validés'}, status=400)
         
-        # Créer ou mettre à jour l'évaluation
-        note = request.data.get('note')
-        commentaire = request.data.get('commentaire', '')
+        appointment.statut = 'TERMINE'
+        appointment.save()
         
-        if note is not None:
-            # Vérifier que la note est valide (1-5)
-            if not isinstance(note, int) or note < 1 or note > 5:
-                return Response({"error": "La note doit être un entier entre 1 et 5"}, status=400)
-                
-            # Créer ou mettre à jour l'évaluation
-            rating_data = {
-                'medecin': rdv.medecin.id,
-                'rendez_vous': rdv.id,
-                'note': note,
-                'commentaire': commentaire
-            }
-            
-            # Vérifier si une évaluation existe déjà
-            try:
-                rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
-                # Mettre à jour l'évaluation existante
-                for key, value in rating_data.items():
-                    setattr(rating, key, value)
-                rating.save()
-                serializer = RatingSerializer(rating)
-            except Rating.DoesNotExist:
-                # Créer une nouvelle évaluation
-                serializer = RatingSerializer(data=rating_data, context={'request': request})
-                if serializer.is_valid():
-                    serializer.save()
-                else:
-                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Send notification to the doctor about the new rating
-            NotificationService.send_rating_notification(rdv.medecin, note, commentaire)
-            
-            return Response({
-                "message": "Rendez-vous validé et évaluation enregistrée avec succès",
-                "rating": serializer.data
-            })
-        else:
-            return Response({
-                "message": "Rendez-vous validé avec succès"
-            })
-            
-    except Patient.DoesNotExist:
-        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            'message': 'Rendez-vous validé avec succès',
+            'appointment': RendezVousSerializer(appointment).data
+        })
+    except RendezVous.DoesNotExist:
+        return Response({'error': 'Rendez-vous non trouvé'}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_cancel_appointment(request, pk):
+    """Cancel an appointment by admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        appointment = RendezVous.objects.get(pk=pk)
+        
+        # Store old status for notification
+        old_status = appointment.statut
+        appointment.statut = 'CANCELLED'
+        appointment.save()
+        
+        # Send cancellation notification if not already cancelled
+        if old_status != 'CANCELLED':
+            NotificationService.send_appointment_cancellation(appointment)
+        
+        return Response({
+            'message': 'Rendez-vous annulé avec succès',
+            'appointment': RendezVousSerializer(appointment).data
+        })
+    except RendezVous.DoesNotExist:
+        return Response({'error': 'Rendez-vous non trouvé'}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_reschedule_appointment(request, pk):
+    """Reschedule an appointment by admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
+    
+    try:
+        appointment = RendezVous.objects.get(pk=pk)
+        new_date = request.data.get('date')
+        new_time = request.data.get('heure')
+        
+        if not new_date or not new_time:
+            return Response({'error': 'Date et heure requises pour reprogrammer'}, status=400)
+        
+        # Store old values for notification
+        old_date = appointment.date
+        old_time = appointment.heure
+        old_status = appointment.statut
+        
+        # Update appointment
+        appointment.date = new_date
+        appointment.heure = new_time
+        appointment.statut = 'RESCHEDULED'
+        appointment.save()
+        
+        # Send reschedule notification if not already rescheduled
+        if old_status != 'RESCHEDULED':
+            NotificationService.send_appointment_reschedule(appointment, old_date, old_time)
+        
+        return Response({
+            'message': 'Rendez-vous reprogrammé avec succès',
+            'appointment': RendezVousSerializer(appointment).data
+        })
+    except RendezVous.DoesNotExist:
+        return Response({'error': 'Rendez-vous non trouvé'}, status=404)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_appointment_rating(request, pk):
-    """Récupérer l'évaluation d'un rendez-vous"""
-    try:
-        patient = request.user.patient_profile
-        rdv = get_object_or_404(RendezVous, pk=pk, patient=request.user)
-        
-        try:
-            rating = Rating.objects.get(patient=patient, rendez_vous=rdv)
-            serializer = RatingSerializer(rating)
-            return Response(serializer.data)
-        except Rating.DoesNotExist:
-            return Response({"message": "Aucune évaluation trouvée pour ce rendez-vous"}, status=404)
-            
-    except Patient.DoesNotExist:
-        return Response({"error": "Profil patient non trouvé"}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# -------------------- Search Functionality --------------------
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def search(request):
-    """Global search across doctors, patients, articles, and appointments"""
-    query = request.GET.get('q', '').strip()
+def admin_appointments_statistics(request):
+    """Get appointment statistics for admin dashboard"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
     
-    if not query:
-        return Response({
-            'doctors': [],
-            'patients': [],
-            'articles': [],
-            'appointments': []
-        })
+    from django.db.models import Count
+    from datetime import date, timedelta
     
-    # Search doctors
-    doctors = Medecin.objects.filter(
-        Q(user__first_name__icontains=query) |
-        Q(user__last_name__icontains=query) |
-        Q(specialite__icontains=query)
-    )[:10]
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
     
-    doctors_data = []
-    for doctor in doctors:
-        doctors_data.append({
-            'id': doctor.id,
-            'name': f"Dr. {doctor.user.first_name} {doctor.user.last_name}",
-            'specialty': doctor.specialite,
-            'rating': 4.5  # In a real implementation, this would be calculated from ratings
-        })
+    stats = {
+        'total_appointments': RendezVous.objects.count(),
+        'today_appointments': RendezVous.objects.filter(date=today).count(),
+        'week_appointments': RendezVous.objects.filter(date__gte=week_ago).count(),
+        'month_appointments': RendezVous.objects.filter(date__gte=month_ago).count(),
+        'appointments_by_status': list(RendezVous.objects.values('statut').annotate(count=Count('id'))),
+        'confirmed_appointments': RendezVous.objects.filter(statut='CONFIRMED').count(),
+        'cancelled_appointments': RendezVous.objects.filter(statut='CANCELLED').count(),
+        'rescheduled_appointments': RendezVous.objects.filter(statut='RESCHEDULED').count(),
+        'pending_appointments': RendezVous.objects.filter(statut='PENDING').count(),
+        'completed_appointments': RendezVous.objects.filter(statut='TERMINE').count(),
+    }
     
-    # Search patients (only for authenticated users with proper permissions)
-    patients_data = []
-    if request.user.is_authenticated and request.user.role in ['medecin', 'admin']:
-        patients = Patient.objects.filter(
-            Q(user__first_name__icontains=query) |
-            Q(user__last_name__icontains=query)
-        )[:10]
-        
-        for patient in patients:
-            patients_data.append({
-                'id': patient.id,
-                'name': f"{patient.user.first_name} {patient.user.last_name}",
-                'age': 30,  # In a real implementation, this would be calculated
-                'lastVisit': '2023-10-15'  # In a real implementation, this would be from actual data
-            })
-    
-    # Search articles
-    articles = Article.objects.filter(
-        Q(titre__icontains=query) |
-        Q(contenu__icontains=query) |
-        Q(resume__icontains=query) |
-        Q(tags__icontains=query)
-    ).filter(statut='valide')[:10]
-    
-    articles_data = []
-    for article in articles:
-        articles_data.append({
-            'id': article.id,
-            'title': article.titre,
-            'excerpt': article.resume,
-            'author': f"Dr. {article.auteur.user.first_name} {article.auteur.user.last_name}",
-            'date': article.date_publication.strftime('%Y-%m-%d') if article.date_publication else '',
-            'views': article.vues
-        })
-    
-    # Search appointments (only for authenticated users)
-    appointments_data = []
-    if request.user.is_authenticated:
-        appointments = RendezVous.objects.filter(
-            Q(patient__first_name__icontains=query) |
-            Q(patient__last_name__icontains=query) |
-            Q(medecin__first_name__icontains=query) |
-            Q(medecin__last_name__icontains=query)
-        )
-        
-        # Filter by user role
-        if request.user.role == 'patient':
-            appointments = appointments.filter(patient=request.user)
-        elif request.user.role == 'medecin':
-            appointments = appointments.filter(medecin=request.user)
-        # Admin can see all appointments
-        
-        appointments = appointments[:10]
-        
-        for appointment in appointments:
-            appointments_data.append({
-                'id': appointment.id,
-                'patient': f"{appointment.patient.first_name} {appointment.patient.last_name}",
-                'doctor': f"Dr. {appointment.medecin.first_name} {appointment.medecin.last_name}",
-                'specialty': getattr(appointment.medecin.medecin_profile, 'specialite', '') if hasattr(appointment.medecin, 'medecin_profile') else '',
-                'date': appointment.date.strftime('%Y-%m-%d') if appointment.date else '',
-                'time': appointment.heure.strftime('%H:%M') if appointment.heure else '',
-                'status': appointment.get_statut_display()
-            })
-    
-    return Response({
-        'doctors': doctors_data,
-        'patients': patients_data,
-        'articles': articles_data,
-        'appointments': appointments_data
-    })
+    return Response(stats)
 
 
 # -------------------- Messaging Functionality --------------------
@@ -2615,155 +2764,630 @@ def admin_cancel_appointment(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def admin_reschedule_appointment(request, pk):
-    """Reschedule an appointment by admin"""
+def admin_cancel_appointment(request, pk):
+    """Cancel an appointment by admin"""
     if request.user.role != 'admin':
         return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
     
     try:
         appointment = RendezVous.objects.get(pk=pk)
-        new_date = request.data.get('date')
-        new_time = request.data.get('heure')
         
-        if not new_date or not new_time:
-            return Response({'error': 'Date et heure requises pour reprogrammer'}, status=400)
-        
-        # Store old values for notification
-        old_date = appointment.date
-        old_time = appointment.heure
+        # Store old status for notification
         old_status = appointment.statut
-        
-        # Update appointment
-        appointment.date = new_date
-        appointment.heure = new_time
-        appointment.statut = 'RESCHEDULED'
+        appointment.statut = 'CANCELLED'
         appointment.save()
         
-        # Send reschedule notification if not already rescheduled
-        if old_status != 'RESCHEDULED':
-            NotificationService.send_appointment_reschedule(appointment, old_date, old_time)
+        # Send cancellation notification if not already cancelled
+        if old_status != 'CANCELLED':
+            NotificationService.send_appointment_cancellation(appointment)
         
         return Response({
-            'message': 'Rendez-vous reprogrammé avec succès',
+            'message': 'Rendez-vous annulé avec succès',
             'appointment': RendezVousSerializer(appointment).data
         })
     except RendezVous.DoesNotExist:
         return Response({'error': 'Rendez-vous non trouvé'}, status=404)
 
 
+# -------------------- Messaging Functionality --------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def admin_appointments_statistics(request):
-    """Get appointment statistics for admin dashboard"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
-    
-    from django.db.models import Count
-    from datetime import date, timedelta
-    
-    today = date.today()
-    week_ago = today - timedelta(days=7)
-    month_ago = today - timedelta(days=30)
-    
-    stats = {
-        'total_appointments': RendezVous.objects.count(),
-        'today_appointments': RendezVous.objects.filter(date=today).count(),
-        'week_appointments': RendezVous.objects.filter(date__gte=week_ago).count(),
-        'month_appointments': RendezVous.objects.filter(date__gte=month_ago).count(),
-        'appointments_by_status': list(RendezVous.objects.values('statut').annotate(count=Count('id'))),
-        'confirmed_appointments': RendezVous.objects.filter(statut='CONFIRMED').count(),
-        'cancelled_appointments': RendezVous.objects.filter(statut='CANCELLED').count(),
-        'rescheduled_appointments': RendezVous.objects.filter(statut='RESCHEDULED').count(),
-        'pending_appointments': RendezVous.objects.filter(statut='PENDING').count(),
-        'completed_appointments': RendezVous.objects.filter(statut='TERMINE').count(),
-    }
-    
-    return Response(stats)
+def get_conversations(request):
+    """Get all conversations for the current user"""
+    conversations = request.user.conversations.all()
+    serializer = ConversationSerializer(conversations, many=True, context={'request': request})
+    return Response(serializer.data)
 
 
-# -------------------- Admin Chatbot Management --------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def admin_chatbot_knowledge_base(request):
-    """Get all chatbot knowledge base entries for admin"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
-    
-    entries = ChatbotKnowledgeBase.objects.all().order_by('-created_at')
-    serializer = ChatbotKnowledgeBaseSerializer(entries, many=True)
+def get_messages(request, conversation_id):
+    """Get all messages for a specific conversation"""
+    try:
+        conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        messages = conversation.messages.all()
+        
+        # Mark messages as read (except those sent by the current user)
+        for message in messages:
+            if message.sender != request.user and not message.is_read:
+                message.mark_as_read()
+        
+        serializer = MessageSerializer(messages, many=True, context={'request': request})
+        return Response(serializer.data)
+    except Conversation.DoesNotExist:
+        return Response({"error": "Conversation non trouvée"}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_conversation(request):
+    """Create a new conversation"""
+    try:
+        recipient_id = request.data.get('recipient_id')
+        subject = request.data.get('subject', 'Nouvelle conversation')
+        
+        if not recipient_id:
+            return Response({"error": "ID du destinataire requis"}, status=400)
+        
+        try:
+            recipient = User.objects.get(id=recipient_id)
+        except User.DoesNotExist:
+            return Response({"error": "Destinataire non trouvé"}, status=404)
+        
+        # Check if conversation already exists between these two users
+        existing_conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(
+            participants=recipient
+        ).distinct()
+        
+        if existing_conversation.exists():
+            conversation = existing_conversation.first()
+        else:
+            # Create new conversation
+            conversation = Conversation.objects.create(subject=subject)
+            conversation.participants.add(request.user, recipient)
+        
+        serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response(serializer.data, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_message(request):
+    """Send a new message"""
+    try:
+        conversation_id = request.data.get('conversation_id')
+        content = request.data.get('content')
+        
+        if not conversation_id or not content:
+            return Response({"error": "ID de conversation et contenu requis"}, status=400)
+        
+        try:
+            conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation non trouvée"}, status=404)
+        
+        # Create message
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=content
+        )
+        
+        # Update conversation timestamp
+        conversation.updated_at = timezone.now()
+        conversation.save()
+        
+        serializer = MessageSerializer(message, context={'request': request})
+        return Response(serializer.data, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_message(request):
+    """Send a new message"""
+    try:
+        conversation_id = request.data.get('conversation_id')
+        content = request.data.get('content')
+        
+        if not conversation_id or not content:
+            return Response({"error": "ID de conversation et contenu requis"}, status=400)
+        
+        try:
+            conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation non trouvée"}, status=404)
+        
+        # Create message
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=content
+        )
+        
+        # Update conversation timestamp
+        conversation.updated_at = timezone.now()
+        conversation.save()
+        
+        serializer = MessageSerializer(message, context={'request': request})
+        return Response(serializer.data, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+
+# ========== URGENCES PATIENT ==========
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def urgences_patient(request):
+    """Gestion des urgences pour les patients"""
+    if request.user.role != 'patient':
+        return Response({'error': 'Accès réservé aux patients'}, status=403)
+
+    try:
+        patient = Patient.objects.get(user=request.user)
+    except Patient.DoesNotExist:
+        return Response({'error': 'Profil patient non trouvé'}, status=404)
+
+    if request.method == 'GET':
+        urgences = Urgence.objects.filter(patient=patient).order_by('-date_creation')
+        serializer = UrgenceSerializer(urgences, many=True)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        data = request.data.copy()
+        data['patient'] = patient.id
+
+        serializer = UrgenceSerializer(data=data)
+        if serializer.is_valid():
+            urgence = serializer.save()
+
+            # Envoyer notifications aux médecins disponibles
+            notifier_medecins_urgence(urgence)
+
+            # Envoyer email au patient
+            from .notifications import NotificationService
+            NotificationService.send_urgence_confirmation(urgence)
+
+            return Response(UrgenceSerializer(urgence).data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+def notifier_medecins_urgence(urgence):
+    """Envoyer des notifications aux médecins disponibles"""
+    # Récupérer les médecins disponibles (vous pouvez affiner la logique)
+    medecins = Medecin.objects.filter(disponibilite='disponible')[:5]  # Top 5
+
+    for medecin in medecins:
+        NotificationUrgence.objects.create(
+            urgence=urgence,
+            medecin=medecin
+        )
+
+        # Envoyer email au médecin
+        from .notifications import NotificationService
+        NotificationService.send_urgence_notification_medecin(urgence, medecin)
+
+
+# ========== URGENCES MÉDECIN ==========
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def urgences_medecin(request):
+    """Liste des urgences pour les médecins"""
+    if request.user.role != 'medecin':
+        return Response({'error': 'Accès réservé aux médecins'}, status=403)
+
+    try:
+        medecin = Medecin.objects.get(user=request.user)
+    except Medecin.DoesNotExist:
+        return Response({'error': 'Profil médecin non trouvé'}, status=404)
+
+    statut = request.GET.get('statut', 'en_attente')
+
+    if statut == 'mes_prises_en_charge':
+        urgences = Urgence.objects.filter(medecin_charge=medecin)
+    else:
+        urgences = Urgence.objects.filter(statut=statut)
+
+    urgences = urgences.order_by('-priorite', '-date_creation')
+    serializer = UrgenceSerializer(urgences, many=True)
     return Response(serializer.data)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def admin_create_chatbot_entry(request):
-    """Create a new chatbot knowledge base entry"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
-    
-    serializer = ChatbotKnowledgeBaseSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+def urgence_prendre_en_charge(request, pk):
+    """Prendre en charge une urgence"""
+    if request.user.role != 'medecin':
+        return Response({'error': 'Accès réservé aux médecins'}, status=403)
+
+    try:
+        medecin = Medecin.objects.get(user=request.user)
+        urgence = Urgence.objects.get(pk=pk)
+    except Medecin.DoesNotExist:
+        return Response({'error': 'Profil médecin non trouvé'}, status=404)
+    except Urgence.DoesNotExist:
+        return Response({'error': 'Urgence non trouvée'}, status=404)
+
+    if urgence.statut != 'en_attente':
+        return Response({'error': 'Cette urgence a déjà été prise en charge'}, status=400)
+
+    urgence.statut = 'prise_en_charge'
+    urgence.medecin_charge = medecin
+    urgence.date_prise_en_charge = timezone.now()
+    urgence.save()
+
+    # Notifier le patient
+    from .notifications import NotificationService
+    NotificationService.send_urgence_prise_en_charge(urgence)
+
+    return Response({
+        'message': 'Urgence prise en charge',
+        'urgence': UrgenceSerializer(urgence).data
+    })
 
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
-def admin_update_chatbot_entry(request, pk):
-    """Update a chatbot knowledge base entry"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
-    
-    try:
-        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
-    except ChatbotKnowledgeBase.DoesNotExist:
-        return Response({'error': 'Entrée non trouvée'}, status=404)
-    
-    serializer = ChatbotKnowledgeBaseSerializer(entry, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+def urgence_resoudre(request, pk):
+    """Marquer une urgence comme résolue"""
+    if request.user.role != 'medecin':
+        return Response({'error': 'Accès réservé aux médecins'}, status=403)
 
-
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def admin_delete_chatbot_entry(request, pk):
-    """Delete a chatbot knowledge base entry"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
-    
     try:
-        entry = ChatbotKnowledgeBase.objects.get(pk=pk)
-        entry.delete()
-        return Response({'message': 'Entrée supprimée avec succès'}, status=status.HTTP_204_NO_CONTENT)
-    except ChatbotKnowledgeBase.DoesNotExist:
-        return Response({'error': 'Entrée non trouvée'}, status=404)
+        medecin = Medecin.objects.get(user=request.user)
+        urgence = Urgence.objects.get(pk=pk, medecin_charge=medecin)
+    except Urgence.DoesNotExist:
+        return Response({'error': 'Urgence non trouvée ou non autorisée'}, status=404)
+
+    urgence.statut = 'resolue'
+    urgence.notes_medecin = request.data.get('notes', '')
+    urgence.save()
+
+    return Response({
+        'message': 'Urgence marquée comme résolue',
+        'urgence': UrgenceSerializer(urgence).data
+    })
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def admin_chatbot_statistics(request):
-    """Get chatbot statistics for admin dashboard"""
+def notifications_urgences_medecin(request):
+    """Récupérer les notifications d'urgences pour un médecin"""
+    if request.user.role != 'medecin':
+        return Response({'error': 'Accès réservé aux médecins'}, status=403)
+
+    try:
+        medecin = Medecin.objects.get(user=request.user)
+    except Medecin.DoesNotExist:
+        return Response({'error': 'Profil médecin non trouvé'}, status=404)
+
+    # Notifications non lues en premier
+    notifications = NotificationUrgence.objects.filter(
+        medecin=medecin
+    ).order_by('lue', '-date_envoi')[:20]
+
+    serializer = NotificationUrgenceSerializer(notifications, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def notification_marquer_lue(request, pk):
+    """Marquer une notification comme lue"""
+    if request.user.role != 'medecin':
+        return Response({'error': 'Accès réservé aux médecins'}, status=403)
+
+    try:
+        medecin = Medecin.objects.get(user=request.user)
+        notification = NotificationUrgence.objects.get(pk=pk, medecin=medecin)
+
+        notification.lue = True
+        notification.date_lecture = timezone.now()
+        notification.save()
+
+        return Response({'message': 'Notification marquée comme lue'})
+    except NotificationUrgence.DoesNotExist:
+        return Response({'error': 'Notification non trouvée'}, status=404)
+
+
+# ========== URGENCES ADMIN ==========
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def urgences_admin_dashboard(request):
+    """Dashboard des urgences pour l'admin"""
     if request.user.role != 'admin':
         return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
-    
-    from django.db.models import Count
-    
-    # Get top questions from conversation history
-    top_questions = ChatbotConversation.objects.values('message_user').annotate(
-        count=Count('message_user')
-    ).order_by('-count')[:10]
-    
+
     stats = {
-        'total_conversations': ChatbotConversation.objects.count(),
-        'total_users': ChatbotConversation.objects.values('patient').distinct().count(),
-        'avg_response_time': '2.3s',  # This would need to be calculated in a real implementation
-        'top_questions': [
-            {'question': item['message_user'], 'count': item['count']} 
-            for item in top_questions
-        ]
+        'total': Urgence.objects.count(),
+        'en_attente': Urgence.objects.filter(statut='en_attente').count(),
+        'prise_en_charge': Urgence.objects.filter(statut='prise_en_charge').count(),
+        'resolues': Urgence.objects.filter(statut='resolue').count(),
+        'critiques': Urgence.objects.filter(priorite='critique', statut__in=['en_attente', 'prise_en_charge']).count(),
+        'par_priorite': list(Urgence.objects.values('priorite').annotate(count=models.Count('id'))),
+        'temps_moyen_prise_en_charge': 'À calculer',  # TODO
     }
+
+    # Urgences récentes
+    urgences_recentes = Urgence.objects.all().order_by('-date_creation')[:10]
+
+    return Response({
+        'statistics': stats,
+        'urgences_recentes': UrgenceSerializer(urgences_recentes, many=True).data
+    })
+
+
+# ========== EXPORT DONNÉES RGPD ==========
+
+import json
+from django.http import HttpResponse
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_mes_donnees(request):
+    """Exporter toutes les données de l'utilisateur (RGPD)"""
+    user = request.user
+
+    # Collecter toutes les données
+    data = {
+        'utilisateur': {
+            'username': user.username,
+            'email': user.email,
+            'prenom': user.first_name,
+            'nom': user.last_name,
+            'role': user.role,
+            'date_inscription': user.date_joined.isoformat(),
+        }
+    }
+
+    # Si patient
+    if user.role == 'patient':
+        try:
+            patient = Patient.objects.get(user=user)
+            data['patient'] = {
+                'adresse': patient.adresse,
+            }
+
+            # Rendez-vous
+            rendez_vous = RendezVous.objects.filter(patient=patient)
+            data['rendez_vous'] = list(rendez_vous.values())
+
+            # Consultations
+            consultations = Consultation.objects.filter(patient=patient)
+            data['consultations'] = list(consultations.values())
+
+        except Patient.DoesNotExist:
+            pass
+
+    # LOG D'AUDIT
+    log_action(
+        user=user,
+        action='export',
+        model_name='UserData',
+        details={'export_type': 'full'},
+        request=request
+    )
+
+    # Créer le fichier JSON
+    response = HttpResponse(
+        json.dumps(data, indent=2, ensure_ascii=False, default=str),
+        content_type='application/json'
+    )
+    response['Content-Disposition'] = f'attachment; filename="mes_donnees_assistosante.json"'
+
+    return response
+
+
+# -------------------- Search Functionality --------------------
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search(request):
+    """Global search across doctors, patients, articles, and appointments"""
+    query = request.GET.get('q', '').strip()
     
-    return Response(stats)
+    if not query:
+        return Response({
+            'doctors': [],
+            'patients': [],
+            'articles': [],
+            'appointments': []
+        })
+    
+    # Search doctors
+    doctors = Medecin.objects.filter(
+        Q(user__first_name__icontains=query) |
+        Q(user__last_name__icontains=query) |
+        Q(specialite__icontains=query)
+    )[:10]
+    
+    doctors_data = []
+    for doctor in doctors:
+        doctors_data.append({
+            'id': doctor.id,
+            'name': f"Dr. {doctor.user.first_name} {doctor.user.last_name}",
+            'specialty': doctor.specialite,
+            'rating': 4.5  # In a real implementation, this would be calculated from ratings
+        })
+    
+    # Search patients (only for authenticated users with proper permissions)
+    patients_data = []
+    if request.user.is_authenticated and request.user.role in ['medecin', 'admin']:
+        patients = Patient.objects.filter(
+            Q(user__first_name__icontains=query) |
+            Q(user__last_name__icontains=query)
+        )[:10]
+        
+        for patient in patients:
+            patients_data.append({
+                'id': patient.id,
+                'name': f"{patient.user.first_name} {patient.user.last_name}",
+                'age': 30,  # In a real implementation, this would be calculated
+                'lastVisit': '2023-10-15'  # In a real implementation, this would be from actual data
+            })
+    
+    # Search articles
+    articles = Article.objects.filter(
+        Q(titre__icontains=query) |
+        Q(contenu__icontains=query) |
+        Q(resume__icontains=query) |
+        Q(tags__icontains=query)
+    ).filter(statut='valide')[:10]
+    
+    articles_data = []
+    for article in articles:
+        articles_data.append({
+            'id': article.id,
+            'title': article.titre,
+            'excerpt': article.resume,
+            'author': f"Dr. {article.auteur.user.first_name} {article.auteur.user.last_name}",
+            'date': article.date_publication.strftime('%Y-%m-%d') if article.date_publication else '',
+            'views': article.vues
+        })
+    
+    # Search appointments (only for authenticated users)
+    appointments_data = []
+    if request.user.is_authenticated:
+        appointments = RendezVous.objects.filter(
+            Q(patient__first_name__icontains=query) |
+            Q(patient__last_name__icontains=query) |
+            Q(medecin__first_name__icontains=query) |
+            Q(medecin__last_name__icontains=query)
+        )
+        
+        # Filter by user role
+        if request.user.role == 'patient':
+            appointments = appointments.filter(patient=request.user)
+        elif request.user.role == 'medecin':
+            appointments = appointments.filter(medecin=request.user)
+        # Admin can see all appointments
+        
+        appointments = appointments[:10]
+        
+        for appointment in appointments:
+            appointments_data.append({
+                'id': appointment.id,
+                'patient': f"{appointment.patient.first_name} {appointment.patient.last_name}",
+                'doctor': f"Dr. {appointment.medecin.first_name} {appointment.medecin.last_name}",
+                'specialty': getattr(appointment.medecin.medecin_profile, 'specialite', '') if hasattr(appointment.medecin, 'medecin_profile') else '',
+                'date': appointment.date.strftime('%Y-%m-%d') if appointment.date else '',
+                'time': appointment.heure.strftime('%H:%M') if appointment.heure else '',
+                'status': appointment.get_statut_display()
+            })
+    
+    return Response({
+        'doctors': doctors_data,
+        'patients': patients_data,
+        'articles': articles_data,
+        'appointments': appointments_data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def nearby_health_facilities(request):
+    """Liste des centres de santé à proximité d'une position donnée"""
+    try:
+        lat = float(request.GET.get('lat', 14.6937))
+        lng = float(request.GET.get('lng', -17.444))
+        radius = float(request.GET.get('radius', 10))  # Rayon en km, par défaut 10km
+    except ValueError:
+        return Response({'error': 'Paramètres de localisation invalides'}, status=400)
+    
+    # Fonction pour calculer la distance entre deux points (formule de Haversine)
+    def calculate_distance(lat1, lon1, lat2, lon2):
+        from math import radians, cos, sin, asin, sqrt
+        # Convertir les degrés en radians
+        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+        
+        # Formule de Haversine
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        c = 2 * asin(sqrt(a))
+        r = 6371  # Rayon de la Terre en km
+        return c * r
+    
+    # Récupérer tous les centres de santé
+    facilities = []
+    
+    # Récupérer les hôpitaux
+    hopitaux = Hopital.objects.all()
+    for hopital in hopitaux:
+        if hopital.latitude and hopital.longitude:
+            distance = calculate_distance(lat, lng, float(hopital.latitude), float(hopital.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'hopital_{hopital.id}',
+                    'nom': hopital.nom,
+                    'type': 'hopital',
+                    'adresse': getattr(hopital, 'adresse', ''),
+                    'latitude': float(hopital.latitude),
+                    'longitude': float(hopital.longitude),
+                    'telephone': getattr(hopital, 'telephone', ''),
+                    'horaires': getattr(hopital, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    # Récupérer les cliniques
+    cliniques = Clinique.objects.all()
+    for clinique in cliniques:
+        if clinique.latitude and clinique.longitude:
+            distance = calculate_distance(lat, lng, float(clinique.latitude), float(clinique.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'clinique_{clinique.id}',
+                    'nom': clinique.nom,
+                    'type': 'clinique',
+                    'adresse': getattr(clinique, 'adresse', ''),
+                    'latitude': float(clinique.latitude),
+                    'longitude': float(clinique.longitude),
+                    'telephone': getattr(clinique, 'telephone', ''),
+                    'horaires': getattr(clinique, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    # Récupérer les pharmacies
+    pharmacies = Pharmacie.objects.all()
+    for pharmacie in pharmacies:
+        if pharmacie.latitude and pharmacie.longitude:
+            distance = calculate_distance(lat, lng, float(pharmacie.latitude), float(pharmacie.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'pharmacie_{pharmacie.id}',
+                    'nom': pharmacie.nom,
+                    'type': 'pharmacie',
+                    'adresse': getattr(pharmacie, 'adresse', ''),
+                    'latitude': float(pharmacie.latitude),
+                    'longitude': float(pharmacie.longitude),
+                    'telephone': getattr(pharmacie, 'telephone', ''),
+                    'horaires': getattr(pharmacie, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    # Récupérer les dentistes
+    dentistes = Dentiste.objects.all()
+    for dentiste in dentistes:
+        if dentiste.latitude and dentiste.longitude:
+            distance = calculate_distance(lat, lng, float(dentiste.latitude), float(dentiste.longitude))
+            if distance <= radius:
+                facilities.append({
+                    'id': f'dentiste_{dentiste.id}',
+                    'nom': dentiste.nom,
+                    'type': 'dentiste',
+                    'adresse': getattr(dentiste, 'adresse', ''),
+                    'latitude': float(dentiste.latitude),
+                    'longitude': float(dentiste.longitude),
+                    'telephone': getattr(dentiste, 'telephone', ''),
+                    'horaires': getattr(dentiste, 'horaires', ''),
+                    'distance': round(distance, 2)
+                })
+
+    return Response(facilities)

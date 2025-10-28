@@ -7,7 +7,7 @@ import {
   FaPills, FaRobot, FaChartLine, FaQrcode, FaStar,
   FaChevronLeft, FaChevronRight, FaStethoscope, FaHospital,
   FaPrescriptionBottle, FaHeartbeat, FaNotesMedical, FaUsers,
-  FaClipboardList, FaComments, FaBookMedical
+  FaClipboardList, FaComments, FaBookMedical, FaVideo
 } from "react-icons/fa";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -49,6 +49,12 @@ function EnhancedDashboardMedecinV2() {
       path: "/medecin/rendez-vous"
     },
     { 
+      title: "Mes consultations", 
+      icon: <FaVideo size={24} />, 
+      color: "info",
+      path: "/medecin/consultations"
+    },
+    { 
       title: "Mes patients", 
       icon: <FaUsers size={24} />, 
       color: "success",
@@ -65,12 +71,6 @@ function EnhancedDashboardMedecinV2() {
       icon: <FaClipboardList size={24} />, 
       color: "warning",
       path: "/medecin/document-partage"
-    },
-    { 
-      title: "Mes articles", 
-      icon: <FaBookMedical size={24} />, 
-      color: "secondary",
-      path: "/medecin/articles"
     }
   ];
 
@@ -601,6 +601,7 @@ function EnhancedDashboardMedecinV2() {
                             <th>Date</th>
                             <th>Heure</th>
                             <th>Motif</th>
+                            <th>Type</th>
                             <th>Statut</th>
                             <th>Actions</th>
                           </tr>
@@ -612,6 +613,17 @@ function EnhancedDashboardMedecinV2() {
                               <td>{appointment.date ? new Date(appointment.date).toLocaleDateString('fr-FR') : 'Date non spécifiée'}</td>
                               <td>{appointment.time || 'Heure non spécifiée'}</td>
                               <td>{appointment.motif || 'Motif non spécifié'}</td>
+                              <td>
+                                {appointment.type_consultation === "teleconsultation" ? (
+                                  <span className="badge bg-info">
+                                    📹 Téléconsultation
+                                  </span>
+                                ) : (
+                                  <span className="badge bg-success">
+                                    🏥 Au cabinet
+                                  </span>
+                                )}
+                              </td>
                               <td>
                                 <span className={`badge ${
                                   appointment.status === 'confirmed' ? 'bg-success' : 

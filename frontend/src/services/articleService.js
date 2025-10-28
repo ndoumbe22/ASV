@@ -1,17 +1,21 @@
 import api from "./api";
 
 const articleService = {
-  // Public articles
+  // Public articles with pagination support
   getPublicArticles: async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.categorie) params.append("categorie", filters.categorie);
     if (filters.search) params.append("search", filters.search);
+    if (filters.page) params.append("page", filters.page);
+    if (filters.page_size) params.append("page_size", filters.page_size);
 
-    const response = await api.get(`articles/publics/?${params.toString()}`);
+    // Fix the endpoint to match the backend URL
+    const response = await api.get(`articles/?${params.toString()}`);
     return response.data;
   },
 
   getPublicArticle: async (slug) => {
+    // Fix the endpoint to match the backend URL
     const response = await api.get(`articles/${slug}/`);
     return response.data;
   },
@@ -31,30 +35,14 @@ const articleService = {
   },
 
   createArticle: async (articleData) => {
-    const formData = new FormData();
-    Object.keys(articleData).forEach((key) => {
-      formData.append(key, articleData[key]);
-    });
-
-    const response = await api.post(`medecin/articles/`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    // Send as JSON data, not FormData
+    const response = await api.post(`medecin/articles/`, articleData);
     return response.data;
   },
 
   updateArticle: async (id, articleData) => {
-    const formData = new FormData();
-    Object.keys(articleData).forEach((key) => {
-      formData.append(key, articleData[key]);
-    });
-
-    const response = await api.put(`medecin/articles/${id}/`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    // Send as JSON data, not FormData
+    const response = await api.put(`medecin/articles/${id}/`, articleData);
     return response.data;
   },
 
@@ -106,7 +94,10 @@ const articleService = {
 
   // Featured articles
   featureArticle: async (id) => {
-    const response = await api.post(`admin/articles/${id}/mettre_en_avant/`, {});
+    const response = await api.post(
+      `admin/articles/${id}/mettre_en_avant/`,
+      {}
+    );
     return response.data;
   },
 

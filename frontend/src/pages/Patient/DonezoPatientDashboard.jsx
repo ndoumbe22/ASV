@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   FaCalendar, FaHistory, FaUserMd, FaEnvelope, 
   FaPills, FaFileAlt, FaBell, FaChevronRight, FaPlus, FaFilter,
-  FaMapMarkerAlt, FaRobot
+  FaMapMarkerAlt, FaRobot, FaVideo
 } from "react-icons/fa";
 import { 
   BarChart, Bar, XAxis, YAxis, 
@@ -80,9 +80,15 @@ function DonezoPatientDashboard() {
         
         // Fetch medications
         try {
-          const medicationsResponse = await patientAPI.getMedications();
-          const medicationsData = medicationsResponse?.data || [];
-          setMedications(medicationsData);
+          // Get the patient ID from the authenticated user
+          const patientId = user?.id; // Assuming the user object has an id property
+          if (patientId) {
+            const medicationsResponse = await patientAPI.getMedications(patientId);
+            const medicationsData = medicationsResponse?.data || [];
+            setMedications(medicationsData);
+          } else {
+            setMedications([]);
+          }
         } catch (medicationsError) {
           console.error("Error fetching medications:", medicationsError);
           setMedications([]);
@@ -92,7 +98,9 @@ function DonezoPatientDashboard() {
         try {
           const articlesResponse = await articleAPI.getArticles();
           const articlesData = articlesResponse?.data || [];
-          setArticles(articlesData.slice(0, 3)); // Get first 3 articles
+          // Ensure articlesData is an array before calling slice
+          const articles = Array.isArray(articlesData) ? articlesData : [];
+          setArticles(articles.slice(0, 3)); // Get first 3 articles
         } catch (articlesError) {
           console.error("Error fetching articles:", articlesError);
           setArticles([]);
@@ -156,7 +164,7 @@ function DonezoPatientDashboard() {
   const quickAccessButtons = [
     { title: "Documents médicaux", icon: <FaFileAlt />, color: "bg-blue-100 text-blue-600", onClick: () => navigate("/patient/document-partage") },
     { title: "Rappels médicaments", icon: <FaPills />, color: "bg-green-100 text-green-600", onClick: () => navigate("/patient/medication-reminders") },
-    { title: "Messagerie", icon: <FaEnvelope />, color: "bg-purple-100 text-purple-600", onClick: () => navigate("/patient/messagerie") },
+    { title: "Téléconsultation", icon: <FaVideo />, color: "bg-purple-100 text-purple-600", onClick: () => navigate("/patient/consultations") },
     { title: "Centres de santé", icon: <FaMapMarkerAlt />, color: "bg-red-100 text-red-600", onClick: () => navigate("/patient/localiser-centres") }
   ];
 

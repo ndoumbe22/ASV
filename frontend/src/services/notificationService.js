@@ -4,8 +4,11 @@ class NotificationService {
   // Get all notifications for the user
   async getNotifications() {
     try {
-      const response = await api.get("/notifications/");
-      return response.data;
+      // const response = await api.get("/notifications/");
+      // return response.data;
+
+      // Retourner un tableau vide temporairement
+      return [];
     } catch (error) {
       throw error;
     }
@@ -14,8 +17,11 @@ class NotificationService {
   // Mark a notification as read
   async markAsRead(id) {
     try {
-      const response = await api.post(`/notifications/${id}/mark-read/`);
-      return response.data;
+      // const response = await api.post(`/notifications/${id}/mark-read/`);
+      // return response.data;
+
+      // Retourner un objet vide temporairement
+      return {};
     } catch (error) {
       throw error;
     }
@@ -24,8 +30,11 @@ class NotificationService {
   // Mark all notifications as read
   async markAllAsRead() {
     try {
-      const response = await api.post("/notifications/mark-all-read/");
-      return response.data;
+      // const response = await api.post("/notifications/mark-all-read/");
+      // return response.data;
+
+      // Retourner un objet vide temporairement
+      return {};
     } catch (error) {
       throw error;
     }
@@ -34,8 +43,11 @@ class NotificationService {
   // Delete a notification
   async deleteNotification(id) {
     try {
-      const response = await api.delete(`/notifications/${id}/`);
-      return response.data;
+      // const response = await api.delete(`/notifications/${id}/`);
+      // return response.data;
+
+      // Retourner un objet vide temporairement
+      return {};
     } catch (error) {
       throw error;
     }
@@ -44,11 +56,14 @@ class NotificationService {
   // Send a notification (admin only)
   async sendNotification(notificationData) {
     try {
-      const response = await api.post(
-        "/admin/notifications/",
-        notificationData
-      );
-      return response.data;
+      // const response = await api.post(
+      //   "/admin/notifications/",
+      //   notificationData
+      // );
+      // return response.data;
+
+      // Retourner un objet vide temporairement
+      return {};
     } catch (error) {
       throw error;
     }

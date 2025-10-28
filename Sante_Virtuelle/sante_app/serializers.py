@@ -7,8 +7,71 @@ from .models import (
     ContactFooter, ChatbotConversation, RappelMedicament, HistoriquePriseMedicament,
     Urgence, NotificationUrgence, MedicalDocument, Rating, Conversation, Message, ChatbotKnowledgeBase, ConsultationMessage, Teleconsultation, DisponibiliteMedecin, IndisponibiliteMedecin  # Added DisponibiliteMedecin and IndisponibiliteMedecin
 )
+from datetime import datetime, timedelta
 
 User = get_user_model()
+
+# Utility function for robust conflict detection
+def check_appointment_conflict(medecin_user, date_rdv, heure_rdv, duration_minutes, exclude_rdv_id=None):
+    """
+    Check if there's a conflict with existing appointments
+    Returns tuple: (has_conflict, conflicting_appointment)
+    """
+    from .models import RendezVous, Medecin, DisponibiliteMedecin
+    
+    # Calculate time range for the new appointment
+    new_start = datetime.combine(date_rdv, heure_rdv)
+    new_end = new_start + timedelta(minutes=duration_minutes)
+    
+    # Get existing appointments for this doctor on this date
+    existing_appointments = RendezVous.objects.filter(
+        medecin=medecin_user,
+        date=date_rdv,
+        statut__in=['CONFIRMED', 'PENDING']
+    )
+    
+    # Exclude the current appointment if we're updating
+    if exclude_rdv_id:
+        existing_appointments = existing_appointments.exclude(id=exclude_rdv_id)
+    
+    # Check each existing appointment for time overlap
+    for appointment in existing_appointments:
+        # Get the doctor's availability for this appointment's day to get the correct duration
+        appt_jour_semaine = appointment.date.strftime('%A').lower()
+        jour_mapping = {
+            'monday': 'lundi',
+            'tuesday': 'mardi',
+            'wednesday': 'mercredi',
+            'thursday': 'jeudi',
+            'friday': 'vendredi',
+            'saturday': 'samedi',
+            'sunday': 'dimanche'
+        }
+        appt_jour_fr = jour_mapping.get(appt_jour_semaine, '')
+        
+        try:
+            # Get the doctor's availability for this day to determine appointment duration
+            medecin = Medecin.objects.get(user=medecin_user)
+            appt_disponibilite = DisponibiliteMedecin.objects.get(
+                medecin=medecin, 
+                jour=appt_jour_fr, 
+                actif=True
+            )
+            appt_duree = timedelta(minutes=appt_disponibilite.duree_consultation)
+        except (Medecin.DoesNotExist, DisponibiliteMedecin.DoesNotExist):
+            # Fallback to default 30 minutes if no availability found
+            appt_duree = timedelta(minutes=30)
+        
+        # Calculate appointment time range
+        appt_start = datetime.combine(appointment.date, appointment.heure)
+        appt_end = appt_start + appt_duree
+        
+        # Check for time overlap using strict overlap detection
+        # Two intervals [a,b) and [c,d) overlap if a < d and c < b
+        if new_start < appt_end and appt_start < new_end:
+            return True, appointment
+    
+    return False, None
 
 # -------------------- User --------------------
 class UserSerializer(serializers.ModelSerializer):
@@ -92,106 +155,77 @@ class RendezVousCreateSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        """
+        Validation stricte avant création de RDV.
+        Vérifie qu'aucun RDV confirmé/en_attente n'existe déjà.
+        """
         from django.utils import timezone
         from datetime import datetime, timedelta
-        from .models import DisponibiliteMedecin, IndisponibiliteMedecin, RendezVous, Consultation, Teleconsultation
-        import uuid
-        
-        # Ensure patient and medecin are User instances, not just IDs
-        patient = attrs.get('patient')
-        medecin_user = attrs.get('medecin')
-        date_rdv = attrs.get('date')
-        heure_rdv = attrs.get('heure')
-        type_consultation = attrs.get('type_consultation', 'cabinet')
-        
-        if patient and not isinstance(patient, User):
-            try:
-                attrs['patient'] = User.objects.get(id=patient)
-            except User.DoesNotExist:
-                raise serializers.ValidationError("Patient non trouvé")
-                
-        if medecin_user and not isinstance(medecin_user, User):
-            try:
-                attrs['medecin'] = User.objects.get(id=medecin_user)
-            except User.DoesNotExist:
-                raise serializers.ValidationError("Médecin non trouvé")
-        
-        # Get the Medecin instance
-        try:
-            medecin = Medecin.objects.get(user=medecin_user)
-        except Medecin.DoesNotExist:
-            raise serializers.ValidationError("Médecin non trouvé")
-        
-        # Validation 1: La date n'est PAS dans le passé
-        if date_rdv < timezone.now().date():
-            raise serializers.ValidationError("Impossible de réserver dans le passé")
-        
-        # Validation 2: Délai minimum de réservation (2 heures à l'avance)
-        rdv_datetime = datetime.combine(date_rdv, heure_rdv)
-        if rdv_datetime < timezone.now() + timedelta(hours=2):
-            raise serializers.ValidationError("Veuillez réserver au moins 2 heures à l'avance")
-        
-        # Validation 3: Le créneau horaire existe dans les disponibilités du médecin
-        jour_semaine = date_rdv.strftime('%A').lower()
-        jour_mapping = {
-            'monday': 'lundi',
-            'tuesday': 'mardi',
-            'wednesday': 'mercredi',
-            'thursday': 'jeudi',
-            'friday': 'vendredi',
-            'saturday': 'samedi',
-            'sunday': 'dimanche'
+
+        date_rdv = attrs.get('date_rdv')
+        medecin = attrs.get('medecin')
+
+        # 1. Vérifier que la date n'est pas dans le passé
+        if date_rdv < timezone.now():
+            raise serializers.ValidationError(
+                "Impossible de créer un rendez-vous dans le passé"
+            )
+
+        # 2. Vérifier délai minimum (2 heures d'avance)
+        if date_rdv < timezone.now() + timedelta(hours=2):
+            raise serializers.ValidationError(
+                "Vous devez réserver au moins 2 heures à l'avance"
+            )
+
+        # 3. VÉRIFICATION CRITIQUE: Conflit avec RDV existants
+        rdv_existants = RendezVous.objects.filter(
+            medecin=medecin,
+            date_rdv__date=date_rdv.date(),
+            statut__in=['confirmé', 'en_attente']
+        )
+
+        for rdv in rdv_existants:
+            # Vérifier si même heure exacte (même minute)
+            if rdv.date_rdv.time() == date_rdv.time():
+                raise serializers.ValidationError(
+                    f"Ce créneau est déjà réservé. "
+                    f"Veuillez choisir un autre horaire."
+                )
+
+        # 4. Vérifier que le médecin travaille ce jour
+        jours_mapping = {
+            0: 'lundi', 1: 'mardi', 2: 'mercredi', 3: 'jeudi',
+            4: 'vendredi', 5: 'samedi', 6: 'dimanche'
         }
-        jour_fr = jour_mapping.get(jour_semaine, '')
-        
-        try:
-            disponibilite = DisponibiliteMedecin.objects.get(medecin=medecin, jour=jour_fr, actif=True)
-        except DisponibiliteMedecin.DoesNotExist:
-            raise serializers.ValidationError(f"Le médecin n'est pas disponible le {jour_fr}")
-        
-        # Vérifier que l'heure est dans les disponibilités
-        if heure_rdv < disponibilite.heure_debut or heure_rdv >= disponibilite.heure_fin:
-            raise serializers.ValidationError("Cette heure n'est pas dans les disponibilités du médecin")
-        
-        # Vérifier la pause déjeuner
+        jour = jours_mapping[date_rdv.weekday()]
+
+        from medecins.models import DisponibiliteMedecin
+        disponibilite = DisponibiliteMedecin.objects.filter(
+            medecin=medecin,
+            jour=jour,
+            actif=True
+        ).first()
+
+        if not disponibilite:
+            raise serializers.ValidationError(
+                f"Le médecin ne travaille pas le {jour}"
+            )
+
+        # 5. Vérifier que l'heure est dans les horaires de travail
+        heure_rdv = date_rdv.time()
+        if not (disponibilite.heure_debut <= heure_rdv < disponibilite.heure_fin):
+            raise serializers.ValidationError(
+                f"Le créneau doit être entre {disponibilite.heure_debut} "
+                f"et {disponibilite.heure_fin}"
+            )
+
+        # 6. Vérifier que ce n'est pas pendant la pause déjeuner
         if disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
             if disponibilite.pause_dejeuner_debut <= heure_rdv < disponibilite.pause_dejeuner_fin:
-                raise serializers.ValidationError("Le médecin est en pause déjeuner à cette heure")
-        
-        # Validation 4: Pas de double réservation
-        conflit_rdv = RendezVous.objects.filter(
-            medecin=medecin_user,
-            date=date_rdv,
-            heure=heure_rdv,
-            statut__in=['CONFIRMED', 'PENDING']
-        ).exists()
-        
-        if conflit_rdv:
-            raise serializers.ValidationError("Ce créneau est déjà réservé, veuillez en choisir un autre")
-        
-        # Validation 5: Limite de rendez-vous par patient par jour
-        patient_rdv_count = RendezVous.objects.filter(
-            patient=patient,
-            date=date_rdv,
-            statut__in=['CONFIRMED', 'PENDING']
-        ).count()
-        
-        if patient_rdv_count >= 3:
-            raise serializers.ValidationError("Vous avez atteint la limite de rendez-vous pour ce jour")
-        
-        # Validation 6: Vérifier les indisponibilités
-        indisponibilite = IndisponibiliteMedecin.objects.filter(
-            medecin=medecin,
-            date_debut__lte=date_rdv,
-            date_fin__gte=date_rdv
-        ).exists()
-        
-        if indisponibilite:
-            raise serializers.ValidationError("Le médecin est indisponible à cette date")
-        
-        # Store type_consultation in attrs for use in create method
-        attrs['type_consultation'] = type_consultation
-        
+                raise serializers.ValidationError(
+                    "Ce créneau est pendant la pause déjeuner du médecin"
+                )
+
         return attrs
 
     def create(self, validated_data):
@@ -715,6 +749,12 @@ class DisponibiliteMedecinSerializer(serializers.ModelSerializer):
         # Apply the same validation for updates
         self.validate(validated_data)
         return super().update(instance, validated_data)
+
+
+class IndisponibiliteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndisponibiliteMedecin
+        fields = ['id', 'date_debut', 'date_fin', 'type', 'raison']
 
 
 class IndisponibiliteMedecinSerializer(serializers.ModelSerializer):

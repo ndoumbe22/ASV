@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { appointmentAPI, doctorAPI } from "../../services/api";
+import { appointmentAPI } from "../../services/api";
+import { toast } from "react-toastify";
 import { FaCalendarAlt, FaUser, FaSearch, FaCheck, FaTimes, FaClock, FaEdit } from "react-icons/fa";
 
 function RendezVous() {
@@ -10,10 +11,46 @@ function RendezVous() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [rescheduleData, setRescheduleData] = useState({});
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+
+  const loadAppointments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await appointmentAPI.getAppointments();
+      
+      // Ensure we're working with an array
+      let appointmentsData = [];
+      if (response && response.data) {
+        appointmentsData = Array.isArray(response.data) ? response.data : [];
+      }
+      
+      // Filter appointments for the current doctor
+      let doctorAppointments = appointmentsData;
+      if (user) {
+        // Filter appointments for this doctor using medecin_nom field
+        // This matches the doctor's full name in the format "First Last"
+        const doctorName = `${user.first_name} ${user.last_name}`.trim();
+        doctorAppointments = appointmentsData.filter(app => 
+          app.medecin_nom === `Dr. ${doctorName}`
+        );
+      }
+      
+      setAppointments(doctorAppointments);
+      setFilteredAppointments(doctorAppointments);
+    } catch (err) {
+      setError("Erreur lors du chargement des rendez-vous");
+      console.error(err);
+      toast.error("Erreur lors du chargement des rendez-vous");
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     loadAppointments();
-  }, []);
+  }, [loadAppointments]);
 
   useEffect(() => {
     const filtered = appointments.filter(
@@ -24,32 +61,6 @@ function RendezVous() {
     setFilteredAppointments(filtered);
   }, [searchTerm, appointments]);
 
-  const loadAppointments = async () => {
-    try {
-      setLoading(true);
-      const response = await appointmentAPI.getAppointments();
-      
-      // Filter appointments for the current doctor
-      let doctorAppointments = response.data;
-      if (user) {
-        // Filter appointments for this doctor using medecin_nom field
-        // This matches the doctor's full name in the format "First Last"
-        const doctorName = `${user.first_name} ${user.last_name}`.trim();
-        doctorAppointments = response.data.filter(app => 
-          app.medecin_nom === `Dr. ${doctorName}`
-        );
-      }
-      
-      setAppointments(doctorAppointments);
-      setFilteredAppointments(doctorAppointments);
-    } catch (err) {
-      setError("Erreur lors du chargement des rendez-vous");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleConfirm = async (appointment) => {
     try {
       // Use the ID field that's available in the appointment object
@@ -59,7 +70,7 @@ function RendezVous() {
         throw new Error("ID de rendez-vous manquant");
       }
       
-      const response = await appointmentAPI.updateAppointment(id, { statut: "CONFIRMED" });
+      await appointmentAPI.updateAppointment(id, { statut: "CONFIRMED" });
       setAppointments(appointments.map(app => 
         (app.numero === id || app.id === id) ? { ...app, statut: "CONFIRMED" } : app
       ));
@@ -68,46 +79,11 @@ function RendezVous() {
       ));
       
       // Show success message
-      alert("Rendez-vous confirmé avec succès !");
+      toast.success("Rendez-vous confirmé avec succès !");
     } catch (err) {
       setError("Erreur lors de la confirmation du rendez-vous");
       console.error("Error confirming appointment:", err);
-      
-      // Show specific error message to user
-      let errorMessage = "Erreur lors de la confirmation du rendez-vous. Veuillez réessayer.";
-      
-      if (err.response) {
-        if (err.response.data) {
-          if (err.response.data.error) {
-            errorMessage = `Erreur: ${err.response.data.error}`;
-          } else if (err.response.data.detail) {
-            errorMessage = `Erreur: ${err.response.data.detail}`;
-          } else if (err.response.data.message) {
-            errorMessage = `Erreur: ${err.response.data.message}`;
-          } else if (typeof err.response.data === 'object') {
-            // Try to get the first error message from the object
-            const firstKey = Object.keys(err.response.data)[0];
-            if (firstKey) {
-              const firstValue = err.response.data[firstKey];
-              if (Array.isArray(firstValue)) {
-                errorMessage = `Erreur ${firstKey}: ${firstValue.join(', ')}`;
-              } else {
-                errorMessage = `Erreur ${firstKey}: ${firstValue}`;
-              }
-            }
-          } else if (typeof err.response.data === 'string') {
-            errorMessage = `Erreur: ${err.response.data}`;
-          }
-        } else if (err.response.status) {
-          errorMessage = `Erreur ${err.response.status}: ${err.response.statusText}`;
-        }
-      } else if (err.request) {
-        errorMessage = "Erreur réseau: Aucune réponse du serveur";
-      } else if (err.message) {
-        errorMessage = `Erreur: ${err.message}`;
-      }
-      
-      alert(errorMessage);
+      toast.error("Erreur lors de la confirmation du rendez-vous");
     }
   };
 
@@ -129,135 +105,66 @@ function RendezVous() {
       ));
       
       // Show success message
-      alert("Rendez-vous annulé avec succès !");
+      toast.success("Rendez-vous annulé avec succès !");
     } catch (err) {
       setError("Erreur lors de l'annulation du rendez-vous");
       console.error("Error cancelling appointment:", err);
-      
-      // Show specific error message to user
-      let errorMessage = "Erreur lors de l'annulation du rendez-vous. Veuillez réessayer.";
-      
-      if (err.response) {
-        if (err.response.data) {
-          if (err.response.data.error) {
-            errorMessage = `Erreur: ${err.response.data.error}`;
-          } else if (err.response.data.detail) {
-            errorMessage = `Erreur: ${err.response.data.detail}`;
-          } else if (err.response.data.message) {
-            errorMessage = `Erreur: ${err.response.data.message}`;
-          } else if (typeof err.response.data === 'object') {
-            // Try to get the first error message from the object
-            const firstKey = Object.keys(err.response.data)[0];
-            if (firstKey) {
-              const firstValue = err.response.data[firstKey];
-              if (Array.isArray(firstValue)) {
-                errorMessage = `Erreur ${firstKey}: ${firstValue.join(', ')}`;
-              } else {
-                errorMessage = `Erreur ${firstKey}: ${firstValue}`;
-              }
-            }
-          } else if (typeof err.response.data === 'string') {
-            errorMessage = `Erreur: ${err.response.data}`;
-          }
-        } else if (err.response.status) {
-          errorMessage = `Erreur ${err.response.status}: ${err.response.statusText}`;
-        }
-      } else if (err.request) {
-        errorMessage = "Erreur réseau: Aucune réponse du serveur";
-      } else if (err.message) {
-        errorMessage = `Erreur: ${err.message}`;
-      }
-      
-      alert(errorMessage);
+      toast.error("Erreur lors de l'annulation du rendez-vous");
     }
   };
 
-  // Reschedule appointment function for doctors
-  const handleReschedule = async (appointment) => {
-    // Get today's date for validation
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Prompt for new date and time
-    const newDate = prompt("Nouvelle date (YYYY-MM-DD) :");
-    if (!newDate) return;
-    
-    // Validate that the date is not in the past
-    const newDateObj = new Date(newDate);
-    newDateObj.setHours(0, 0, 0, 0);
-    
-    if (newDateObj < today) {
-      alert("Veuillez sélectionner une date future valide");
-      return;
-    }
-    
-    const newTime = prompt("Nouvelle heure (HH:MM) :");
-    if (!newTime) return;
+  // Open reschedule modal
+  const openRescheduleModal = (appointment) => {
+    setSelectedAppointment(appointment);
+    setRescheduleData({
+      date: appointment.date || "",
+      heure: appointment.heure || "",
+      description: appointment.description || ""
+    });
+    setShowRescheduleModal(true);
+  };
 
+  // Close reschedule modal
+  const closeRescheduleModal = () => {
+    setShowRescheduleModal(false);
+    setSelectedAppointment(null);
+    setRescheduleData({});
+  };
+
+  // Handle reschedule form changes
+  const handleRescheduleChange = (e) => {
+    const { name, value } = e.target;
+    setRescheduleData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Reschedule appointment function for doctors
+  const handleRescheduleSubmit = async (e) => {
+    e.preventDefault();
+    
     try {
       // Use the ID field that's available in the appointment object
-      const id = appointment.numero || appointment.id;
+      const id = selectedAppointment.numero || selectedAppointment.id;
       
       if (!id) {
         throw new Error("ID de rendez-vous manquant");
       }
       
-      // Update the appointment with new date and time, and set status to RESCHEDULED
-      const response = await appointmentAPI.updateAppointment(id, { 
-        date: newDate, 
-        heure: newTime, 
-        statut: "RESCHEDULED" 
-      });
+      // Call the doctor reschedule API endpoint
+      await appointmentAPI.doctorRescheduleAppointment(id, rescheduleData);
       
-      // Update the local state
-      setAppointments(appointments.map(app => 
-        (app.numero === id || app.id === id) ? { ...app, date: newDate, heure: newTime, statut: "RESCHEDULED" } : app
-      ));
-      setFilteredAppointments(filteredAppointments.map(app => 
-        (app.numero === id || app.id === id) ? { ...app, date: newDate, heure: newTime, statut: "RESCHEDULED" } : app
-      ));
+      // Reload appointments to get the updated data
+      loadAppointments();
       
-      // Show success message
-      alert("Rendez-vous reprogrammé avec succès !");
+      // Close modal and show success message
+      closeRescheduleModal();
+      toast.success("Rendez-vous reprogrammé avec succès ! Le patient a été notifié de la nouvelle date.");
     } catch (err) {
       setError("Erreur lors de la reprogrammation du rendez-vous");
       console.error("Error rescheduling appointment:", err);
-      
-      // Show specific error message to user
-      let errorMessage = "Erreur lors de la reprogrammation du rendez-vous. Veuillez réessayer.";
-      
-      if (err.response) {
-        if (err.response.data) {
-          if (err.response.data.error) {
-            errorMessage = `Erreur: ${err.response.data.error}`;
-          } else if (err.response.data.detail) {
-            errorMessage = `Erreur: ${err.response.data.detail}`;
-          } else if (err.response.data.message) {
-            errorMessage = `Erreur: ${err.response.data.message}`;
-          } else if (typeof err.response.data === 'object') {
-            // Try to get the first error message from the object
-            const firstKey = Object.keys(err.response.data)[0];
-            if (firstKey) {
-              const firstValue = err.response.data[firstKey];
-              if (Array.isArray(firstValue)) {
-                errorMessage = `Erreur ${firstKey}: ${firstValue.join(', ')}`;
-              } else {
-                errorMessage = `Erreur ${firstKey}: ${firstValue}`;
-              }
-            }
-          } else if (typeof err.response.data === 'string') {
-            errorMessage = `Erreur: ${err.response.data}`;
-          }
-        } else if (err.response.status) {
-          errorMessage = `Erreur ${err.response.status}: ${err.response.statusText}`;
-        }
-      } else if (err.request) {
-        errorMessage = "Erreur réseau: Aucune réponse du serveur";
-      } else if (err.message) {
-        errorMessage = `Erreur: ${err.message}`;
-      }
-      
-      alert(errorMessage);
+      toast.error("Erreur lors de la reprogrammation du rendez-vous");
     }
   };
 
@@ -316,8 +223,8 @@ function RendezVous() {
         <div className="alert alert-info">Aucun rendez-vous trouvé.</div>
       ) : (
         <div className="row">
-          {filteredAppointments.map((appointment) => (
-            <div key={appointment.numero} className="col-md-6 mb-3">
+          {filteredAppointments.map((appointment, index) => (
+            <div key={`appointment-${appointment.numero || appointment.id || index}`} className="col-md-6 mb-3">
               <div className="card">
                 <div className="card-body">
                   <h5 className="card-title">
@@ -335,6 +242,14 @@ function RendezVous() {
                   {appointment.description && (
                     <p className="card-text">{appointment.description}</p>
                   )}
+                  <p className="card-text">
+                    <strong>Type :</strong>{" "}
+                    {appointment.type_consultation === "teleconsultation" ? (
+                      <span className="badge bg-info">📹 Téléconsultation</span>
+                    ) : (
+                      <span className="badge bg-success">🏥 Au cabinet</span>
+                    )}
+                  </p>
                   <div className="d-flex justify-content-between align-items-center">
                     {getStatusBadge(appointment.statut)}
                     {appointment.statut === "PENDING" && (
@@ -348,7 +263,7 @@ function RendezVous() {
                         </button>
                         <button
                           className="btn btn-warning btn-sm me-2"
-                          onClick={() => handleReschedule(appointment)}
+                          onClick={() => openRescheduleModal(appointment)}
                         >
                           <FaEdit className="me-1" />
                           Reporter
@@ -366,7 +281,7 @@ function RendezVous() {
                       <div>
                         <button
                           className="btn btn-warning btn-sm"
-                          onClick={() => handleReschedule(appointment)}
+                          onClick={() => openRescheduleModal(appointment)}
                         >
                           <FaEdit className="me-1" />
                           Reporter
@@ -384,7 +299,7 @@ function RendezVous() {
                         </button>
                         <button
                           className="btn btn-warning btn-sm"
-                          onClick={() => handleReschedule(appointment)}
+                          onClick={() => openRescheduleModal(appointment)}
                         >
                           <FaEdit className="me-1" />
                           Reporter
@@ -396,6 +311,73 @@ function RendezVous() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {showRescheduleModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Reprogrammer le rendez-vous</h5>
+                <button type="button" className="btn-close" onClick={closeRescheduleModal}></button>
+              </div>
+              <form onSubmit={handleRescheduleSubmit}>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Patient</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedAppointment?.patient_nom || ""}
+                      readOnly
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Nouvelle date</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      name="date"
+                      value={rescheduleData.date || ""}
+                      onChange={handleRescheduleChange}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Nouvelle heure</label>
+                    <input
+                      type="time"
+                      className="form-control"
+                      name="heure"
+                      value={rescheduleData.heure || ""}
+                      onChange={handleRescheduleChange}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Description (optionnelle)</label>
+                    <textarea
+                      className="form-control"
+                      name="description"
+                      value={rescheduleData.description || ""}
+                      onChange={handleRescheduleChange}
+                      rows="3"
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={closeRescheduleModal}>
+                    Annuler
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Reprogrammer
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>

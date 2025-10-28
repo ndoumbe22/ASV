@@ -21,9 +21,79 @@ export const AuthProvider = ({ children }) => {
         email: localStorage.getItem("email"),
       };
 
-      if (token && userData.username) {
-        setUser(userData);
+      console.log("AuthContext init - token:", token);
+      console.log("AuthContext init - userData:", userData);
+
+      // Check if we have valid user data
+      const hasValidUserData =
+        token &&
+        userData.username &&
+        userData.username !== "null" &&
+        userData.username !== "undefined";
+
+      console.log("AuthContext init - hasValidUserData:", hasValidUserData);
+
+      if (hasValidUserData) {
+        // Ensure all values are valid strings
+        const validUserData = {
+          id:
+            userData.id && userData.id !== "null" && userData.id !== "undefined"
+              ? userData.id
+              : null,
+          username: userData.username,
+          firstName:
+            userData.firstName &&
+            userData.firstName !== "null" &&
+            userData.firstName !== "undefined"
+              ? userData.firstName
+              : "",
+          lastName:
+            userData.lastName &&
+            userData.lastName !== "null" &&
+            userData.lastName !== "undefined"
+              ? userData.lastName
+              : "",
+          role:
+            userData.role &&
+            userData.role !== "null" &&
+            userData.role !== "undefined"
+              ? userData.role
+              : "patient",
+          email:
+            userData.email &&
+            userData.email !== "null" &&
+            userData.email !== "undefined"
+              ? userData.email
+              : "",
+        };
+
+        console.log("AuthContext init - setting valid user:", validUserData);
+        setUser(validUserData);
         setIsAuthenticated(true);
+      } else {
+        // Clear invalid data from localStorage
+        console.log("AuthContext init - clearing invalid data");
+        if (
+          !token ||
+          userData.username === "null" ||
+          userData.username === "undefined"
+        ) {
+          localStorage.removeItem("access_token");
+        }
+        if (
+          !userData.username ||
+          userData.username === "null" ||
+          userData.username === "undefined"
+        ) {
+          localStorage.removeItem("username");
+          localStorage.removeItem("user_id");
+          localStorage.removeItem("first_name");
+          localStorage.removeItem("last_name");
+          localStorage.removeItem("role");
+          localStorage.removeItem("email");
+        }
+        setUser(null);
+        setIsAuthenticated(false);
       }
       setLoading(false);
     };
@@ -82,23 +152,23 @@ export const AuthProvider = ({ children }) => {
       if (fullUser.id) {
         localStorage.setItem("user_id", fullUser.id);
       }
-      
+
       if (fullUser.username) {
         localStorage.setItem("username", fullUser.username);
       }
-      
+
       if (fullUser.first_name) {
         localStorage.setItem("first_name", fullUser.first_name);
       }
-      
+
       if (fullUser.last_name) {
         localStorage.setItem("last_name", fullUser.last_name);
       }
-      
+
       if (fullUser.role) {
         localStorage.setItem("role", fullUser.role);
       }
-      
+
       if (fullUser.email) {
         localStorage.setItem("email", fullUser.email);
       }
