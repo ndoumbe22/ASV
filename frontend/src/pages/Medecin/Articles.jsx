@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { FaPlus, FaEdit, FaEye, FaPaperPlane, FaSearch } from "react-icons/fa";
 import { toast } from "react-toastify";
 import articleService from "../../services/articleService";
 
 function Articles() {
+  const navigate = useNavigate();
   const [articles, setArticles] = useState([]);
   const [filteredArticles, setFilteredArticles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +24,7 @@ function Articles() {
   const loadArticles = async () => {
     try {
       setLoading(true);
-      const data = await articleService.getMyArticles({ statut: statusFilter === "all" ? undefined : statusFilter });
+      const data = await articleService.getMesArticles({ statut: statusFilter });
       setArticles(data);
     } catch (err) {
       setError("Erreur lors du chargement des articles: " + (err.response?.data?.error || err.message));
@@ -65,8 +66,17 @@ function Articles() {
     }
   };
 
-  const handleStatusChange = (e) => {
-    setStatusFilter(e.target.value);
+  const handleStatusChange = (tabName) => {
+    const statusMapping = {
+      'Tous': 'all',
+      'Brouillons': 'brouillon',
+      'En attente': 'en_attente',
+      'Validés': 'valide',
+      'Refusés': 'refuse',
+      'Désactivés': 'desactive'
+    };
+    
+    setStatusFilter(statusMapping[tabName] || 'all');
   };
 
   const handleSubmitForReview = async (articleId) => {
@@ -96,6 +106,15 @@ function Articles() {
     <div className="container-fluid">
       <div className="row">
         <div className="col-12">
+          {/* Add return button here */}
+          <button 
+            onClick={() => navigate(-1)} 
+            className="btn btn-light mb-3"
+            style={{ color: '#000', border: '1px solid #ccc' }}
+          >
+            ← Retour
+          </button>
+          
           <div className="d-flex justify-content-between align-items-center mb-4">
             <h2>Articles de Santé</h2>
             <Link to="/medecin/articles/nouveau" className="btn btn-primary">
@@ -129,18 +148,49 @@ function Articles() {
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <select
-                    className="form-select"
-                    value={statusFilter}
-                    onChange={handleStatusChange}
-                  >
-                    <option value="all">Tous les statuts</option>
-                    <option value="brouillon">Brouillons</option>
-                    <option value="en_attente">En attente de validation</option>
-                    <option value="valide">Validés</option>
-                    <option value="refuse">Refusés</option>
-                    <option value="desactive">Désactivés</option>
-                  </select>
+                  <div className="d-flex flex-wrap gap-2">
+                    <button 
+                      className={`btn ${statusFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => handleStatusChange('Tous')}
+                    >
+                      Tous
+                    </button>
+
+                    <button 
+                      className={`btn ${statusFilter === 'brouillon' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                      onClick={() => handleStatusChange('Brouillons')}
+                    >
+                      Brouillons
+                    </button>
+
+                    <button 
+                      className={`btn ${statusFilter === 'en_attente' ? 'btn-warning' : 'btn-outline-secondary'}`}
+                      onClick={() => handleStatusChange('En attente')}
+                    >
+                      En attente
+                    </button>
+
+                    <button 
+                      className={`btn ${statusFilter === 'valide' ? 'btn-success' : 'btn-outline-secondary'}`}
+                      onClick={() => handleStatusChange('Validés')}
+                    >
+                      Validés
+                    </button>
+
+                    <button 
+                      className={`btn ${statusFilter === 'refuse' ? 'btn-danger' : 'btn-outline-secondary'}`}
+                      onClick={() => handleStatusChange('Refusés')}
+                    >
+                      Refusés
+                    </button>
+
+                    <button 
+                      className={`btn ${statusFilter === 'desactive' ? 'btn-dark' : 'btn-outline-secondary'}`}
+                      onClick={() => handleStatusChange('Désactivés')}
+                    >
+                      Désactivés
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -5,7 +5,7 @@ from .models import (
     Pathologie, Traitement, Constante, Mesure, Article,
     StructureDeSante, Service, Clinique, Dentiste, Hopital, Pharmacie,
     ContactFooter, ChatbotConversation, RappelMedicament, HistoriquePriseMedicament,
-    Urgence, NotificationUrgence, MedicalDocument, Rating, Conversation, Message, ChatbotKnowledgeBase, ConsultationMessage, Teleconsultation, DisponibiliteMedecin, IndisponibiliteMedecin  # Added DisponibiliteMedecin and IndisponibiliteMedecin
+    Urgence, NotificationUrgence, MedicalDocument, Rating, Conversation, Message, ChatbotKnowledgeBase, ConsultationMessage, Teleconsultation, DisponibiliteMedecin, IndisponibiliteMedecin, Notification  # Added Notification
 )
 from datetime import datetime, timedelta
 
@@ -80,6 +80,39 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role']
         read_only_fields = ['id']
 
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer for user profile that includes doctor/patient specific information"""
+    profile = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'profile']
+        read_only_fields = ['id']
+    
+    def get_profile(self, obj):
+        """Return profile-specific information based on user role"""
+        if obj.role == 'medecin':
+            try:
+                medecin = Medecin.objects.get(user=obj)
+                return {
+                    'id': medecin.id,
+                    'specialite': getattr(medecin, 'specialite', ''),
+                    'adresse': getattr(medecin, 'adresse', ''),
+                    'telephone': getattr(medecin, 'telephone', ''),
+                }
+            except Medecin.DoesNotExist:
+                return None
+        elif obj.role == 'patient':
+            try:
+                patient = Patient.objects.get(user=obj)
+                return {
+                    'id': patient.id,
+                    'adresse': getattr(patient, 'adresse', ''),
+                }
+            except Patient.DoesNotExist:
+                return None
+        return None
+
 # -------------------- Patient --------------------
 class PatientSerializer(serializers.ModelSerializer):
     user = UserSerializer()  # Nested serializer
@@ -110,6 +143,16 @@ class MedecinSerializer(serializers.ModelSerializer):
         medecin = Medecin.objects.create(user=user, **validated_data)
         return medecin
 
+# Custom serializer for public doctor listings
+class MedecinPublicSerializer(serializers.ModelSerializer):
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)  # Add user ID
+    
+    class Meta:
+        model = Medecin
+        fields = ['id', 'user_id', 'first_name', 'last_name', 'specialite', 'disponibilite']
+
 class ConsultationSerializer(serializers.ModelSerializer):
     patient_nom = serializers.CharField(source="patient.user.get_full_name", read_only=True)
     medecin_nom = serializers.CharField(source="medecin.user.get_full_name", read_only=True)
@@ -129,150 +172,170 @@ class ConsultationMessageSerializer(serializers.ModelSerializer):
 
 
 class RendezVousSerializer(serializers.ModelSerializer):
+    medecin_id = serializers.IntegerField(write_only=True, required=False)  # Make it optional
+    medecin = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)  # Add medecin field
     medecin_nom = serializers.CharField(source="medecin.get_full_name", read_only=True)
     patient_nom = serializers.CharField(source="patient.get_full_name", read_only=True)
     original_date = serializers.DateField(read_only=True)
     original_heure = serializers.TimeField(read_only=True)
-    type_consultation = serializers.CharField(read_only=True)  # Add this line
-
+    # Add date_rdv field to handle combined datetime from frontend
+    date_rdv = serializers.DateTimeField(write_only=True, required=False)
+    # Add heure field to ensure it's properly validated (removed write_only=True)
+    heure = serializers.TimeField(required=True)
+    
     class Meta:
         model = RendezVous
-        fields = ["numero", "date", "heure", "description", "statut", "medecin_nom", "patient_nom", 
-                  "original_date", "original_heure", "date_creation", "date_modification", "type_consultation"]
-
-
-class RendezVousCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = RendezVous
-        fields = ["patient", "medecin", "date", "heure", "description", "type_consultation"]  # Add type_consultation
-        extra_kwargs = {
-            'patient': {'required': False},  # Make patient optional
-            'medecin': {'required': True},
-            'date': {'required': True},
-            'heure': {'required': True},
-            'description': {'required': False, 'allow_blank': True},
-            'type_consultation': {'required': False, 'default': 'cabinet'}  # Add this line
-        }
-
-    def validate(self, attrs):
-        """
-        Validation stricte avant création de RDV.
-        Vérifie qu'aucun RDV confirmé/en_attente n'existe déjà.
-        """
-        from django.utils import timezone
-        from datetime import datetime, timedelta
-
-        date_rdv = attrs.get('date_rdv')
-        medecin = attrs.get('medecin')
-
-        # 1. Vérifier que la date n'est pas dans le passé
-        if date_rdv < timezone.now():
-            raise serializers.ValidationError(
-                "Impossible de créer un rendez-vous dans le passé"
-            )
-
-        # 2. Vérifier délai minimum (2 heures d'avance)
-        if date_rdv < timezone.now() + timedelta(hours=2):
-            raise serializers.ValidationError(
-                "Vous devez réserver au moins 2 heures à l'avance"
-            )
-
-        # 3. VÉRIFICATION CRITIQUE: Conflit avec RDV existants
-        rdv_existants = RendezVous.objects.filter(
-            medecin=medecin,
-            date_rdv__date=date_rdv.date(),
-            statut__in=['confirmé', 'en_attente']
-        )
-
-        for rdv in rdv_existants:
-            # Vérifier si même heure exacte (même minute)
-            if rdv.date_rdv.time() == date_rdv.time():
-                raise serializers.ValidationError(
-                    f"Ce créneau est déjà réservé. "
-                    f"Veuillez choisir un autre horaire."
-                )
-
-        # 4. Vérifier que le médecin travaille ce jour
-        jours_mapping = {
-            0: 'lundi', 1: 'mardi', 2: 'mercredi', 3: 'jeudi',
-            4: 'vendredi', 5: 'samedi', 6: 'dimanche'
-        }
-        jour = jours_mapping[date_rdv.weekday()]
-
-        from medecins.models import DisponibiliteMedecin
-        disponibilite = DisponibiliteMedecin.objects.filter(
-            medecin=medecin,
-            jour=jour,
-            actif=True
-        ).first()
-
-        if not disponibilite:
-            raise serializers.ValidationError(
-                f"Le médecin ne travaille pas le {jour}"
-            )
-
-        # 5. Vérifier que l'heure est dans les horaires de travail
-        heure_rdv = date_rdv.time()
-        if not (disponibilite.heure_debut <= heure_rdv < disponibilite.heure_fin):
-            raise serializers.ValidationError(
-                f"Le créneau doit être entre {disponibilite.heure_debut} "
-                f"et {disponibilite.heure_fin}"
-            )
-
-        # 6. Vérifier que ce n'est pas pendant la pause déjeuner
-        if disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
-            if disponibilite.pause_dejeuner_debut <= heure_rdv < disponibilite.pause_dejeuner_fin:
-                raise serializers.ValidationError(
-                    "Ce créneau est pendant la pause déjeuner du médecin"
-                )
-
-        return attrs
-
+        fields = [
+            'numero', 'medecin_id', 'medecin', 'patient', 'date', 'heure', 'description', 'motif_consultation', 'statut', 
+            'type_consultation', 'medecin_nom', 'patient_nom',
+            'original_date', 'original_heure', 'date_creation', 'date_modification', 'date_rdv'
+        ]
+        # Remove 'date' and 'heure' from read_only_fields to allow them to be set during creation
+        read_only_fields = ['patient', 'date_creation', 'date_modification', 'original_date', 'original_heure']
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Formater l'heure au format HH:MM
+        if instance.heure:
+            data['heure'] = instance.heure.strftime('%H:%M')
+        return data
+    
+    def to_internal_value(self, data):
+        """Mapper les noms de champs du frontend vers le backend"""
+        print("🔍 to_internal_value - Données reçues:", data)
+        
+        # Si le frontend envoie 'date_rdv', le mapper vers 'date'
+        if 'date_rdv' in data and 'date' not in data:
+            data['date'] = data.pop('date_rdv')
+            print("🔄 Mapping date_rdv -> date:", data['date'])
+        
+        print("🔍 to_internal_value - Données après mapping:", data)
+        return super().to_internal_value(data)
+    
     def create(self, validated_data):
-        # Set default status for new appointments
-        validated_data['statut'] = 'PENDING'
+        """
+        Créer un nouveau rendez-vous avec validation des créneaux
+        """
+        print("=" * 80)
+        print("📋 CRÉATION DE RENDEZ-VOUS")
+        print("=" * 80)
         
-        # Ensure medecin is properly set
-        medecin_user = validated_data.get('medecin')
-        patient_user = validated_data.get('patient')
-        type_consultation = validated_data.get('type_consultation', 'cabinet')
+        # DEBUG: Afficher les validated_data
+        print("DEBUG validated_data:", validated_data)
+        print("DEBUG date présent ?", 'date' in validated_data)
         
-        if not medecin_user:
-            raise serializers.ValidationError("Un médecin doit être spécifié pour le rendez-vous")
-            
-        # Create the appointment
-        rendezvous = super().create(validated_data)
+        # 1. Récupérer les données
+        medecin_id = self.initial_data.get('medecin_id')
+        date_rdv = validated_data.get('date')
+        heure_rdv = validated_data.get('heure')  # Le frontend envoie 'heure', pas 'heure_rdv'
         
-        # If this is a teleconsultation, create the associated Teleconsultation and Consultation
-        if type_consultation == 'teleconsultation':
+        print(f"🔍 Données reçues:")
+        print(f"  - medecin_id (user_id): {medecin_id}")
+        print(f"  - date: {date_rdv}")
+        print(f"  - heure: {heure_rdv}")
+        
+        # Vérification que la date est présente
+        if not date_rdv:
+            raise serializers.ValidationError({
+                "date": "La date du rendez-vous est obligatoire"
+            })
+        
+        # Vérification que l'heure est présente
+        if not heure_rdv:
+            raise serializers.ValidationError({
+                "heure": "L'heure du rendez-vous est obligatoire"
+            })
+        
+        if not medecin_id:
+            raise serializers.ValidationError({'medecin_id': 'ID médecin requis'})
+        
+        # 2. Récupérer le médecin par son user_id (CRITIQUE)
+        try:
+            from sante_app.models import Medecin
+            medecin = Medecin.objects.get(user_id=medecin_id)  # ✅ user_id, pas id
+            print(f"✅ Médecin trouvé: Dr. {medecin.user.get_full_name()} (Medecin ID: {medecin.id}, User ID: {medecin.user.id})")
+        except Medecin.DoesNotExist:
+            print(f"❌ Médecin non trouvé avec user_id={medecin_id}")
+            raise serializers.ValidationError({'medecin_id': 'Médecin non trouvé'})
+        
+        # 3. Convertir l'heure en string HH:MM
+        if isinstance(heure_rdv, str):
+            heure_str = heure_rdv[:5]
+        else:
+            # Ajout de vérification pour éviter l'erreur AttributeError
             try:
-                # Get patient and medecin profiles
-                patient = Patient.objects.get(user=patient_user)
-                medecin = Medecin.objects.get(user=medecin_user)
-                
-                # Create consultation
-                consultation = Consultation.objects.create(
-                    date=rendezvous.date,
-                    heure=rendezvous.heure,
-                    patient=patient,
-                    medecin=medecin,
-                    rendez_vous=rendezvous,
-                    statut='programmee'
-                )
-                
-                # Create teleconsultation with unique channel name
-                channel_name = f"teleconsultation_{consultation.numero}_{uuid.uuid4().hex[:8]}"
-                Teleconsultation.objects.create(
-                    consultation=consultation,
-                    channel_name=channel_name
-                )
-            except (Patient.DoesNotExist, Medecin.DoesNotExist) as e:
-                # If there's an error creating the consultation, we should delete the appointment
-                rendezvous.delete()
-                raise serializers.ValidationError("Erreur lors de la création de la téléconsultation")
+                heure_str = heure_rdv.strftime('%H:%M')
+            except AttributeError:
+                raise serializers.ValidationError({
+                    "heure": "Format d'heure invalide"
+                })
         
-        return rendezvous
-
+        print(f"🔍 Vérification des conflits pour: {date_rdv} à {heure_str}")
+        
+        # 4. Vérifier les conflits
+        from sante_app.models import RendezVous
+        rdvs_existants = RendezVous.objects.filter(
+            medecin=medecin.user,  # medecin.user est l'objet User
+            date=date_rdv,
+            statut__in=['PENDING', 'CONFIRMED']
+        )
+        
+        print(f"📊 Rendez-vous existants ce jour: {rdvs_existants.count()}")
+        
+        conflit_trouve = False
+        for rdv in rdvs_existants:
+            rdv_heure_str = rdv.heure.strftime('%H:%M')
+            print(f"  - RDV #{rdv.numero}: {rdv_heure_str} (Statut: {rdv.statut})")
+            
+            if rdv_heure_str == heure_str:
+                print(f"❌ CONFLIT avec RDV #{rdv.numero}")
+                conflit_trouve = True
+                break
+        
+        if conflit_trouve:
+            raise serializers.ValidationError({
+                'heure': 'Ce créneau est déjà réservé'
+            })
+        
+        print("✅ Aucun conflit détecté")
+        
+        # 5. Récupérer le patient
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            raise serializers.ValidationError("Authentification requise")
+        
+        try:
+            # Try to get the patient profile
+            patient = request.user.patient_profile
+            print(f"✅ Patient trouvé: {patient}")
+        except AttributeError:
+            # If patient_profile doesn't exist, try to create one
+            print(f"⚠️ Patient profile non trouvé pour user {request.user.id}, tentative de création...")
+            from .models import Patient
+            try:
+                patient = Patient.objects.create(
+                    user=request.user,
+                    adresse=getattr(request.user, 'adresse', '')
+                )
+                print(f"✅ Patient profile créé: {patient}")
+            except Exception as e:
+                print(f"❌ Erreur création patient profile: {e}")
+                raise serializers.ValidationError("Impossible de créer le profil patient")
+        except Exception as e:
+            print(f"❌ Erreur récupération patient: {e}")
+            raise serializers.ValidationError("Utilisateur non patient")
+        
+        # 6. Ajouter le médecin (objet User) aux validated_data
+        validated_data['medecin'] = medecin.user
+        validated_data['patient'] = patient.user
+        
+        # 7. Créer le rendez-vous
+        rdv = super().create(validated_data)
+        
+        print(f"✅ RDV créé - ID: {rdv.numero}, Médecin: {rdv.medecin.get_full_name()}, Date: {rdv.date}, Heure: {rdv.heure}")
+        print("=" * 80)
+        
+        return rdv
 
 class PathologieSerializer(serializers.ModelSerializer):
     class Meta:
@@ -311,7 +374,7 @@ class ArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Article
         fields = '__all__'
-        read_only_fields = ['slug', 'date_publication', 'date_modification', 'vues', 'valide_par', 'date_validation']
+        read_only_fields = ['slug', 'date_publication', 'date_modification', 'vues', 'valide_par', 'date_validation', 'auteur']
 
     def get_auteur_nom(self, obj):
         return f"Dr. {obj.auteur.user.first_name} {obj.auteur.user.last_name}"
@@ -449,10 +512,12 @@ class HistoriquePriseMedicamentSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     confirmPassword = serializers.CharField(write_only=True, required=False)
+    # Add specialty field for doctors
+    specialite = serializers.CharField(required=False)
 
     class Meta:
         model = User
-        fields = ["id", "username", "password", "confirmPassword", "first_name", "last_name", "email", "telephone", "adresse", "role"]
+        fields = ["id", "username", "password", "confirmPassword", "first_name", "last_name", "email", "telephone", "adresse", "role", "specialite"]
 
     def validate(self, attrs):
         # Check if passwords match
@@ -476,11 +541,19 @@ class RegisterSerializer(serializers.ModelSerializer):
         if email and User.objects.filter(email=email).exists():
             raise serializers.ValidationError("Cet email est déjà utilisé")
             
+        # For doctors, specialty is required
+        role = attrs.get('role', 'patient')
+        specialite = attrs.get('specialite')
+        if role == 'medecin' and not specialite:
+            raise serializers.ValidationError("La spécialité est requise pour les médecins")
+            
         return attrs
 
     def create(self, validated_data):
         # Remove confirmPassword from validated_data as it's not a model field
         validated_data.pop('confirmPassword', None)
+        # Extract specialty before creating user
+        specialite = validated_data.pop('specialite', None)
         
         user = User.objects.create_user(
             username=validated_data["username"],
@@ -492,6 +565,17 @@ class RegisterSerializer(serializers.ModelSerializer):
             adresse=validated_data.get("adresse", ""),
             role=validated_data.get("role", "patient"),
         )
+        
+        # If user is a doctor and specialty is provided, update the Medecin profile
+        if user.role == 'medecin' and specialite:
+            try:
+                medecin = Medecin.objects.get(user=user)
+                medecin.specialite = specialite
+                medecin.save()
+            except Medecin.DoesNotExist:
+                # Create Medecin profile if it doesn't exist
+                Medecin.objects.create(user=user, specialite=specialite)
+        
         return user
 
 
@@ -529,6 +613,15 @@ class NotificationUrgenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationUrgence
         fields = '__all__'
+
+
+# ==================== NOTIFICATIONS ====================
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = '__all__'
+        read_only_fields = ['date_creation']
+
 
 class MedicalDocumentSerializer(serializers.ModelSerializer):
     uploaded_by_name = serializers.CharField(source='uploaded_by.get_full_name', read_only=True)
@@ -817,3 +910,33 @@ class IndisponibiliteMedecinSerializer(serializers.ModelSerializer):
         # Apply the same validation for updates
         self.validate(validated_data)
         return super().update(instance, validated_data)
+
+
+# -------------------- Medical Document --------------------
+class MedicalDocumentSerializer(serializers.ModelSerializer):
+    patient_nom = serializers.CharField(source='patient.get_full_name', read_only=True)
+    medecin_nom = serializers.CharField(source='medecin.get_full_name', read_only=True)
+    rendez_vous_date = serializers.DateTimeField(source='rendez_vous.date', read_only=True)
+    rendez_vous_heure = serializers.DateTimeField(source='rendez_vous.heure', read_only=True)
+    file_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MedicalDocument
+        fields = '__all__'
+        read_only_fields = ['patient', 'uploaded_at']
+    
+    def get_file_url(self, obj):
+        """Generate full URL for the file"""
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+    
+    def create(self, validated_data):
+        """Automatically set the patient to the current user"""
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['patient'] = request.user
+        return super().create(validated_data)

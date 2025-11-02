@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { patientAPI } from "../../services/api";
-import { FaCalendarAlt, FaHistory, FaRedo, FaCheck, FaTimes, FaClock } from "react-icons/fa";
+import { FaCalendarAlt, FaHistory, FaRedo, FaCheck, FaTimes, FaClock, FaFilter } from "react-icons/fa";
 
 function Appointments() {
   const [activeTab, setActiveTab] = useState("upcoming");
@@ -15,6 +15,7 @@ function Appointments() {
     new_heure: "",
     reason: ""
   });
+  const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
     loadAppointments();
@@ -70,6 +71,25 @@ function Appointments() {
     }
   };
 
+  // Filter appointments based on status and sort by date/time
+  const filterAndSortAppointments = (appointments) => {
+    let filtered = appointments;
+    
+    // Apply status filter
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(appointment => appointment.statut === filterStatus);
+    }
+    
+    // Sort by date and time (closest future date first)
+    filtered.sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.heure}`);
+      const dateB = new Date(`${b.date}T${b.heure}`);
+      return dateA - dateB;
+    });
+    
+    return filtered;
+  };
+
   if (loading) {
     return <div className="text-center py-5">Chargement...</div>;
   }
@@ -80,36 +100,68 @@ function Appointments() {
 
   return (
     <div className="container-fluid">
-      <h2>Mes Rendez-vous</h2>
-      
-      <ul className="nav nav-tabs mb-4">
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === "upcoming" ? "active" : ""}`}
-            onClick={() => setActiveTab("upcoming")}
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h2>Mes Rendez-vous</h2>
+          <button 
+            className="btn btn-outline-secondary btn-sm mt-2"
+            onClick={() => window.history.back()}
           >
-            <FaCalendarAlt className="me-1" />
-            À venir
+            ← Retour
           </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === "history" ? "active" : ""}`}
-            onClick={() => setActiveTab("history")}
-          >
-            <FaHistory className="me-1" />
-            Historique
-          </button>
-        </li>
-      </ul>
+        </div>
+        
+        <ul className="nav nav-tabs mb-0">
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === "upcoming" ? "active" : ""}`}
+              onClick={() => setActiveTab("upcoming")}
+            >
+              <FaCalendarAlt className="me-1" />
+              À venir
+            </button>
+          </li>
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === "history" ? "active" : ""}`}
+              onClick={() => setActiveTab("history")}
+            >
+              <FaHistory className="me-1" />
+              Historique
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      {/* Status Filter */}
+      <div className="row mb-3">
+        <div className="col-md-4">
+          <div className="input-group">
+            <span className="input-group-text">
+              <FaFilter />
+            </span>
+            <select
+              className="form-select"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="all">Tous les statuts</option>
+              <option value="PENDING">En attente</option>
+              <option value="CONFIRMED">Confirmé</option>
+              <option value="RESCHEDULED">Reprogrammé</option>
+              <option value="CANCELLED">Annulé</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
       {activeTab === "upcoming" && (
         <div>
-          {upcomingAppointments.length === 0 ? (
+          {filterAndSortAppointments(upcomingAppointments).length === 0 ? (
             <div className="alert alert-info">Aucun rendez-vous à venir.</div>
           ) : (
             <div className="row">
-              {upcomingAppointments.map((appointment) => (
+              {filterAndSortAppointments(upcomingAppointments).map((appointment) => (
                 <div key={appointment.id} className="col-md-6 mb-3">
                   <div className="card">
                     <div className="card-body">
@@ -151,11 +203,11 @@ function Appointments() {
 
       {activeTab === "history" && (
         <div>
-          {pastAppointments.length === 0 ? (
+          {filterAndSortAppointments(pastAppointments).length === 0 ? (
             <div className="alert alert-info">Aucun rendez-vous dans l'historique.</div>
           ) : (
             <div className="row">
-              {pastAppointments.map((appointment) => (
+              {filterAndSortAppointments(pastAppointments).map((appointment) => (
                 <div key={appointment.id} className="col-md-6 mb-3">
                   <div className="card">
                     <div className="card-body">

@@ -42,13 +42,17 @@ function Disponibilites() {
           indisponibiliteMedecinAPI.getMesIndisponibilites()
         ]);
         
-        setDisponibilites(dispoResponse.data);
-        setIndisponibilites(indispoResponse.data);
+        // ✅ Fallback sur tableau vide si data est undefined
+        setDisponibilites(Array.isArray(dispoResponse.data) ? dispoResponse.data : []);
+        setIndisponibilites(Array.isArray(indispoResponse.data) ? indispoResponse.data : []);
         setLoading(false);
       } catch (err) {
         setError("Erreur lors du chargement des disponibilités");
         setLoading(false);
         console.error("Erreur lors du chargement des disponibilités :", err);
+        // ✅ Important: initialiser même en cas d'erreur
+        setDisponibilites([]);
+        setIndisponibilites([]);
       }
     };
 
@@ -209,7 +213,7 @@ function Disponibilites() {
 
           {/* Disponibilités */}
           <h4 className="mb-3">Disponibilités</h4>
-          {disponibilites.length === 0 ? (
+          {!disponibilites || disponibilites.length === 0 ? (
             <div className="card shadow-sm p-4 mb-4">
               <p className="text-muted">Aucune disponibilité définie</p>
             </div>
@@ -262,7 +266,7 @@ function Disponibilites() {
 
           {/* Indisponibilités */}
           <h4 className="mb-3">Indisponibilités</h4>
-          {indisponibilites.length === 0 ? (
+          {!indisponibilites || indisponibilites.length === 0 ? (
             <div className="card shadow-sm p-4">
               <p className="text-muted">Aucune indisponibilité définie</p>
             </div>

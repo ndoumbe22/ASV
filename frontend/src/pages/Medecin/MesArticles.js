@@ -27,7 +27,7 @@ function MesArticles() {
       const filters = {};
       if (filterStatut !== "all") filters.statut = filterStatut;
 
-      const data = await articleService.getMyArticles(filters);
+      const data = await articleService.getMesArticles(filters);
       setArticles(data);
     } catch (error) {
       console.error("Erreur:", error);
@@ -53,7 +53,7 @@ function MesArticles() {
   const handleSoumettre = async (id, titre) => {
     if (window.confirm(`Soumettre l'article "${titre}" pour validation ?`)) {
       try {
-        await articleService.soumettreValidation(id);
+        await articleService.soumettreArticle(id);
         alert("Article soumis pour validation");
         loadArticles();
       } catch (error) {
@@ -92,6 +92,15 @@ function MesArticles() {
 
   return (
     <div className="container py-4">
+      {/* Add return button here */}
+      <button
+        onClick={() => navigate(-1)}
+        className="btn btn-light mb-3"
+        style={{ color: "#000", border: "1px solid #ccc" }}
+      >
+        ← Retour
+      </button>
+
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2>
           <i className="bi bi-file-text"></i> Mes Articles
@@ -155,7 +164,8 @@ function MesArticles() {
                     )}
                     {getAdminFeedback(article) && (
                       <div className="text-muted small mt-1">
-                        <i className="bi bi-info-circle"></i> {getAdminFeedback(article)}
+                        <i className="bi bi-info-circle"></i>{" "}
+                        {getAdminFeedback(article)}
                       </div>
                     )}
                   </td>
@@ -219,7 +229,7 @@ function MesArticles() {
                           <i className="bi bi-trash"></i>
                         </button>
                       )}
-                      
+
                       {/* Voir */}
                       {article.statut === "valide" && (
                         <Link

@@ -15,7 +15,9 @@ def create_user_profile(sender, instance, created, **kwargs):
         if instance.role == "patient":
             Patient.objects.get_or_create(user=instance)
         elif instance.role == "medecin":
-            Medecin.objects.get_or_create(user=instance, specialite="Généraliste")
+            # Instead of defaulting to "Généraliste", we'll create the Medecin object
+            # without setting a specialty, allowing it to be set later during registration
+            Medecin.objects.get_or_create(user=instance)
 
 
 @receiver(post_save, sender=RendezVous)
@@ -48,7 +50,7 @@ def create_consultation_on_appointment_confirmation(sender, instance, created, *
                     medecin_profile = instance.medecin.medecin_profile
                 except Medecin.DoesNotExist:
                     logger.info(f"Creating medecin profile for user {instance.medecin.id}")
-                    medecin_profile, _ = Medecin.objects.get_or_create(user=instance.medecin, specialite="Généraliste")
+                    medecin_profile, _ = Medecin.objects.get_or_create(user=instance.medecin)
                 
                 # Create consultation with same date and time as appointment
                 consultation = Consultation.objects.create(

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { dentistAPI } from "../../services/api";
 
 function Dentistes() {
   const [dentistes, setDentistes] = useState([]);
@@ -8,53 +7,46 @@ function Dentistes() {
   const mapContainerRef = useRef(null);
 
   useEffect(() => {
-    const fetchDentistes = async () => {
-      try {
-        const response = await dentistAPI.getDentists();
-        setDentistes(response.data);
-      } catch (error) {
-        console.error("Error fetching dentists:", error);
-        // Fallback to mock data if API fails
-        const mockDentistes = [
-          {
-            id: 1,
-            nom: "Dr. Ndiaye",
-            adresse: "Rue Georges Pompidou, Dakar",
-            telephone: "+221 33 111 22 33",
-            email: "ndiaye@dentiste.sn",
-            cabinet: "Cabinet dentaire du Bel-Air",
-          },
-          {
-            id: 2,
-            nom: "Dr. Diop",
-            adresse: "Avenue Léopold Sédar Senghor, Dakar",
-            telephone: "+221 33 444 55 66",
-            email: "diop@dentiste.sn",
-            cabinet: "Clinique dentaire de Dakar",
-          },
-          {
-            id: 3,
-            nom: "Dr. Fall",
-            adresse: "Avenue Malick Sy, Dakar",
-            telephone: "+221 33 777 88 99",
-            email: "fall@dentiste.sn",
-            cabinet: "Centre dentaire Pasteur",
-          },
-        ];
-        setDentistes(mockDentistes);
-      }
-    };
-
-    fetchDentistes();
+    // Mock data since the API doesn't exist
+    const mockDentistes = [
+      {
+        id: 1,
+        nom: "Dr. Ndiaye",
+        adresse: "Rue Georges Pompidou, Dakar",
+        telephone: "+221 33 111 22 33",
+        email: "ndiaye@dentiste.sn",
+        cabinet: "Cabinet dentaire du Bel-Air",
+      },
+      {
+        id: 2,
+        nom: "Dr. Diop",
+        adresse: "Avenue Léopold Sédar Senghor, Dakar",
+        telephone: "+221 33 444 55 66",
+        email: "diop@dentiste.sn",
+        cabinet: "Clinique dentaire de Dakar",
+      },
+      {
+        id: 3,
+        nom: "Dr. Fall",
+        adresse: "Avenue Malick Sy, Dakar",
+        telephone: "+221 33 777 88 99",
+        email: "fall@dentiste.sn",
+        cabinet: "Centre dentaire Pasteur",
+      },
+    ];
+    setDentistes(mockDentistes);
   }, []);
 
-  const filteredDentistes = dentistes.filter(
-    (dentiste) =>
-      dentiste.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dentiste.adresse.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (dentiste.cabinet &&
-        dentiste.cabinet.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Ensure dentistes is an array before filtering
+  const filteredDentistes = Array.isArray(dentistes) 
+    ? dentistes.filter(
+        (dentiste) =>
+          dentiste.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          dentiste.adresse.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (dentiste.cabinet &&
+            dentiste.cabinet.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+    : [];
 
   // Initialize map with proper cleanup
   useEffect(() => {

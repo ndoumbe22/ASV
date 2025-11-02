@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { medicalDocumentAPI, appointmentAPI } from "../../services/api";
+import { medicalDocumentAPI } from "../../services/api";
 import { FaFileMedical, FaDownload, FaTrash, FaUpload } from "react-icons/fa";
 
 function DocumentPartage() {
   const [documents, setDocuments] = useState([]);
-  const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadData, setUploadData] = useState({
-    rendez_vous: "",
     file: null,
     document_type: "",
     description: ""
@@ -17,7 +15,6 @@ function DocumentPartage() {
 
   useEffect(() => {
     loadDocuments();
-    loadAppointments();
   }, []);
 
   const loadDocuments = async () => {
@@ -37,28 +34,17 @@ function DocumentPartage() {
     }
   };
 
-  const loadAppointments = async () => {
-    try {
-      const response = await appointmentAPI.getAppointments();
-      setAppointments(response.data);
-    } catch (err) {
-      setError("Erreur lors du chargement des rendez-vous");
-      console.error(err);
-    }
-  };
-
   const handleUpload = async (e) => {
     e.preventDefault();
     try {
       const formData = new FormData();
-      formData.append('rendez_vous', uploadData.rendez_vous);
       formData.append('file', uploadData.file);
       formData.append('document_type', uploadData.document_type);
       formData.append('description', uploadData.description);
       
       await medicalDocumentAPI.createDocument(formData);
       setShowUploadModal(false);
-      setUploadData({ rendez_vous: "", file: null, document_type: "", description: "" });
+      setUploadData({ file: null, document_type: "", description: "" });
       loadDocuments();
     } catch (err) {
       setError("Erreur lors de l'upload du document");
@@ -116,7 +102,7 @@ function DocumentPartage() {
                   <p className="card-text">{document.description}</p>
                   <p className="card-text">
                     <small className="text-muted">
-                      Partagé le {formatDate(document.uploaded_at)}
+                      Partagé le {formatDate(document.uploaded_at)} par {document.patient_nom}
                     </small>
                   </p>
                   <div className="d-flex justify-content-between">
@@ -143,82 +129,70 @@ function DocumentPartage() {
         </div>
       )}
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="modal show d-block" tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Partager Document Médical</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setShowUploadModal(false)}
-                ></button>
-              </div>
-              <form onSubmit={handleUpload}>
-                <div className="modal-body">
-                  <div className="mb-3">
-                    <label className="form-label">Rendez-vous associé</label>
-                    <select
-                      className="form-control"
-                      value={uploadData.rendez_vous}
-                      onChange={(e) => setUploadData({...uploadData, rendez_vous: e.target.value})}
-                      required
-                    >
-                      <option value="">Sélectionnez un rendez-vous</option>
-                      {appointments.map(appointment => (
-                        <option key={appointment.id} value={appointment.id}>
-                          {appointment.date} - {appointment.patient_nom}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Fichier</label>
-                    <input
-                      type="file"
-                      className="form-control"
-                      onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
-                      required
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Type de document</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={uploadData.document_type}
-                      onChange={(e) => setUploadData({...uploadData, document_type: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Description</label>
-                    <textarea
-                      className="form-control"
-                      value={uploadData.description}
-                      onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
-                    ></textarea>
-                  </div>
-                </div>
-                <div className="modal-footer">
+      {/* Upload Modal */}{
+        showUploadModal && (
+          <div className="modal show d-block" tabIndex="-1">
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Partager Document Médical</h5>
                   <button
                     type="button"
-                    className="btn btn-secondary"
+                    className="btn-close"
                     onClick={() => setShowUploadModal(false)}
-                  >
-                    Annuler
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Partager
-                  </button>
+                  ></button>
                 </div>
-              </form>
+                <form onSubmit={handleUpload}>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Fichier</label>
+                      <input
+                        type="file"
+                        className="form-control"
+                        onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
+                        required
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Type de document</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={uploadData.document_type}
+                        onChange={(e) => setUploadData({...uploadData, document_type: e.target.value})}
+                        required
+                        placeholder="Ex: Ordonnance, Bilan sanguin, etc."
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Description</label>
+                      <textarea
+                        className="form-control"
+                        value={uploadData.description}
+                        onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
+                        placeholder="Description du document..."
+                        rows="3"
+                      ></textarea>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowUploadModal(false)}
+                    >
+                      Annuler
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Partager
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
     </div>
   );
 }

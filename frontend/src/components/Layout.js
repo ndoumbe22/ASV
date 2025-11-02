@@ -76,11 +76,8 @@ function Layout() {
               <Link className="nav-link" to="/">
                 Accueil
               </Link>
-              <Link className="nav-link" to="/medecin_generaliste">
-                Médecin Généraliste
-              </Link>
-              <Link className="nav-link" to="/medecin_specialiste">
-                Médecin Spécialiste
+              <Link className="nav-link" to="/medecins">
+                Médecin
               </Link>
               <Link className="nav-link" to="/articles">
                 Articles
@@ -296,19 +293,8 @@ function Layout() {
                 <Link className="nav-link" to="/" onClick={toggleMenu}>
                   Accueil
                 </Link>
-                <Link
-                  className="nav-link"
-                  to="/medecin_generaliste"
-                  onClick={toggleMenu}
-                >
-                  Médecin Généraliste
-                </Link>
-                <Link
-                  className="nav-link"
-                  to="/medecin_specialiste"
-                  onClick={toggleMenu}
-                >
-                  Médecin Spécialiste
+                <Link className="nav-link" to="/medecins" onClick={toggleMenu}>
+                  Médecin
                 </Link>
                 <Link className="nav-link" to="/articles" onClick={toggleMenu}>
                   Articles

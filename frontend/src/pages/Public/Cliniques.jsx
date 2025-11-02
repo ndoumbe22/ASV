@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { clinicAPI } from "../../services/api";
 
 function Cliniques() {
   const [clinics, setClinics] = useState([]);
@@ -9,52 +8,44 @@ function Cliniques() {
   const mapContainerRef = useRef(null);
 
   useEffect(() => {
-    const fetchClinics = async () => {
-      try {
-        const response = await clinicAPI.getClinics();
-        setClinics(response.data);
-        setFilteredClinics(response.data);
-      } catch (error) {
-        console.error("Error fetching clinics:", error);
-        // Fallback to mock data if API fails
-        const mockClinics = [
-          {
-            id: 1,
-            nom: "Clinique du Bel-Air",
-            adresse: "Rue Georges Pompidou, Dakar",
-            telephone: "+221 33 111 22 33",
-            email: "contact@belairclinic.sn",
-          },
-          {
-            id: 2,
-            nom: "Clinique Internationale de Dakar",
-            adresse: "Avenue Léopold Sédar Senghor, Dakar",
-            telephone: "+221 33 444 55 66",
-            email: "info@cidakar.sn",
-          },
-          {
-            id: 3,
-            nom: "Clinique Pasteur",
-            adresse: "Avenue Malick Sy, Dakar",
-            telephone: "+221 33 777 88 99",
-            email: "contact@pasteurclinic.sn",
-          },
-        ];
-        setClinics(mockClinics);
-        setFilteredClinics(mockClinics);
-      }
-    };
-
-    fetchClinics();
+    // Mock data since the API doesn't exist
+    const mockClinics = [
+      {
+        id: 1,
+        nom: "Clinique du Bel-Air",
+        adresse: "Rue Georges Pompidou, Dakar",
+        telephone: "+221 33 111 22 33",
+        email: "contact@belairclinic.sn",
+      },
+      {
+        id: 2,
+        nom: "Clinique Internationale de Dakar",
+        adresse: "Avenue Léopold Sédar Senghor, Dakar",
+        telephone: "+221 33 444 55 66",
+        email: "info@cidakar.sn",
+      },
+      {
+        id: 3,
+        nom: "Clinique Pasteur",
+        adresse: "Avenue Malick Sy, Dakar",
+        telephone: "+221 33 777 88 99",
+        email: "contact@pasteurclinic.sn",
+      },
+    ];
+    setClinics(mockClinics);
+    setFilteredClinics(mockClinics);
   }, []);
 
   useEffect(() => {
-    const filtered = clinics.filter(
-      (clinic) =>
-        clinic.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        clinic.adresse.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredClinics(filtered);
+    // Ensure clinics is an array before filtering
+    if (Array.isArray(clinics)) {
+      const filtered = clinics.filter(
+        (clinic) =>
+          clinic.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          clinic.adresse.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredClinics(filtered);
+    }
   }, [searchTerm, clinics]);
 
   // Initialize map with proper cleanup

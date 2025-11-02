@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { doctorAPI, appointmentAPI, specialtyAPI, userAPI, disponibiliteMedecinAPI } from "../../services/api";
+import { doctorAPI, specialtyAPI, userAPI, disponibiliteMedecinAPI, rendezVousAPI } from "../../services/api";
 import { FaUserMd, FaCalendarAlt, FaClock, FaStethoscope, FaArrowLeft, FaCheckCircle } from "react-icons/fa";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 function PriseDeRendezVous() {
   const { isAuthenticated, user } = useAuth();
@@ -38,6 +40,12 @@ function PriseDeRendezVous() {
         setLoading(true);
         const response = await doctorAPI.getDoctors();
         console.log("Doctors API response:", response);
+        
+        // Add debugging logs to see the structure
+        console.log('👨‍⚕️ MÉDECINS REÇUS POUR SPÉCIALITÉS:', response.data);
+        if (response.data && response.data.length > 0) {
+          console.log('👨‍⚕️ PREMIER MÉDECIN POUR SPÉCIALITÉS:', response.data[0]);
+        }
         
         // Ensure we're working with an array from the results field
         let doctorsData = [];
@@ -81,6 +89,12 @@ function PriseDeRendezVous() {
           setLoading(true);
           const response = await doctorAPI.getDoctors();
           
+          // Add debugging logs to see the structure
+          console.log('👨‍⚕️ MÉDECINS REÇUS:', response.data);
+          if (response.data && response.data.length > 0) {
+            console.log('👨‍⚕️ PREMIER MÉDECIN:', response.data[0]);
+          }
+          
           // Ensure we're working with an array from the results field
           let doctorsData = [];
           if (response && response.data && response.data.results) {
@@ -114,40 +128,43 @@ function PriseDeRendezVous() {
   // Charger les disponibilités quand un médecin est sélectionné
   useEffect(() => {
     if (selectedMedecin && selectedDate) {
-      const fetchAvailableSlots = async () => {
+      const fetchAvailableSlots = async (medecinId, date) => {
         try {
           setLoading(true);
-          console.log('🔄 Récupération créneaux TEMPS RÉEL...');
-          console.log(' Médecin:', selectedMedecin.user.id, 'Date:', selectedDate);
-
-          const dateFormatted = selectedDate instanceof Date
-            ? selectedDate.toISOString().split('T')[0]
-            : selectedDate;
-
-          const response = await disponibiliteMedecinAPI.getCreneauxDisponibles(
-            selectedMedecin.user.id,
-            dateFormatted
-          );
-
-          console.log('✅ Créneaux reçus:', response.data?.slots?.length);
-          console.log('   Disponibles:', response.data?.slots?.filter(s => s.disponible).length);
-
-          if (response && response.data && response.data.slots) {
-            setAvailableSlots(response.data.slots);
+          console.log('🔄 Récupération créneaux...', {medecinId, date});
+          
+          // Formater la date en YYYY-MM-DD
+          const dateFormatted = date instanceof Date 
+            ? date.toISOString().split('T')[0]
+            : date;
+          
+          const response = await rendezVousAPI.creneauxDisponibles(medecinId, dateFormatted);
+          
+          console.log('✅ Créneaux reçus:', response);
+          
+          if (response && Array.isArray(response.slots)) {
+            setAvailableSlots(response.slots);
+            console.log(`✅ ${response.slots.length} créneaux chargés`);
           } else {
+            console.error('❌ Format de réponse invalide:', response);
             setAvailableSlots([]);
           }
-
+          
         } catch (error) {
           console.error('❌ Erreur récupération créneaux:', error);
-          setError("Erreur lors du chargement des créneaux disponibles: " + (error.response?.data?.error || error.message));
           setAvailableSlots([]);
         } finally {
           setLoading(false);
         }
       };
 
-      fetchAvailableSlots();
+      // Fix: Check if selectedMedecin has user property before accessing it
+      if (selectedMedecin.user && selectedMedecin.user.id) {
+        fetchAvailableSlots(selectedMedecin.user.id, selectedDate);
+      } else if (selectedMedecin.id) {
+        // Fallback to medecin.id if user is not available
+        fetchAvailableSlots(selectedMedecin.id, selectedDate);
+      }
     }
   }, [selectedMedecin, selectedDate]);
   
@@ -156,7 +173,9 @@ function PriseDeRendezVous() {
     if (selectedMedecin) {
       try {
         setLoading(true);
-        const response = await disponibiliteMedecinAPI.getProchainsCreneaux(selectedMedecin.user.id, 5);
+        // Fix: Check if selectedMedecin has user property before accessing it
+        const medecinId = selectedMedecin.user?.id || selectedMedecin.id;
+        const response = await disponibiliteMedecinAPI.getProchainsCreneaux(medecinId, 5);
         
         if (response && response.data && response.data.creneaux) {
           setNextSlots(response.data.creneaux);
@@ -205,6 +224,11 @@ function PriseDeRendezVous() {
   };
 
   const handleMedecinSelect = (medecin) => {
+    console.log('👨‍⚕️ Médecin sélectionné:', medecin);
+    console.log('- ID:', medecin.id);
+    console.log('- User ID:', medecin.user?.id);
+    console.log('- Nom:', medecin.user?.first_name, medecin.user?.last_name);
+    
     setSelectedMedecin(medecin);
     setStep(3);
   };
@@ -228,152 +252,68 @@ function PriseDeRendezVous() {
   };
 
   const handleSlotSelect = (heure) => {
-    console.log('🕐 FONCTION handleSlotSelect appelée avec:', heure);
+    console.log('🕐 CLIC SUR CRÉNEAU:', heure);
     setSelectedSlot(heure);
     console.log('✅ selectedSlot mis à jour:', heure);
   };
 
   const handleConfirm = async () => {
+    console.log('=== 📤 DÉBUT CRÉATION RENDEZ-VOUS ===');
+    
+    // Validation
+    if (!selectedMedecin || !selectedDate || !selectedSlot || !motif) {
+      alert('Veuillez remplir tous les champs requis');
+      return;
+    }
+
     try {
-      setLoading(true);
-      // Create appointment
-      // Validation finale
-      if (!selectedSlot) {
-        setError("Veuillez sélectionner un créneau horaire");
-        setLoading(false);
-        setTimeout(() => setError(null), 3000);
+      // Récupérer le user_id du médecin (cohérent avec creneaux_disponibles)
+      const medecinUserId = selectedMedecin.user?.id || selectedMedecin.user_id || selectedMedecin.id;
+      
+      console.log('🔍 DEBUG:');
+      console.log('  - selectedMedecin:', selectedMedecin);
+      console.log('  - medecinUserId calculé:', medecinUserId);
+      
+      if (!medecinUserId) {
+        alert('ERREUR: Impossible de récupérer l\'ID du médecin');
+        console.error('❌ selectedMedecin:', selectedMedecin);
         return;
       }
-      
-      // Additional validation to ensure date is not in the past
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const selectedDateObj = new Date(selectedDate);
-      selectedDateObj.setHours(0, 0, 0, 0);
-      
-      if (selectedDateObj < today) {
-        setError("Veuillez sélectionner une date future valide");
-        setLoading(false);
-        setTimeout(() => setError(null), 3000);
-        return;
-      }
-      
-      // Validate required fields
-      console.log("User data:", user);
-      console.log("Selected medecin data:", selectedMedecin);
-      
-      // Get patient ID from context
-      let patientId = user?.id;
-      
-      // Validate that we have a patient ID
-      if (!patientId) {
-        throw new Error("Patient ID is missing. Please log in again.");
-      }
-      
-      if (!selectedMedecin || !selectedMedecin.user || !selectedMedecin.user.id) {
-        throw new Error("Doctor ID is missing");
-      }
-      
-      // Ensure IDs are integers
-      const medecinId = parseInt(selectedMedecin.user.id, 10);
-      patientId = parseInt(patientId, 10);
-      
-      if (isNaN(patientId) || isNaN(medecinId)) {
-        throw new Error("Invalid patient or doctor ID");
-      }
-      
-      // Format date properly (YYYY-MM-DD)
-      const formattedDate = selectedDate.toISOString().split('T')[0];
-      
-      // Validate time format (should be HH:MM)
-      if (!/^\d{1,2}:\d{2}$/.test(selectedSlot)) {
-        throw new Error("Format d'heure invalide");
-      }
-      
+
+      // Formatter les données
+      const dateFormatted = selectedDate.toISOString().split('T')[0];
+      const heureFormatted = selectedSlot.substring(0, 5);
+
       const appointmentData = {
-        patient: patientId, // Using patient ID from context
-        medecin: medecinId, // Using doctor ID as integer
-        date: formattedDate,
-        heure: selectedSlot,
-        description: motif,
-        type_consultation: typeConsultation // Add this line
+        medecin_id: medecinUserId,  // ✅ user_id du médecin
+        date: dateFormatted,        // ✅ date au lieu de date_rdv
+        heure: heureFormatted,      // ✅ HH:MM
+        motif_consultation: motif,
+        type_consultation: typeConsultation || 'cabinet'
       };
+
+      console.log('📤 PAYLOAD FINAL:', appointmentData);
+
+      const response = await rendezVousAPI.creer(appointmentData);
       
-      console.log("📤 Payload envoyé:", appointmentData);
+      console.log('✅ SUCCÈS:', response);
+      alert('Rendez-vous créé avec succès !');
+      navigate('/patient/rendez-vous');
       
-      const response = await appointmentAPI.createAppointment(appointmentData);
+    } catch (error) {
+      console.error('❌ ERREUR:', error);
+      console.error('❌ Response data:', error.response?.data);
       
-      console.log("✅ Réponse API:", response.data);
-      
-      // Show success message
-      setSuccess(true);
-      setLoading(false);
-      
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        resetForm();
-      }, 3000);
-    } catch (err) {
-      // More detailed error handling
-      let errorMessage = "Erreur lors de la prise de rendez-vous";
-      
-      console.error("Full error object:", err);
-      console.error("❌ Erreur API:", err.response?.data);
-      
-      if (err.response) {
-        console.log("Error response:", err.response);
-        if (err.response.data) {
-          // Handle different error formats
-          if (err.response.data.detail) {
-            errorMessage += ": " + err.response.data.detail;
-          } else if (err.response.data.error) {
-            errorMessage += ": " + err.response.data.error;
-          } else if (err.response.data.message) {
-            errorMessage += ": " + err.response.data.message;
-          } else if (err.response.data.non_field_errors) {
-            // Handle non-field errors specifically
-            errorMessage += ": " + err.response.data.non_field_errors.join(', ');
-          } else if (Array.isArray(err.response.data)) {
-            // Handle array of errors
-            errorMessage += ": " + err.response.data.join(', ');
-          } else if (typeof err.response.data === 'object') {
-            // Try to get the first error message from the object
-            const errorMessages = [];
-            for (const [key, value] of Object.entries(err.response.data)) {
-              if (Array.isArray(value)) {
-                errorMessages.push(`${key}: ${value.join(', ')}`);
-              } else if (typeof value === 'object' && value !== null) {
-                // Handle nested objects
-                errorMessages.push(`${key}: ${JSON.stringify(value)}`);
-              } else {
-                errorMessages.push(`${key}: ${value}`);
-              }
-            }
-            if (errorMessages.length > 0) {
-              errorMessage += ": " + errorMessages.join('; ');
-            } else {
-              errorMessage += ": " + JSON.stringify(err.response.data);
-            }
-          } else if (typeof err.response.data === 'string') {
-            errorMessage += ": " + err.response.data;
-          } else {
-            errorMessage += ": " + JSON.stringify(err.response.data);
-          }
-        } else {
-          errorMessage += ": " + err.response.status;
-        }
-      } else if (err.request) {
-        errorMessage += ": Aucune réponse du serveur. Veuillez vérifier votre connexion internet.";
+      if (error.response?.data) {
+        const errors = error.response.data;
+        let errorMsg = 'Erreur :\n';
+        Object.keys(errors).forEach(key => {
+          errorMsg += `${key}: ${errors[key]}\n`;
+        });
+        alert(errorMsg);
       } else {
-        errorMessage += ": " + err.message;
+        alert('Erreur lors de la création du rendez-vous');
       }
-      
-      setError(errorMessage);
-      setLoading(false);
-      console.error("Erreur lors de la prise de rendez-vous :", err);
-      
-      // Clear error after 5 seconds
-      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -413,34 +353,56 @@ function PriseDeRendezVous() {
     );
   }
 
+  // Don't render success message if we're redirecting
   if (success) {
-    return (
-      <div className="container py-5">
-        <div className="row justify-content-center">
-          <div className="col-lg-8">
-            <div className="card border-0 shadow-lg rounded-3">
-              <div className="card-body p-5 text-center">
-                <div className="mb-4">
-                  <div className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center" style={{ width: "80px", height: "80px" }}>
-                    <FaCheckCircle size={40} className="text-white" />
-                  </div>
-                </div>
-                <h2 className="text-success mb-3">Rendez-vous confirmé !</h2>
-                <p className="mb-2 lead">
-                  Votre rendez-vous avec <strong>Dr. {selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name}</strong> 
-                  le <strong>{selectedDate.toLocaleDateString('fr-FR')}</strong> à <strong>{selectedSlot}</strong> a été confirmé.
-                </p>
-                <p className="mb-4 text-muted">Nous vous avons envoyé un email de confirmation.</p>
-                <button className="btn btn-primary btn-lg px-4 py-2" onClick={resetForm}>
-                  Prendre un autre rendez-vous
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    // Redirect immediately without showing success message
+    return null;
   }
+
+  // Helper function to safely get doctor name
+  const getDoctorName = (medecin) => {
+    if (!medecin) return "Médecin";
+    
+    // Check if medecin has user property with first_name and last_name
+    if (medecin.user && medecin.user.first_name && medecin.user.last_name) {
+      return `Dr. ${medecin.user.first_name} ${medecin.user.last_name}`;
+    }
+    
+    // Fallback to direct properties
+    if (medecin.first_name && medecin.last_name) {
+      return `Dr. ${medecin.first_name} ${medecin.last_name}`;
+    }
+    
+    // Fallback to just first name
+    if (medecin.user && medecin.user.first_name) {
+      return `Dr. ${medecin.user.first_name}`;
+    }
+    
+    if (medecin.first_name) {
+      return `Dr. ${medecin.first_name}`;
+    }
+    
+    // Last resort
+    return "Dr. Médecin";
+  };
+
+  // Helper function to safely get doctor specialty
+  const getDoctorSpecialty = (medecin) => {
+    if (!medecin) return "Spécialité non spécifiée";
+    return medecin.specialite || medecin.specialty || medecin.pathologie || "Spécialité non spécifiée";
+  };
+
+  // Helper function to safely get doctor photo
+  const getDoctorPhoto = (medecin) => {
+    if (!medecin) return null;
+    return medecin.photo || medecin.user?.photo || null;
+  };
+
+  // Helper function to safely get doctor rating
+  const getDoctorRating = (medecin) => {
+    if (!medecin) return 5;
+    return medecin.note || 5;
+  };
 
   return (
     <div className="container py-5">
@@ -608,8 +570,8 @@ function PriseDeRendezVous() {
                           >
                             <div className="card-body text-center p-4">
                               <div className="mb-3">
-                                {medecin.photo ? (
-                                  <img src={medecin.photo} alt={`${medecin.user.first_name} ${medecin.user.last_name}`} 
+                                {getDoctorPhoto(medecin) ? (
+                                  <img src={getDoctorPhoto(medecin)} alt={getDoctorName(medecin)} 
                                        className="rounded-circle" style={{ width: "90px", height: "90px", objectFit: "cover" }} />
                                 ) : (
                                   <div className="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mx-auto" 
@@ -618,13 +580,13 @@ function PriseDeRendezVous() {
                                   </div>
                                 )}
                               </div>
-                              <h5 className="card-title mb-1">Dr. {medecin.user.first_name} {medecin.user.last_name}</h5>
-                              <p className="text-muted mb-2">({medecin.specialite || medecin.specialty || medecin.pathologie || "Spécialité non spécifiée"})</p>
+                              <h5 className="card-title mb-1">{getDoctorName(medecin)}</h5>
+                              <p className="text-muted mb-2">({getDoctorSpecialty(medecin)})</p>
                               <div className="d-flex justify-content-center align-items-center mb-3">
-                                <span className="badge bg-success me-2">{medecin.note || "5.0"}</span>
+                                <span className="badge bg-success me-2">{getDoctorRating(medecin)}</span>
                                 <div className="text-warning">
-                                  {'★'.repeat(Math.floor(medecin.note || 5))}
-                                  {'☆'.repeat(5 - Math.floor(medecin.note || 5))}
+                                  {'★'.repeat(Math.floor(getDoctorRating(medecin)))}
+                                  {'☆'.repeat(5 - Math.floor(getDoctorRating(medecin)))}
                                 </div>
                               </div>
                               <button className="btn btn-primary w-100 rounded-pill">
@@ -658,7 +620,7 @@ function PriseDeRendezVous() {
                     <FaArrowLeft />
                   </button>
                   <div>
-                    <h2 className="mb-0">Disponibilités de Dr. {selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name}</h2>
+                    <h2 className="mb-0">Disponibilités de {selectedMedecin ? getDoctorName(selectedMedecin) : "Médecin"}</h2>
                     <p className="text-muted mb-0">Sélectionnez une date et un créneau horaire pour votre rendez-vous</p>
                   </div>
                 </div>
@@ -677,7 +639,7 @@ function PriseDeRendezVous() {
                             value={selectedDate}
                             className="border-0 w-100"
                             minDate={new Date()} // This blocks past dates
-                            maxDate={null} // Remove any maximum date restriction
+                            maxDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)} // +30 days
                             navigationAriaLabel="Navigation du calendrier"
                             navigationLabel={({ date }) => 
                               date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
@@ -709,7 +671,7 @@ function PriseDeRendezVous() {
                         </h4>
                         
                         <div className="mb-4">
-                          <h6 className="mb-3">Créneaux disponibles pour le {selectedDate.toLocaleDateString('fr-FR')}</h6>
+                          <h6 className="mb-3">Créneaux disponibles pour le {selectedDate ? selectedDate.toLocaleDateString('fr-FR') : 'Date non sélectionnée'}</h6>
                           
                           {loading ? (
                             <div className="text-center py-3">
@@ -720,7 +682,7 @@ function PriseDeRendezVous() {
                             </div>
                           ) : availableSlots.length === 0 ? (
                             <div className="alert alert-info">
-                              <p className="mb-2">Aucun créneau disponible ce jour. Le Dr. {selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name} ne consulte pas ou tous les créneaux sont réservés.</p>
+                              <p className="mb-2">Aucun créneau disponible ce jour. {selectedMedecin ? getDoctorName(selectedMedecin) : "Le médecin"} ne consulte pas ou tous les créneaux sont réservés.</p>
                               
                               {nextSlots.length > 0 && (
                                 <>
@@ -749,14 +711,14 @@ function PriseDeRendezVous() {
                               {availableSlots.map((slot, index) => (
                                 <div key={index} className="col-4">
                                   <button
-                                    className={`btn w-100 rounded-pill ${
+                                    className={`btn w-100 rounded-pill slot-button ${
                                       slot.disponible 
                                         ? (selectedSlot === slot.heure ? 'btn-primary' : 'btn-outline-secondary') 
-                                        : 'btn-secondary disabled'
+                                        : 'unavailable'
                                     }`}
                                     onClick={() => {
                                       if (slot.disponible) {
-                                        console.log('🖱️ CLIC sur créneau:', slot.heure);
+                                        console.log('🖱️ Bouton cliqué - heure:', slot.heure);
                                         handleSlotSelect(slot.heure);
                                       }
                                     }}
@@ -782,15 +744,43 @@ function PriseDeRendezVous() {
                           </div>
                         )}
                         
+                        <div className="mt-3">
+                          <label className="form-label">Motif de la consultation</label>
+                          <textarea
+                            className="form-control"
+                            rows="3"
+                            placeholder="Décrivez brièvement le motif de votre consultation..."
+                            value={motif}
+                            onChange={(e) => setMotif(e.target.value)}
+                          ></textarea>
+                        </div>
+                        
                         <button
                           className="btn btn-primary w-100 mt-4 rounded-pill py-2"
                           onClick={() => {
+                            console.log('🚀 VÉRIFICATION AVANT CONTINUER:', {
+                              selectedSlot,
+                              motif,
+                              selectedDate
+                            });
+                            
+                            if (!selectedSlot) {
+                              alert("Veuillez sélectionner un créneau horaire");
+                              return;
+                            }
+                            
+                            if (!motif || motif.trim() === "") {
+                              alert("Veuillez remplir le motif de consultation");
+                              return;
+                            }
+                            
                             console.log('🚀 DONNÉES ENVOYÉES:', {
                               date: selectedDate,
                               slot: selectedSlot,
                               medecin: selectedMedecin?.id,
                               motif: motif
                             });
+                            
                             setStep(4);
                           }}
                         >
@@ -825,8 +815,8 @@ function PriseDeRendezVous() {
                         
                         <div className="d-flex mb-4">
                           <div className="me-3">
-                            {selectedMedecin?.photo ? (
-                              <img src={selectedMedecin.photo} alt={`${selectedMedecin.user.first_name} ${selectedMedecin.user.last_name}`} 
+                            {selectedMedecin && getDoctorPhoto(selectedMedecin) ? (
+                              <img src={getDoctorPhoto(selectedMedecin)} alt={getDoctorName(selectedMedecin)} 
                                    className="rounded-circle" style={{ width: "60px", height: "60px", objectFit: "cover" }} />
                             ) : (
                               <div className="bg-light rounded-circle d-inline-flex align-items-center justify-content-center" 
@@ -836,8 +826,8 @@ function PriseDeRendezVous() {
                             )}
                           </div>
                           <div>
-                            <h5 className="mb-0">Dr. {selectedMedecin?.user.first_name} {selectedMedecin?.user.last_name}</h5>
-                            <p className="text-muted mb-0">{selectedMedecin?.specialite || selectedMedecin?.specialty || selectedMedecin?.pathologie || "Spécialité non spécifiée"}</p>
+                            <h5 className="mb-0">{selectedMedecin ? getDoctorName(selectedMedecin) : "Médecin"}</h5>
+                            <p className="text-muted mb-0">{selectedMedecin ? getDoctorSpecialty(selectedMedecin) : "Spécialité non spécifiée"}</p>
                           </div>
                         </div>
                         
@@ -850,7 +840,7 @@ function PriseDeRendezVous() {
                               </div>
                               <div>
                                 <small className="text-muted">Date</small>
-                                <p className="mb-0 fw-medium">{selectedDate.toLocaleDateString('fr-FR')}</p>
+                                <p className="mb-0 fw-medium">{selectedDate ? selectedDate.toLocaleDateString('fr-FR') : 'Date non sélectionnée'}</p>
                               </div>
                             </div>
                           </div>

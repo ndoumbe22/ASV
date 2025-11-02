@@ -1,419 +1,432 @@
-🔴 LE VRAI PROBLÈME
-D'après votre description et l'architecture, voici ce qui ne va pas :
-Comportement ACTUEL (incorrect) ❌
+ÉTAPE 1 : Nouveau Design pour ArticlesPublics.jsx
+Remplace le code précédent par celui-ci qui correspond exactement au design demandé :
+Fichier : frontend/src/pages/Public/ArticlesPublics.jsx
+jsximport React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import articleService from "../../services/articleService";
+import "./ArticlesPublics.css";
 
-Les créneaux sont marqués "indisponibles" de manière statique
-Pas de synchronisation en temps réel avec les RDV confirmés
-Un créneau peut apparaître disponible alors qu'un RDV est en attente
+function ArticlesPublics() {
+const navigate = useNavigate();
+const [articles, setArticles] = useState([]);
+const [loading, setLoading] = useState(true);
+const [selectedCategorie, setSelectedCategorie] = useState("all");
+const [searchTerm, setSearchTerm] = useState("");
+const [currentPage, setCurrentPage] = useState(1);
+const [totalPages, setTotalPages] = useState(1);
+const [totalCount, setTotalCount] = useState(0);
 
-Comportement ATTENDU (correct) ✅
+const categories = [
+{ value: "all", label: "Toutes" },
+{ value: "prevention", label: "Prévention" },
+{ value: "nutrition", label: "Nutrition" },
+{ value: "maladies", label: "Maladies" },
+{ value: "bien_etre", label: "Bien-être" },
+{ value: "grossesse", label: "Grossesse" },
+{ value: "pediatrie", label: "Pédiatrie" },
+{ value: "geriatrie", label: "Gériatrie" },
+{ value: "autre", label: "Autre" },
+];
 
-Un créneau est DISPONIBLE par défaut si dans les heures de travail du médecin
-Un créneau devient INDISPONIBLE UNIQUEMENT si :
+useEffect(() => {
+loadArticles(1);
+}, [selectedCategorie, searchTerm]);
 
-Un RDV existe à cette heure ET statut = 'confirmé'
-C'est pendant la pause déjeuner
-C'est dans le passé
-
-🚀 PROMPT ULTIME POUR QODER AI
-Copiez ceci dans Qoder AI (c'est long mais complet) :
-🔧 RÉIMPLÉMENTATION COMPLÈTE - SYSTÈME DE CRÉNEAUX EN TEMPS RÉEL
-
-PROBLÈME CRITIQUE IDENTIFIÉ:
-Le système actuel ne synchronise pas correctement les créneaux disponibles avec les rendez-vous réels.
-
-RÈGLES MÉTIER STRICTES:
-
-1. Un créneau est DISPONIBLE par défaut si dans les heures de travail du médecin
-2. Un créneau est INDISPONIBLE UNIQUEMENT si:
-   - Il existe un RendezVous à cette heure avec statut='confirmé' OU statut='en_attente'
-   - C'est pendant la pause déjeuner du médecin
-   - C'est dans le passé (date < maintenant)
-3. Pas de simulation, uniquement des données réelles de la base de données
-
-═══════════════════════════════════════════════════════════════
-
-PARTIE 1: BACKEND - ENDPOINT creneaux_disponibles
-
-FICHIER: rendezvous/views.py (ou sante_app/views.py)
-
-REMPLACE COMPLÈTEMENT la méthode creneaux_disponibles par:
-
-@action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
-def creneaux_disponibles(self, request):
-"""
-Retourne les créneaux disponibles pour un médecin à une date donnée.
-Un créneau est indisponible UNIQUEMENT si un RDV confirmé/en_attente existe.
-"""
-from django.utils import timezone
-from datetime import datetime, timedelta, time
-from medecins.models import Medecin, DisponibiliteMedecin
-from rendezvous.models import RendezVous
-
-    try:
-        # 1. VALIDATION DES PARAMÈTRES
-        medecin_id = request.query_params.get('medecin_id')
-        date_str = request.query_params.get('date')
-
-        if not medecin_id or not date_str:
-            return Response({
-                'error': 'medecin_id et date sont requis'
-            }, status=400)
-
-        # 2. PARSE ET VALIDATION DE LA DATE
-        try:
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            return Response({
-                'error': 'Format de date invalide. Utilisez YYYY-MM-DD'
-            }, status=400)
-
-        # Vérifier que ce n'est pas une date passée
-        if date_obj < timezone.now().date():
-            return Response({
-                'error': 'Impossible de réserver dans le passé'
-            }, status=400)
-
-        # 3. RÉCUPÉRER LE MÉDECIN
-        try:
-            medecin = Medecin.objects.get(user_id=medecin_id)
-        except Medecin.DoesNotExist:
-            return Response({
-                'error': 'Médecin introuvable'
-            }, status=404)
-
-        # 4. RÉCUPÉRER LE JOUR DE LA SEMAINE
-        jours_mapping = {
-            0: 'lundi', 1: 'mardi', 2: 'mercredi', 3: 'jeudi',
-            4: 'vendredi', 5: 'samedi', 6: 'dimanche'
-        }
-        jour = jours_mapping[date_obj.weekday()]
-
-        # 5. RÉCUPÉRER LA DISPONIBILITÉ DU MÉDECIN POUR CE JOUR
-        disponibilite = DisponibiliteMedecin.objects.filter(
-            medecin=medecin,
-            jour=jour,
-            actif=True
-        ).first()
-
-        if not disponibilite:
-            return Response({
-                'date': date_str,
-                'medecin_id': medecin_id,
-                'slots': [],
-                'message': f'Le médecin ne travaille pas le {jour}'
-            }, status=200)
-
-        # 6. RÉCUPÉRER TOUS LES RDV CONFIRMÉS OU EN ATTENTE POUR CE MÉDECIN CE JOUR
-        rdv_existants = RendezVous.objects.filter(
-            medecin=medecin,
-            date_rdv__date=date_obj,
-            statut__in=['confirmé', 'en_attente']  # CRITIQUE: Seulement ces statuts
-        ).values_list('date_rdv', flat=True)
-
-        # Convertir en set d'heures (HH:MM) pour comparaison rapide
-        heures_reservees = {
-            rdv.time().strftime('%H:%M')
-            for rdv in rdv_existants
-        }
-
-        print(f"📅 Date: {date_str}, Jour: {jour}")
-        print(f"🕐 Heures réservées: {heures_reservees}")
-
-        # 7. GÉNÉRER TOUS LES CRÉNEAUX
-        slots = []
-        heure_debut = disponibilite.heure_debut
-        heure_fin = disponibilite.heure_fin
-        duree_minutes = disponibilite.duree_consultation or 30
-
-        current_time = datetime.combine(date_obj, heure_debut)
-        end_time = datetime.combine(date_obj, heure_fin)
-        delta = timedelta(minutes=duree_minutes)
-
-        maintenant = timezone.now()
-
-        while current_time < end_time:
-            heure_str = current_time.time().strftime('%H:%M')
-
-            # VÉRIFICATIONS D'INDISPONIBILITÉ
-            est_disponible = True
-            motif_indisponibilite = None
-
-            # A. Vérifier si dans le passé (pour aujourd'hui)
-            if date_obj == maintenant.date():
-                if current_time.time() <= maintenant.time():
-                    est_disponible = False
-                    motif_indisponibilite = "Heure passée"
-
-            # B. Vérifier pause déjeuner
-            if est_disponible and disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
-                if disponibilite.pause_dejeuner_debut <= current_time.time() < disponibilite.pause_dejeuner_fin:
-                    est_disponible = False
-                    motif_indisponibilite = "Pause déjeuner"
-
-            # C. Vérifier si RDV existe déjà (CRITIQUE)
-            if est_disponible and heure_str in heures_reservees:
-                est_disponible = False
-                motif_indisponibilite = "Déjà réservé"
-
-            slots.append({
-                'heure': heure_str,
-                'disponible': est_disponible,
-                'motif_indisponibilite': motif_indisponibilite
-            })
-
-            current_time += delta
-
-        print(f"✅ {len(slots)} créneaux générés, {sum(1 for s in slots if s['disponible'])} disponibles")
-
-        return Response({
-            'date': date_str,
-            'medecin_id': medecin_id,
-            'medecin_nom': f"{medecin.user.first_name} {medecin.user.last_name}",
-            'slots': slots
-        }, status=200)
-
-    except Exception as e:
-        import traceback
-        print(f"❌ ERREUR creneaux_disponibles: {str(e)}")
-        print(traceback.format_exc())
-        return Response({
-            'error': f'Erreur serveur: {str(e)}'
-        }, status=500)
-
-═══════════════════════════════════════════════════════════════
-
-PARTIE 2: BACKEND - CRÉATION DE RENDEZ-VOUS AVEC VÉRIFICATION
-
-FICHIER: rendezvous/serializers.py
-
-REMPLACE RendezVousCreateSerializer.validate() par:
-
-def validate(self, data):
-"""
-Validation stricte avant création de RDV.
-Vérifie qu'aucun RDV confirmé/en_attente n'existe déjà.
-"""
-from django.utils import timezone
-from datetime import datetime, timedelta
-
-    date_rdv = data.get('date_rdv')
-    medecin = data.get('medecin')
-
-    # 1. Vérifier que la date n'est pas dans le passé
-    if date_rdv < timezone.now():
-        raise serializers.ValidationError(
-            "Impossible de créer un rendez-vous dans le passé"
-        )
-
-    # 2. Vérifier délai minimum (2 heures d'avance)
-    if date_rdv < timezone.now() + timedelta(hours=2):
-        raise serializers.ValidationError(
-            "Vous devez réserver au moins 2 heures à l'avance"
-        )
-
-    # 3. VÉRIFICATION CRITIQUE: Conflit avec RDV existants
-    rdv_existants = RendezVous.objects.filter(
-        medecin=medecin,
-        date_rdv__date=date_rdv.date(),
-        statut__in=['confirmé', 'en_attente']
-    )
-
-    for rdv in rdv_existants:
-        # Vérifier si même heure exacte (même minute)
-        if rdv.date_rdv.time() == date_rdv.time():
-            raise serializers.ValidationError(
-                f"Ce créneau est déjà réservé. "
-                f"Veuillez choisir un autre horaire."
-            )
-
-    # 4. Vérifier que le médecin travaille ce jour
-    jours_mapping = {
-        0: 'lundi', 1: 'mardi', 2: 'mercredi', 3: 'jeudi',
-        4: 'vendredi', 5: 'samedi', 6: 'dimanche'
-    }
-    jour = jours_mapping[date_rdv.weekday()]
-
-    from medecins.models import DisponibiliteMedecin
-    disponibilite = DisponibiliteMedecin.objects.filter(
-        medecin=medecin,
-        jour=jour,
-        actif=True
-    ).first()
-
-    if not disponibilite:
-        raise serializers.ValidationError(
-            f"Le médecin ne travaille pas le {jour}"
-        )
-
-    # 5. Vérifier que l'heure est dans les horaires de travail
-    heure_rdv = date_rdv.time()
-    if not (disponibilite.heure_debut <= heure_rdv < disponibilite.heure_fin):
-        raise serializers.ValidationError(
-            f"Le créneau doit être entre {disponibilite.heure_debut} "
-            f"et {disponibilite.heure_fin}"
-        )
-
-    # 6. Vérifier que ce n'est pas pendant la pause déjeuner
-    if disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
-        if disponibilite.pause_dejeuner_debut <= heure_rdv < disponibilite.pause_dejeuner_fin:
-            raise serializers.ValidationError(
-                "Ce créneau est pendant la pause déjeuner du médecin"
-            )
-
-    return data
-
-═══════════════════════════════════════════════════════════════
-
-PARTIE 3: FRONTEND - RAFRAÎCHISSEMENT AUTOMATIQUE
-
-FICHIER: PriseDeRendezVous.jsx
-
-MODIFIE fetchAvailableSlots pour qu'elle soit appelée après chaque action:
-
-const fetchAvailableSlots = async (medecinId, date) => {
+const loadArticles = async (page = currentPage) => {
 try {
 setLoading(true);
-console.log('🔄 Récupération créneaux TEMPS RÉEL...');
-console.log(' Médecin:', medecinId, 'Date:', date);
+const filters = { page, page_size: 12 };
+if (selectedCategorie !== "all") filters.categorie = selectedCategorie;
+if (searchTerm) filters.search = searchTerm;
 
-    const dateFormatted = date instanceof Date
-      ? date.toISOString().split('T')[0]
-      : date;
+      const data = await articleService.getPublicArticles(filters);
 
-    const response = await disponibiliteMedecinAPI.getCreneauxDisponibles(
-      medecinId,
-      dateFormatted
-    );
+      if (data.results) {
+        const validArticles = data.results.filter(article => article.statut === 'valide');
+        setArticles(validArticles);
+        setTotalPages(Math.ceil(data.count / 12));
+        setTotalCount(data.count);
+      } else {
+        const validArticles = data.filter(article => article.statut === 'valide');
+        setArticles(validArticles);
+        setTotalPages(1);
+        setTotalCount(validArticles.length);
+      }
 
-    console.log('✅ Créneaux reçus:', response.slots?.length);
-    console.log('   Disponibles:', response.slots?.filter(s => s.disponible).length);
-
-    if (response && Array.isArray(response.slots)) {
-      setAvailableSlots(response.slots);
-    } else {
-      setAvailableSlots([]);
+      setCurrentPage(page);
+    } catch (error) {
+      console.error("Erreur:", error);
+    } finally {
+      setLoading(false);
     }
 
-} catch (error) {
-console.error('❌ Erreur récupération créneaux:', error);
-setAvailableSlots([]);
-} finally {
-setLoading(false);
-}
 };
 
-// APPEL AUTOMATIQUE quand on change de date
-useEffect(() => {
-if (selectedMedecin && selectedDate) {
-fetchAvailableSlots(selectedMedecin.user.id, selectedDate);
+const handleSearch = (e) => {
+e.preventDefault();
+loadArticles(1);
+};
+
+const formatDate = (dateString) => {
+const date = new Date(dateString);
+const day = date.getDate();
+const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const month = months[date.getMonth()];
+const year = date.getFullYear();
+return `${day}-${month}-${year}`;
+};
+
+const getCategoryTags = (categorie) => {
+return categorie.split(',').map(cat => cat.trim());
+};
+
+if (loading) {
+return (
+<div className="loading-container">
+<div className="spinner-border text-primary"></div>
+</div>
+);
 }
-}, [selectedMedecin, selectedDate]);
 
-═══════════════════════════════════════════════════════════════
+return (
+<div className="articles-public-page">
+{/_ Header _/}
+<div className="page-header">
+<div className="container">
+<h1>📚 Articles de Santé</h1>
+<p>Découvrez les conseils de nos médecins experts</p>
+</div>
+</div>
 
-PARTIE 4: TEST DE VALIDATION
+      <div className="container">
+        {/* Filters */}
+        <div className="filters-bar">
+          <select
+            className="category-select"
+            value={selectedCategorie}
+            onChange={(e) => setSelectedCategorie(e.target.value)}
+          >
+            {categories.map((cat) => (
+              <option key={cat.value} value={cat.value}>{cat.label}</option>
+            ))}
+          </select>
 
-Crée un fichier test_creneaux_realtime.py:
+          <form onSubmit={handleSearch} className="search-box">
+            <input
+              type="text"
+              placeholder="Rechercher..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <button type="submit">🔍</button>
+          </form>
+        </div>
 
-import os
-import django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sante_app.settings')
-django.setup()
+        {/* Articles Grid */}
+        {articles.length === 0 ? (
+          <div className="no-articles">
+            <p>Aucun article trouvé</p>
+          </div>
+        ) : (
+          <div className="articles-grid-dark">
+            {articles.map((article) => (
+              <div
+                key={article.id}
+                className="card-dark"
+                onClick={() => navigate(`/articles/${article.slug}`)}
+              >
+                <div className="main-content">
+                  <div className="header">
+                    <span>Article on</span>
+                    <span>{formatDate(article.date_publication)}</span>
+                  </div>
+                  <p className="heading">{article.titre}</p>
+                  <p className="description">{article.resume}</p>
+                  <div className="categories">
+                    {getCategoryTags(article.categorie).map((tag, index) => (
+                      <span key={index}>{tag}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="footer">
+                  by Dr. {article.auteur_nom}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-from django.utils import timezone
-from datetime import datetime, timedelta
-from medecins.models import Medecin, DisponibiliteMedecin
-from rendezvous.models import RendezVous
-from patients.models import Patient
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pagination-container">
+            <button
+              disabled={currentPage === 1}
+              onClick={() => loadArticles(currentPage - 1)}
+            >
+              ← Précédent
+            </button>
+            <span>Page {currentPage} sur {totalPages}</span>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => loadArticles(currentPage + 1)}
+            >
+              Suivant →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
 
-# TEST 1: Créer disponibilité médecin
-
-print("=== TEST 1: Disponibilité Médecin ===")
-medecin = Medecin.objects.get(user_id=19)
-dispo, created = DisponibiliteMedecin.objects.get_or_create(
-medecin=medecin,
-jour='mercredi',
-defaults={
-'heure_debut': '09:00',
-'heure_fin': '17:00',
-'duree_consultation': 30,
-'pause_dejeuner_debut': '12:00',
-'pause_dejeuner_fin': '14:00',
-'actif': True
+);
 }
-)
-print(f"✓ Disponibilité: {dispo.jour} {dispo.heure_debut}-{dispo.heure_fin}")
 
-# TEST 2: Créer un RDV de test
+export default ArticlesPublics;
 
-print("\n=== TEST 2: Créer RDV Test ===")
-patient = Patient.objects.first()
-test_date = datetime.now().replace(hour=10, minute=30, second=0, microsecond=0)
-test_date += timedelta(days=7) # Dans 7 jours
+ÉTAPE 2 : CSS Exactement comme l'image
+Fichier : frontend/src/pages/Public/ArticlesPublics.css
+css/_ ArticlesPublics.css - Design sombre avec bordures dégradées _/
 
-rdv = RendezVous.objects.create(
-patient=patient,
-medecin=medecin,
-date_rdv=test_date,
-motif_consultation="Test",
-statut='confirmé'
-)
-print(f"✓ RDV créé: {rdv.date_rdv} - Statut: {rdv.statut}")
+.articles-public-page {
+min-height: 100vh;
+background: #1a1a1a;
+padding-bottom: 4rem;
+}
 
-# TEST 3: Vérifier que le créneau est maintenant indisponible
+.loading-container {
+display: flex;
+justify-content: center;
+align-items: center;
+min-height: 100vh;
+background: #1a1a1a;
+}
 
-print("\n=== TEST 3: API creneaux_disponibles ===")
-from django.test import RequestFactory
-from rendezvous.views import RendezVousViewSet
+/_ Header _/
+.page-header {
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+padding: 3rem 0;
+text-align: center;
+color: white;
+margin-bottom: 3rem;
+}
 
-factory = RequestFactory()
-request = factory.get('/api/rendezvous/creneaux_disponibles/', {
-'medecin_id': medecin.user_id,
-'date': test_date.strftime('%Y-%m-%d')
-})
-request.user = medecin.user
+.page-header h1 {
+font-size: 3rem;
+font-weight: 800;
+margin-bottom: 0.5rem;
+}
 
-viewset = RendezVousViewSet()
-response = viewset.creneaux_disponibles(request)
+.page-header p {
+font-size: 1.2rem;
+opacity: 0.9;
+}
 
-print(f"Status: {response.status_code}")
-slots = response.data.get('slots', [])
-slot_10h30 = next((s for s in slots if s['heure'] == '10:30'), None)
+.container {
+max-width: 1400px;
+margin: 0 auto;
+padding: 0 2rem;
+}
 
-if slot_10h30:
-print(f"Créneau 10:30: {'❌ INDISPONIBLE' if not slot_10h30['disponible'] else '✅ DISPONIBLE'}")
-if not slot_10h30['disponible']:
-print(f"Motif: {slot_10h30.get('motif_indisponibilite')}")
-else:
-print("❌ Créneau 10:30 non trouvé")
+/_ Filters _/
+.filters-bar {
+display: flex;
+gap: 1rem;
+margin-bottom: 3rem;
+flex-wrap: wrap;
+}
 
-# Cleanup
+.category-select {
+flex: 1;
+min-width: 200px;
+padding: 1rem;
+background: #2a2a2a;
+border: 2px solid #3a3a3a;
+color: white;
+border-radius: 12px;
+font-size: 1rem;
+}
 
-rdv.delete()
-print("\n✓ Test terminé, RDV supprimé")
+.search-box {
+flex: 2;
+display: flex;
+background: #2a2a2a;
+border: 2px solid #3a3a3a;
+border-radius: 12px;
+overflow: hidden;
+}
 
-LANCE: python test_creneaux_realtime.py
+.search-box input {
+flex: 1;
+padding: 1rem;
+background: transparent;
+border: none;
+color: white;
+outline: none;
+}
 
-═══════════════════════════════════════════════════════════════
+.search-box button {
+padding: 1rem 2rem;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+border: none;
+color: white;
+cursor: pointer;
+font-size: 1.2rem;
+}
 
-RÉSUMÉ DES CHANGEMENTS:
+/_ Articles Grid - Style sombre _/
+.articles-grid-dark {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+gap: 2rem;
+margin-bottom: 3rem;
+}
 
-1. ✅ Backend: Synchronisation RÉELLE avec la base de données
-2. ✅ Seuls les RDV confirmés/en_attente bloquent les créneaux
-3. ✅ Validation stricte lors de la création de RDV
-4. ✅ Frontend: Rafraîchissement automatique des créneaux
-5. ✅ Tests pour valider le comportement
+/_ Card Style - Exactement comme l'image _/
+.card-dark {
+width: 100%;
+height: 350px;
+padding: 20px;
+color: white;
+background: linear-gradient(#212121, #212121) padding-box,
+linear-gradient(145deg, transparent 35%, #e81cff, #40c9ff) border-box;
+border: 2px solid transparent;
+border-radius: 8px;
+display: flex;
+flex-direction: column;
+cursor: pointer;
+transform-origin: right bottom;
+transition: all 0.6s cubic-bezier(0.23, 1, 0.320, 1);
+}
 
-APPLIQUE CES 4 PARTIES dans l'ordre et teste avec le script de validation.
+.card-dark .main-content {
+flex: 1;
+display: flex;
+flex-direction: column;
+}
 
-🎯 APRÈS L'APPLICATION
-Une fois que Qoder AI a tout appliqué :
+.card-dark .header {
+display: flex;
+justify-content: space-between;
+margin-bottom: 1rem;
+}
 
-Lance le test : python test_creneaux_realtime.py
-Teste dans l'interface :
+.card-dark .header span:first-child {
+font-weight: 600;
+color: #717171;
+margin-right: 4px;
+}
 
-Sélectionne un médecin
-Choisis une date
-Les créneaux doivent se rafraîchir automatiquement
-Crée un RDV
+.card-dark .header span:last-child {
+font-weight: 600;
+color: white;
+}
+
+.card-dark .heading {
+font-size: 24px;
+margin: 24px 0 16px;
+font-weight: 600;
+line-height: 1.3;
+display: -webkit-box;
+-webkit-line-clamp: 2;
+-webkit-box-orient: vertical;
+overflow: hidden;
+}
+
+.card-dark .description {
+font-size: 14px;
+color: #aaa;
+margin-bottom: 16px;
+flex: 1;
+display: -webkit-box;
+-webkit-line-clamp: 3;
+-webkit-box-orient: vertical;
+overflow: hidden;
+}
+
+.card-dark .categories {
+display: flex;
+gap: 8px;
+flex-wrap: wrap;
+}
+
+.card-dark .categories span {
+background-color: #e81cff;
+padding: 4px 8px;
+font-weight: 600;
+text-transform: uppercase;
+font-size: 12px;
+border-radius: 50em;
+}
+
+.card-dark .footer {
+font-weight: 600;
+color: #717171;
+margin-top: 12px;
+padding-top: 12px;
+border-top: 1px solid #333;
+}
+
+.card-dark:hover {
+transform: rotate(8deg);
+}
+
+/_ No Articles _/
+.no-articles {
+text-align: center;
+padding: 5rem 2rem;
+color: #717171;
+font-size: 1.5rem;
+}
+
+/_ Pagination _/
+.pagination-container {
+display: flex;
+justify-content: center;
+align-items: center;
+gap: 2rem;
+margin-top: 3rem;
+}
+
+.pagination-container button {
+padding: 0.75rem 2rem;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+border: none;
+color: white;
+border-radius: 50px;
+cursor: pointer;
+font-weight: 600;
+transition: all 0.3s ease;
+}
+
+.pagination-container button:disabled {
+opacity: 0.5;
+cursor: not-allowed;
+}
+
+.pagination-container button:not(:disabled):hover {
+transform: translateY(-2px);
+box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.pagination-container span {
+color: white;
+font-weight: 600;
+}
+
+/_ Responsive _/
+@media (max-width: 768px) {
+.articles-grid-dark {
+grid-template-columns: 1fr;
+}
+
+.card-dark:hover {
+transform: rotate(0deg);
+}
+
+.filters-bar {
+flex-direction: column;
+}
+
+.page-header h1 {
+font-size: 2rem;
+}
+}

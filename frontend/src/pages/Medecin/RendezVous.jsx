@@ -1,84 +1,105 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { appointmentAPI } from "../../services/api";
+import { rendezVousAPI } from "../../services/api";
 import { toast } from "react-toastify";
-import { FaCalendarAlt, FaUser, FaSearch, FaCheck, FaTimes, FaClock, FaEdit } from "react-icons/fa";
+import { FaCalendarAlt, FaUser, FaSearch, FaCheck, FaTimes, FaClock, FaEdit, FaFilter } from "react-icons/fa";
 
 function RendezVous() {
   const { user } = useAuth();
-  const [appointments, setAppointments] = useState([]);
-  const [filteredAppointments, setFilteredAppointments] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [rendezVous, setRendezVous] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [rescheduleData, setRescheduleData] = useState({});
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [activeTab, setActiveTab] = useState('demandes'); // 'demandes', 'a_venir', 'historique', 'annules'
+  const [stats, setStats] = useState({
+    demandes: 0,
+    aVenir: 0,
+    historique: 0,
+    annules: 0
+  });
 
-  const loadAppointments = useCallback(async () => {
+  const chargerDemandes = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await appointmentAPI.getAppointments();
+      console.log('📄 Chargement RDV médecin...');
       
-      // Ensure we're working with an array
-      let appointmentsData = [];
-      if (response && response.data) {
-        appointmentsData = Array.isArray(response.data) ? response.data : [];
+      // Récupérer TOUS les RDV du médecin
+      const response = await rendezVousAPI.mesRendezVousMedecin();
+      const tousLesRdv = Array.isArray(response) ? response : (response.data || []);
+      
+      console.log('✅ Total RDV:', tousLesRdv.length);
+      
+      // Calculer les stats pour les badges
+      const now = new Date();
+      const stats = {
+        demandes: tousLesRdv.filter(rdv => rdv.statut === 'PENDING').length,
+        aVenir: tousLesRdv.filter(rdv => 
+          rdv.statut === 'CONFIRMED' && new Date(rdv.date) >= now
+        ).length,
+        historique: tousLesRdv.filter(rdv => 
+          rdv.statut === 'TERMINE' || (rdv.statut === 'CONFIRMED' && new Date(rdv.date) < now)
+        ).length,
+        annules: tousLesRdv.filter(rdv => rdv.statut === 'CANCELLED').length
+      };
+      
+      setStats(stats);
+      
+      // Filtrer selon l'onglet actif
+      let rdvsFiltres = [];
+      switch(activeTab) {
+        case 'demandes':
+          rdvsFiltres = tousLesRdv.filter(rdv => rdv.statut === 'PENDING');
+          break;
+        case 'a_venir':
+          rdvsFiltres = tousLesRdv.filter(rdv => 
+            rdv.statut === 'CONFIRMED' && new Date(rdv.date) >= now
+          );
+          break;
+        case 'historique':
+          rdvsFiltres = tousLesRdv.filter(rdv => 
+            rdv.statut === 'TERMINE' || (rdv.statut === 'CONFIRMED' && new Date(rdv.date) < now)
+          );
+          break;
+        case 'annules':
+          rdvsFiltres = tousLesRdv.filter(rdv => rdv.statut === 'CANCELLED');
+          break;
+        default:
+          rdvsFiltres = tousLesRdv;
       }
       
-      // Filter appointments for the current doctor
-      let doctorAppointments = appointmentsData;
-      if (user) {
-        // Filter appointments for this doctor using medecin_nom field
-        // This matches the doctor's full name in the format "First Last"
-        const doctorName = `${user.first_name} ${user.last_name}`.trim();
-        doctorAppointments = appointmentsData.filter(app => 
-          app.medecin_nom === `Dr. ${doctorName}`
-        );
-      }
+      // Trier par date (plus récent en premier pour demandes, plus proche en premier pour à venir)
+      rdvsFiltres.sort((a, b) => {
+        if (activeTab === 'demandes' || activeTab === 'historique') {
+          return new Date(b.date) - new Date(a.date); // Plus récent d'abord
+        } else {
+          return new Date(a.date) - new Date(b.date); // Plus proche d'abord
+        }
+      });
       
-      setAppointments(doctorAppointments);
-      setFilteredAppointments(doctorAppointments);
+      console.log(`📊 ${activeTab}:`, rdvsFiltres.length, 'RDV');
+      setRendezVous(rdvsFiltres);
+      
     } catch (err) {
       setError("Erreur lors du chargement des rendez-vous");
-      console.error(err);
+      console.error("❌ Erreur chargement:", err);
       toast.error("Erreur lors du chargement des rendez-vous");
+      setRendezVous([]);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, activeTab]);
 
   useEffect(() => {
-    loadAppointments();
-  }, [loadAppointments]);
+    chargerDemandes();
+  }, [chargerDemandes]);
 
-  useEffect(() => {
-    const filtered = appointments.filter(
-      (appointment) =>
-        appointment.patient_nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        appointment.date?.includes(searchTerm)
-    );
-    setFilteredAppointments(filtered);
-  }, [searchTerm, appointments]);
-
-  const handleConfirm = async (appointment) => {
+  const handleConfirmer = async (appointmentId) => {
     try {
-      // Use the ID field that's available in the appointment object
-      const id = appointment.numero || appointment.id;
-      
-      if (!id) {
-        throw new Error("ID de rendez-vous manquant");
-      }
-      
-      await appointmentAPI.updateAppointment(id, { statut: "CONFIRMED" });
-      setAppointments(appointments.map(app => 
-        (app.numero === id || app.id === id) ? { ...app, statut: "CONFIRMED" } : app
-      ));
-      setFilteredAppointments(filteredAppointments.map(app => 
-        (app.numero === id || app.id === id) ? { ...app, statut: "CONFIRMED" } : app
-      ));
-      
-      // Show success message
+      await rendezVousAPI.confirmer(appointmentId);
+      // Recharger les données pour mettre à jour les stats et la liste
+      chargerDemandes();
       toast.success("Rendez-vous confirmé avec succès !");
     } catch (err) {
       setError("Erreur lors de la confirmation du rendez-vous");
@@ -87,24 +108,11 @@ function RendezVous() {
     }
   };
 
-  const handleCancel = async (appointment) => {
+  const handleAnnuler = async (appointmentId) => {
     try {
-      // Use the ID field that's available in the appointment object
-      const id = appointment.numero || appointment.id;
-      
-      if (!id) {
-        throw new Error("ID de rendez-vous manquant");
-      }
-      
-      await appointmentAPI.updateAppointment(id, { statut: "CANCELLED" });
-      setAppointments(appointments.map(app => 
-        (app.numero === id || app.id === id) ? { ...app, statut: "CANCELLED" } : app
-      ));
-      setFilteredAppointments(filteredAppointments.map(app => 
-        (app.numero === id || app.id === id) ? { ...app, statut: "CANCELLED" } : app
-      ));
-      
-      // Show success message
+      await rendezVousAPI.annuler(appointmentId);
+      // Recharger les données pour mettre à jour les stats et la liste
+      chargerDemandes();
       toast.success("Rendez-vous annulé avec succès !");
     } catch (err) {
       setError("Erreur lors de l'annulation du rendez-vous");
@@ -153,18 +161,20 @@ function RendezVous() {
       }
       
       // Call the doctor reschedule API endpoint
-      await appointmentAPI.doctorRescheduleAppointment(id, rescheduleData);
+      await rendezVousAPI.doctorRescheduleAppointment(id, rescheduleData);
       
       // Reload appointments to get the updated data
-      loadAppointments();
+      chargerDemandes();
       
       // Close modal and show success message
       closeRescheduleModal();
-      toast.success("Rendez-vous reprogrammé avec succès ! Le patient a été notifié de la nouvelle date.");
+      toast.success("Rendez-vous reprogrammé et confirmé avec succès ! Le patient a été notifié de la nouvelle date.");
     } catch (err) {
       setError("Erreur lors de la reprogrammation du rendez-vous");
       console.error("Error rescheduling appointment:", err);
-      toast.error("Erreur lors de la reprogrammation du rendez-vous");
+      // Show specific error message to user
+      const errorMessage = err.message || "Erreur lors de la reprogrammation du rendez-vous";
+      toast.error(errorMessage);
     }
   };
 
@@ -198,113 +208,148 @@ function RendezVous() {
   return (
     <div className="container-fluid">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Rendez-vous</h2>
-        <div style={{ position: "relative", width: "250px" }}>
-          <input
-            type="text"
-            placeholder="Rechercher un rendez-vous..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-control"
-          />
-          <FaSearch
-            style={{
-              position: "absolute",
-              top: "50%",
-              right: "12px",
-              transform: "translateY(-50%)",
-              color: "#888",
-            }}
-          />
+        <div>
+          <h2>Rendez-vous</h2>
+          <button 
+            className="btn btn-outline-secondary btn-sm mt-2"
+            onClick={() => window.history.back()}
+          >
+            ← Retour
+          </button>
         </div>
       </div>
 
-      {filteredAppointments.length === 0 ? (
-        <div className="alert alert-info">Aucun rendez-vous trouvé.</div>
-      ) : (
+      {/* Interface des onglets */}
+      <div className="card mb-4">
+        <div className="card-body">
+          <div className="d-flex gap-3 flex-wrap">
+            {/* Onglet Demandes */}
+            <button
+              className={`btn ${activeTab === 'demandes' ? 'btn-warning' : 'btn-outline-warning'} position-relative`}
+              onClick={() => setActiveTab('demandes')}
+            >
+              📋 Demandes en attente
+              {stats.demandes > 0 && (
+                <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                  {stats.demandes}
+                </span>
+              )}
+            </button>
+            
+            {/* Onglet À venir */}
+            <button
+              className={`btn ${activeTab === 'a_venir' ? 'btn-primary' : 'btn-outline-primary'} position-relative`}
+              onClick={() => setActiveTab('a_venir')}
+            >
+              📅 À venir
+              {stats.aVenir > 0 && (
+                <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-info">
+                  {stats.aVenir}
+                </span>
+              )}
+            </button>
+            
+            {/* Onglet Historique */}
+            <button
+              className={`btn ${activeTab === 'historique' ? 'btn-success' : 'btn-outline-success'}`}
+              onClick={() => setActiveTab('historique')}
+            >
+              ✅ Historique ({stats.historique})
+            </button>
+            
+            {/* Onglet Annulés */}
+            <button
+              className={`btn ${activeTab === 'annules' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+              onClick={() => setActiveTab('annules')}
+            >
+              ❌ Annulés ({stats.annules})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {rendezVous.length === 0 && !loading && (
+        <div className="alert alert-info text-center">
+          {activeTab === 'demandes' && '📭 Aucune demande en attente'}
+          {activeTab === 'a_venir' && '📅 Aucun rendez-vous à venir'}
+          {activeTab === 'historique' && '📋 Aucun rendez-vous terminé'}
+          {activeTab === 'annules' && '❌ Aucun rendez-vous annulé'}
+        </div>
+      )}
+
+      {rendezVous.length > 0 && (
         <div className="row">
-          {filteredAppointments.map((appointment, index) => (
-            <div key={`appointment-${appointment.numero || appointment.id || index}`} className="col-md-6 mb-3">
+          {rendezVous.map((rdv, index) => (
+            <div key={`rdv-${rdv.numero || rdv.id || index}`} className="col-md-6 mb-3">
               <div className="card">
                 <div className="card-body">
                   <h5 className="card-title">
                     <FaUser className="me-2" />
-                    {appointment.patient_nom}
+                    {rdv.patient_nom}
                   </h5>
                   <p className="card-text">
                     <FaCalendarAlt className="me-2" />
-                    {formatDate(appointment.date)}
+                    {formatDate(rdv.date)}
                   </p>
                   <p className="card-text">
                     <FaClock className="me-2" />
-                    {appointment.heure}
+                    {rdv.heure || '00:00'}
                   </p>
-                  {appointment.description && (
-                    <p className="card-text">{appointment.description}</p>
+                  {rdv.description && (
+                    <p className="card-text">{rdv.description}</p>
                   )}
                   <p className="card-text">
                     <strong>Type :</strong>{" "}
-                    {appointment.type_consultation === "teleconsultation" ? (
+                    {rdv.type_consultation === "teleconsultation" ? (
                       <span className="badge bg-info">📹 Téléconsultation</span>
                     ) : (
                       <span className="badge bg-success">🏥 Au cabinet</span>
                     )}
                   </p>
                   <div className="d-flex justify-content-between align-items-center">
-                    {getStatusBadge(appointment.statut)}
-                    {appointment.statut === "PENDING" && (
-                      <div>
-                        <button
-                          className="btn btn-success btn-sm me-2"
-                          onClick={() => handleConfirm(appointment)}
+                    {getStatusBadge(rdv.statut)}
+                    
+                    {/* Boutons d'action selon le statut */}
+                    {activeTab === 'demandes' && rdv.statut === 'PENDING' && (
+                      <div className="d-flex gap-2">
+                        <button 
+                          className="btn btn-success btn-sm"
+                          onClick={() => handleConfirmer(rdv.numero || rdv.id)}
                         >
-                          <FaCheck className="me-1" />
-                          Confirmer
+                          ✅ Confirmer
                         </button>
-                        <button
-                          className="btn btn-warning btn-sm me-2"
-                          onClick={() => openRescheduleModal(appointment)}
-                        >
-                          <FaEdit className="me-1" />
-                          Reporter
-                        </button>
-                        <button
+                        <button 
                           className="btn btn-danger btn-sm"
-                          onClick={() => handleCancel(appointment)}
+                          onClick={() => handleAnnuler(rdv.numero || rdv.id)}
                         >
-                          <FaTimes className="me-1" />
-                          Annuler
+                          ❌ Refuser
                         </button>
                       </div>
                     )}
-                    {appointment.statut === "CONFIRMED" && (
-                      <div>
-                        <button
+
+                    {activeTab === 'a_venir' && rdv.statut === 'CONFIRMED' && (
+                      <div className="d-flex gap-2">
+                        <button 
                           className="btn btn-warning btn-sm"
-                          onClick={() => openRescheduleModal(appointment)}
+                          onClick={() => openRescheduleModal(rdv)}
                         >
-                          <FaEdit className="me-1" />
-                          Reporter
+                          📝 Reporter
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleAnnuler(rdv.numero || rdv.id)}
+                        >
+                          ❌ Annuler
                         </button>
                       </div>
                     )}
-                    {(appointment.statut === "RESCHEDULED") && (
-                      <div>
-                        <button
-                          className="btn btn-success btn-sm me-2"
-                          onClick={() => handleConfirm(appointment)}
-                        >
-                          <FaCheck className="me-1" />
-                          Confirmer
-                        </button>
-                        <button
-                          className="btn btn-warning btn-sm"
-                          onClick={() => openRescheduleModal(appointment)}
-                        >
-                          <FaEdit className="me-1" />
-                          Reporter
-                        </button>
-                      </div>
+
+                    {activeTab === 'historique' && (
+                      <span className="badge bg-success">✅ Terminé</span>
+                    )}
+
+                    {activeTab === 'annules' && (
+                      <span className="badge bg-secondary">❌ Annulé</span>
                     )}
                   </div>
                 </div>

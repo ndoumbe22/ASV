@@ -1,298 +1,638 @@
-🎯 PROMPT POUR QODER AI : Implémentation Complète avec PostgreSQL
-Maintenant implémente la logique complète avec les données de la base de données :
+Remplace complètement le contenu du fichier frontend/src/pages/Public/ArticleDetail.jsx par le code ci-dessous.
 
-FICHIER : sante_app/views.py
+NOUVEAU CODE ArticleDetail.jsx
+jsximport React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import articleService from "../../services/articleService";
+import "./ArticleDetail.css";
 
-Remplace les 3 méthodes par ces versions complètes :
+function ArticleDetail() {
+const { slug } = useParams();
+const navigate = useNavigate();
+const [article, setArticle] = useState(null);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState(null);
 
-# Dans MedecinViewSet
+useEffect(() => {
+loadArticle();
+}, [slug]);
 
-@action(detail=False, methods=['get'], url_path='mes-disponibilites')
-def mes_disponibilites(self, request):
-"""GET /api/medecins/mes-disponibilites/"""
-try: # Récupérer le médecin connecté
-medecin = request.user.medecin
-
-        # Récupérer ses disponibilités
-        disponibilites = DisponibiliteMedecin.objects.filter(
-            medecin=medecin,
-            actif=True
-        ).order_by(
-            models.Case(
-                models.When(jour='lundi', then=1),
-                models.When(jour='mardi', then=2),
-                models.When(jour='mercredi', then=3),
-                models.When(jour='jeudi', then=4),
-                models.When(jour='vendredi', then=5),
-                models.When(jour='samedi', then=6),
-                models.When(jour='dimanche', then=7),
-            )
-        )
-
-        # Sérialiser les données
-        serializer = DisponibiliteMedecinSerializer(disponibilites, many=True)
-
-        return Response({
-            'success': True,
-            'disponibilites': serializer.data
-        })
-    except AttributeError:
-        return Response({
-            'error': 'Utilisateur non médecin'
-        }, status=status.HTTP_403_FORBIDDEN)
-    except Exception as e:
-        return Response({
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@action(detail=False, methods=['get'], url_path='mes-indisponibilites')
-def mes_indisponibilites(self, request):
-"""GET /api/medecins/mes-indisponibilites/"""
-try:
-medecin = request.user.medecin
-
-        # Récupérer les indisponibilités futures
-        indisponibilites = Indisponibilite.objects.filter(
-            medecin=medecin,
-            date__gte=timezone.now().date()
-        ).order_by('date')
-
-        serializer = IndisponibiliteSerializer(indisponibilites, many=True)
-
-        return Response({
-            'success': True,
-            'indisponibilites': serializer.data
-        })
-    except AttributeError:
-        return Response({
-            'error': 'Utilisateur non médecin'
-        }, status=status.HTTP_403_FORBIDDEN)
-    except Exception as e:
-        return Response({
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# Dans RendezVousViewSet
-
-@action(detail=False, methods=['get'], url_path='creneaux_disponibles')
-def creneaux_disponibles(self, request):
-"""GET /api/rendezvous/creneaux_disponibles/?medecin_id=X&date=YYYY-MM-DD"""
-try:
-from django.contrib.auth.models import User
-
-        medecin_id = request.query_params.get('medecin_id')
-        date_str = request.query_params.get('date')
-
-        if not medecin_id or not date_str:
-            return Response({
-                'error': 'medecin_id et date requis'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Convertir la date
-        date_rdv = datetime.strptime(date_str, '%Y-%m-%d').date()
-
-        # Vérifier que la date n'est pas dans le passé
-        if date_rdv < timezone.now().date():
-            return Response({
-                'success': True,
-                'creneaux': []
-            })
-
-        # Mapping des jours en français
-        jour_semaine = date_rdv.strftime('%A').lower()
-        jours_mapping = {
-            'monday': 'lundi',
-            'tuesday': 'mardi',
-            'wednesday': 'mercredi',
-            'thursday': 'jeudi',
-            'friday': 'vendredi',
-            'saturday': 'samedi',
-            'sunday': 'dimanche'
-        }
-        jour_fr = jours_mapping.get(jour_semaine)
-
-        # Récupérer le médecin et sa disponibilité
-        try:
-            medecin_user = User.objects.get(id=medecin_id)
-            medecin = medecin_user.medecin
-            disponibilite = DisponibiliteMedecin.objects.get(
-                medecin=medecin,
-                jour=jour_fr,
-                actif=True
-            )
-        except (User.DoesNotExist, DisponibiliteMedecin.DoesNotExist):
-            return Response({
-                'success': True,
-                'creneaux': []
-            })
-
-        # Récupérer les rendez-vous existants
-        rdv_existants = RendezVous.objects.filter(
-            medecin=medecin_user,
-            date=date_rdv
-        ).exclude(
-            statut__in=['CANCELLED', 'TERMINE']
-        ).values_list('heure', flat=True)
-
-        heures_reservees = set([h.strftime('%H:%M') for h in rdv_existants])
-
-        # Générer les créneaux disponibles
-        creneaux = []
-        current_time = datetime.combine(date_rdv, disponibilite.heure_debut)
-        end_time = datetime.combine(date_rdv, disponibilite.heure_fin)
-        duree = timedelta(minutes=disponibilite.duree_consultation)
-
-        while current_time < end_time:
-            heure_str = current_time.strftime('%H:%M')
-
-            # Vérifier pause déjeuner
-            is_pause = False
-            if disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
-                pause_debut = datetime.combine(date_rdv, disponibilite.pause_dejeuner_debut)
-                pause_fin = datetime.combine(date_rdv, disponibilite.pause_dejeuner_fin)
-                is_pause = pause_debut <= current_time < pause_fin
-
-            # Vérifier si réservé
-            is_reserve = heure_str in heures_reservees
-
-            # Vérifier si dans le passé (pour aujourd'hui)
-            is_past = False
-            if date_rdv == timezone.now().date():
-                now = timezone.now()
-                is_past = current_time.time() < now.time()
-
-            creneaux.append({
-                'heure': heure_str,
-                'disponible': not (is_pause or is_reserve or is_past)
-            })
-
-            current_time += duree
-
-        return Response({
-            'success': True,
-            'creneaux': creneaux
-        })
-
-    except Exception as e:
-        import traceback
-        print(f"Erreur creneaux_disponibles: {str(e)}")
-        print(traceback.format_exc())
-        return Response({
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-Remplace les 3 méthodes par ces versions complètes.
-Ajoute les imports nécessaires en haut du fichier :
-from django.db import models
-from django.utils import timezone
-from datetime import datetime, timedelta
-
-```
-
----
-
-## ⚡ **PROMPT Alternative (Si erreurs avec les Serializers)**
-```
-
-Si les serializers n'existent pas, ajoute-les dans sante_app/serializers.py :
-
-from rest_framework import serializers
-from .models import DisponibiliteMedecin, Indisponibilite
-
-class DisponibiliteMedecinSerializer(serializers.ModelSerializer):
-class Meta:
-model = DisponibiliteMedecin
-fields = [
-'id', 'jour', 'heure_debut', 'heure_fin',
-'duree_consultation', 'pause_dejeuner_debut',
-'pause_dejeuner_fin', 'nb_max_consultations', 'actif'
-]
-
-class IndisponibiliteSerializer(serializers.ModelSerializer):
-class Meta:
-model = Indisponibilite
-fields = ['id', 'date', 'raison']
-
-Puis dans views.py, importe-les :
-from .serializers import DisponibiliteMedecinSerializer, IndisponibiliteSerializer
-
-Crée ces serializers si manquants.
-
-```
-
----
-
-## 📋 **PROMPT : Vérifier le Modèle Indisponibilite**
-```
-
-Vérifie si le modèle Indisponibilite existe dans sante_app/models.py.
-
-Si il n'existe pas, crée-le :
-
-class Indisponibilite(models.Model):
-medecin = models.ForeignKey(
-Medecin,
-on_delete=models.CASCADE,
-related_name='indisponibilites'
-)
-date = models.DateField()
-raison = models.TextField(blank=True, null=True)
-created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Indisponibilité"
-        verbose_name_plural = "Indisponibilités"
-        ordering = ['-date']
-
-    def __str__(self):
-        return f"{self.medecin} - {self.date}"
-
-Puis exécute les migrations :
-python manage.py makemigrations
-python manage.py migrate
-
-Vérifie et crée le modèle si nécessaire.
-
-✅ Tests Après Implémentation
-Une fois Qoder AI a fait les modifications, redémarre Django puis teste :
-Test 1 : Disponibilités du médecin (avec token)
-bash# Dans ta console frontend ou Postman
-
-# Avec le token JWT du médecin connecté
-
-curl -H "Authorization: Bearer <ton_token_medecin>" \
- http://localhost:8000/api/medecins/mes-disponibilites/
-Résultat attendu :
-json{
-"success": true,
-"disponibilites": [
-{
-"id": 1,
-"jour": "lundi",
-"heure_debut": "09:00:00",
-"heure_fin": "17:00:00",
-"duree_consultation": 30,
-"nb_max_consultations": 10,
-"actif": true
+const loadArticle = async () => {
+try {
+setLoading(true);
+const data = await articleService.getPublicArticle(slug);
+setArticle(data);
+} catch (err) {
+console.error("Erreur:", err);
+setError("Article non trouvé");
+} finally {
+setLoading(false);
 }
-]
-}
-Test 2 : Créneaux disponibles
-bashcurl "http://localhost:8000/api/rendezvous/creneaux_disponibles/?medecin_id=1&date=2025-10-28"
-Résultat attendu :
-json{
-"success": true,
-"creneaux": [
-{"heure": "09:00", "disponible": true},
-{"heure": "09:30", "disponible": true},
-{"heure": "10:00", "disponible": true},
-...
-]
+};
+
+const formatDate = (dateString) => {
+const date = new Date(dateString);
+const day = date.getDate();
+const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+const month = months[date.getMonth()];
+const year = date.getFullYear();
+return `${day} ${month} ${year}`;
+};
+
+if (loading) {
+return (
+<div className="article-detail-loading">
+<div className="spinner"></div>
+<p>Chargement de l'article...</p>
+</div>
+);
 }
 
-🚀 Après l'Implémentation
+if (error || !article) {
+return (
+<div className="article-detail-error">
+<div className="error-icon">📄</div>
+<h2>Article non trouvé</h2>
+<p>L'article que vous recherchez n'existe pas ou n'est plus disponible.</p>
+<button onClick={() => navigate("/articles")} className="btn-back-error">
+← Retour aux articles
+</button>
+</div>
+);
+}
 
-✅ Redémarre Django : python manage.py runserver
-✅ Teste dans le frontend : Les erreurs 404 doivent disparaître
-✅ Connecte-toi en tant que médecin : Va sur la page Disponibilités
-✅ Connecte-toi en tant que patient : Essaie de prendre un rendez-vous
+return (
+<div className="article-detail-page">
+{/_ Hero Section with Image _/}
+<div className="article-hero" style={{
+        backgroundImage: article.image ? `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url(${article.image})` : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+<div className="hero-content">
+<button onClick={() => navigate("/articles")} className="btn-back">
+← Retour aux articles
+</button>
+
+          <div className="article-meta-top">
+            <span className="category-badge">{article.categorie}</span>
+            {article.is_featured && (
+              <span className="featured-badge">
+                <i className="bi bi-star-fill"></i> À la Une
+              </span>
+            )}
+          </div>
+
+          <h1 className="article-title-hero">{article.titre}</h1>
+
+          <div className="article-info">
+            <div className="info-item">
+              <i className="bi bi-person-circle"></i>
+              <span>Dr. {article.auteur_nom}</span>
+            </div>
+            <div className="info-item">
+              <i className="bi bi-calendar3"></i>
+              <span>{formatDate(article.date_publication)}</span>
+            </div>
+            <div className="info-item">
+              <i className="bi bi-eye"></i>
+              <span>{article.vues} vues</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Article Content */}
+      <div className="article-container">
+        <div className="article-wrapper">
+          {/* Resume */}
+          <div className="article-resume">
+            <p>{article.resume}</p>
+          </div>
+
+          {/* Content */}
+          <div className="article-content-body">
+            {article.contenu ? (
+              article.contenu.split('\n\n').map((paragraph, index) => (
+                paragraph.trim() && (
+                  <p key={index} className="content-paragraph">
+                    {paragraph}
+                  </p>
+                )
+              ))
+            ) : (
+              <p className="no-content">Contenu non disponible</p>
+            )}
+          </div>
+
+          {/* Tags */}
+          {article.tags && (
+            <div className="article-tags">
+              <span className="tags-label">
+                <i className="bi bi-tags"></i> Tags :
+              </span>
+              {article.tags.split(',').map((tag, index) => (
+                <span key={index} className="tag-item">
+                  {tag.trim()}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Share Buttons */}
+          <div className="article-actions">
+            <button className="action-btn share-btn">
+              <i className="bi bi-share"></i> Partager
+            </button>
+            <button className="action-btn bookmark-btn">
+              <i className="bi bi-bookmark"></i> Sauvegarder
+            </button>
+            <button className="action-btn print-btn" onClick={() => window.print()}>
+              <i className="bi bi-printer"></i> Imprimer
+            </button>
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <aside className="article-sidebar">
+          {/* Author Card */}
+          <div className="author-card">
+            <div className="author-avatar">
+              <i className="bi bi-person-fill"></i>
+            </div>
+            <h3>À propos de l'auteur</h3>
+            <h4>Dr. {article.auteur_nom}</h4>
+            <p>Médecin expert en {article.categorie}</p>
+            <button className="contact-btn">
+              <i className="bi bi-envelope"></i> Contacter
+            </button>
+          </div>
+
+          {/* Quick Info */}
+          <div className="quick-info-card">
+            <h3>Informations</h3>
+            <div className="info-row">
+              <span className="info-label">Catégorie</span>
+              <span className="info-value">{article.categorie}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Date</span>
+              <span className="info-value">{formatDate(article.date_publication)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Lectures</span>
+              <span className="info-value">{article.vues}</span>
+            </div>
+            {article.date_modification && (
+              <div className="info-row">
+                <span className="info-label">Mise à jour</span>
+                <span className="info-value">{formatDate(article.date_modification)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Related Articles Placeholder */}
+          <div className="related-card">
+            <h3>Articles similaires</h3>
+            <p className="coming-soon">
+              <i className="bi bi-clock-history"></i>
+              Fonctionnalité à venir
+            </p>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+);
+}
+
+export default ArticleDetail;
+
+CRÉER LE FICHIER CSS
+Crée le fichier frontend/src/pages/Public/ArticleDetail.css :
+css/_ ArticleDetail.css _/
+
+.article-detail-page {
+min-height: 100vh;
+background: #1a1a1a;
+}
+
+/_ Loading State _/
+.article-detail-loading {
+min-height: 100vh;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
+background: #1a1a1a;
+color: white;
+}
+
+.spinner {
+width: 50px;
+height: 50px;
+border: 4px solid rgba(255, 255, 255, 0.1);
+border-left-color: #e81cff;
+border-radius: 50%;
+animation: spin 1s linear infinite;
+margin-bottom: 1rem;
+}
+
+@keyframes spin {
+to { transform: rotate(360deg); }
+}
+
+/_ Error State _/
+.article-detail-error {
+min-height: 100vh;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
+background: #1a1a1a;
+color: white;
+padding: 2rem;
+text-align: center;
+}
+
+.error-icon {
+font-size: 5rem;
+margin-bottom: 1rem;
+opacity: 0.5;
+}
+
+.btn-back-error {
+margin-top: 2rem;
+padding: 1rem 2rem;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+border: none;
+color: white;
+border-radius: 50px;
+cursor: pointer;
+font-weight: 600;
+transition: all 0.3s ease;
+}
+
+.btn-back-error:hover {
+transform: translateY(-2px);
+box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+/_ Hero Section _/
+.article-hero {
+height: 60vh;
+min-height: 500px;
+background-size: cover;
+background-position: center;
+display: flex;
+align-items: flex-end;
+padding: 3rem 2rem;
+position: relative;
+}
+
+.hero-content {
+max-width: 1200px;
+margin: 0 auto;
+width: 100%;
+color: white;
+}
+
+.btn-back {
+background: rgba(255, 255, 255, 0.2);
+border: 2px solid rgba(255, 255, 255, 0.3);
+color: white;
+padding: 0.75rem 1.5rem;
+border-radius: 50px;
+cursor: pointer;
+font-weight: 600;
+transition: all 0.3s ease;
+margin-bottom: 2rem;
+backdrop-filter: blur(10px);
+}
+
+.btn-back:hover {
+background: rgba(255, 255, 255, 0.3);
+transform: translateX(-5px);
+}
+
+.article-meta-top {
+display: flex;
+gap: 1rem;
+margin-bottom: 1.5rem;
+}
+
+.category-badge {
+background: #e81cff;
+padding: 0.5rem 1.5rem;
+border-radius: 50px;
+font-weight: 700;
+text-transform: uppercase;
+font-size: 0.85rem;
+letter-spacing: 1px;
+}
+
+.featured-badge {
+background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+padding: 0.5rem 1.5rem;
+border-radius: 50px;
+font-weight: 700;
+font-size: 0.85rem;
+}
+
+.article-title-hero {
+font-size: 3.5rem;
+font-weight: 800;
+line-height: 1.2;
+margin-bottom: 1.5rem;
+text-shadow: 2px 2px 20px rgba(0, 0, 0, 0.5);
+}
+
+.article-info {
+display: flex;
+gap: 2rem;
+flex-wrap: wrap;
+font-size: 1.1rem;
+}
+
+.info-item {
+display: flex;
+align-items: center;
+gap: 0.5rem;
+background: rgba(255, 255, 255, 0.1);
+padding: 0.5rem 1rem;
+border-radius: 50px;
+backdrop-filter: blur(10px);
+}
+
+.info-item i {
+font-size: 1.3rem;
+}
+
+/_ Content Container _/
+.article-container {
+max-width: 1400px;
+margin: -100px auto 0;
+padding: 0 2rem 4rem;
+display: grid;
+grid-template-columns: 1fr 350px;
+gap: 3rem;
+position: relative;
+z-index: 10;
+}
+
+.article-wrapper {
+background: linear-gradient(#2a2a2a, #2a2a2a) padding-box,
+linear-gradient(145deg, transparent 35%, #e81cff, #40c9ff) border-box;
+border: 2px solid transparent;
+border-radius: 16px;
+padding: 3rem;
+color: white;
+}
+
+/_ Resume _/
+.article-resume {
+background: rgba(232, 28, 255, 0.1);
+border-left: 4px solid #e81cff;
+padding: 1.5rem;
+margin-bottom: 2rem;
+border-radius: 8px;
+font-size: 1.2rem;
+line-height: 1.8;
+color: #ddd;
+}
+
+/_ Content Body _/
+.article-content-body {
+font-size: 1.1rem;
+line-height: 2;
+color: #ddd;
+}
+
+.content-paragraph {
+margin-bottom: 1.5rem;
+text-align: justify;
+}
+
+.content-paragraph:first-of-type::first-letter {
+font-size: 4rem;
+font-weight: bold;
+float: left;
+line-height: 1;
+margin-right: 0.5rem;
+color: #e81cff;
+}
+
+.no-content {
+text-align: center;
+color: #717171;
+padding: 3rem;
+font-style: italic;
+}
+
+/_ Tags _/
+.article-tags {
+display: flex;
+flex-wrap: wrap;
+gap: 0.75rem;
+align-items: center;
+margin: 3rem 0 2rem;
+padding-top: 2rem;
+border-top: 1px solid #444;
+}
+
+.tags-label {
+font-weight: 700;
+color: #e81cff;
+}
+
+.tag-item {
+background: rgba(232, 28, 255, 0.2);
+color: #e81cff;
+padding: 0.5rem 1rem;
+border-radius: 50px;
+font-size: 0.9rem;
+font-weight: 600;
+}
+
+/_ Actions _/
+.article-actions {
+display: flex;
+gap: 1rem;
+flex-wrap: wrap;
+padding-top: 2rem;
+border-top: 1px solid #444;
+}
+
+.action-btn {
+flex: 1;
+min-width: 150px;
+padding: 1rem;
+border: 2px solid #444;
+background: transparent;
+color: white;
+border-radius: 12px;
+cursor: pointer;
+font-weight: 600;
+transition: all 0.3s ease;
+display: flex;
+align-items: center;
+justify-content: center;
+gap: 0.5rem;
+}
+
+.action-btn:hover {
+transform: translateY(-2px);
+box-shadow: 0 4px 15px rgba(232, 28, 255, 0.3);
+border-color: #e81cff;
+background: rgba(232, 28, 255, 0.1);
+}
+
+/_ Sidebar _/
+.article-sidebar {
+display: flex;
+flex-direction: column;
+gap: 2rem;
+}
+
+.author-card,
+.quick-info-card,
+.related-card {
+background: linear-gradient(#2a2a2a, #2a2a2a) padding-box,
+linear-gradient(145deg, transparent 35%, #e81cff, #40c9ff) border-box;
+border: 2px solid transparent;
+border-radius: 16px;
+padding: 2rem;
+color: white;
+}
+
+.author-avatar {
+width: 80px;
+height: 80px;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+border-radius: 50%;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 3rem;
+margin: 0 auto 1.5rem;
+color: white;
+}
+
+.author-card h3 {
+font-size: 0.9rem;
+text-transform: uppercase;
+color: #717171;
+margin-bottom: 0.5rem;
+}
+
+.author-card h4 {
+font-size: 1.5rem;
+margin-bottom: 0.5rem;
+}
+
+.author-card p {
+color: #aaa;
+margin-bottom: 1.5rem;
+}
+
+.contact-btn {
+width: 100%;
+padding: 0.75rem;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+border: none;
+color: white;
+border-radius: 50px;
+cursor: pointer;
+font-weight: 600;
+transition: all 0.3s ease;
+}
+
+.contact-btn:hover {
+transform: translateY(-2px);
+box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+/_ Quick Info _/
+.quick-info-card h3,
+.related-card h3 {
+font-size: 1.2rem;
+margin-bottom: 1.5rem;
+padding-bottom: 0.75rem;
+border-bottom: 2px solid #444;
+}
+
+.info-row {
+display: flex;
+justify-content: space-between;
+padding: 0.75rem 0;
+border-bottom: 1px solid #333;
+}
+
+.info-label {
+color: #717171;
+font-weight: 600;
+}
+
+.info-value {
+color: #e81cff;
+font-weight: 600;
+}
+
+.coming-soon {
+text-align: center;
+color: #717171;
+padding: 2rem 0;
+font-style: italic;
+}
+
+/_ Print Styles _/
+@media print {
+.btn-back, .article-actions, .article-sidebar {
+display: none !important;
+}
+
+.article-wrapper {
+border: none;
+background: white;
+color: black;
+}
+}
+
+/_ Responsive _/
+@media (max-width: 1024px) {
+.article-container {
+grid-template-columns: 1fr;
+}
+
+.article-sidebar {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+}
+
+@media (max-width: 768px) {
+.article-title-hero {
+font-size: 2rem;
+}
+
+.article-hero {
+height: auto;
+min-height: 400px;
+padding: 2rem 1rem;
+}
+
+.article-wrapper {
+padding: 2rem 1.5rem;
+}
+
+.article-container {
+margin-top: -50px;
+padding: 0 1rem 2rem;
+}
+
+.article-actions {
+flex-direction: column;
+}
+
+.action-btn {
+min-width: 100%;
+}
+}

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import articleService from "../../services/articleService";
+import "./ArticlesPublics.css";
 
 function ArticlesPublics() {
+  const navigate = useNavigate();
   const [articles, setArticles] = useState([]);
-  const [featuredArticles, setFeaturedArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedCategorie, setSelectedCategorie] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -25,333 +26,184 @@ function ArticlesPublics() {
   ];
 
   useEffect(() => {
-    loadArticles(1); // Reset to first page when filters change
-  }, [selectedCategorie, searchTerm]);
+    loadArticles(1);
+  }, [selectedCategorie]);
 
   const loadArticles = async (page = currentPage) => {
     try {
       setLoading(true);
-      const filters = {
-        page: page,
-        page_size: 12 // Articles per page
-      };
+      setError(null);
+      const filters = { page, page_size: 12 };
       if (selectedCategorie !== "all") filters.categorie = selectedCategorie;
-      if (searchTerm) filters.search = searchTerm;
 
       const data = await articleService.getPublicArticles(filters);
-      
-      // Handle pagination data
+      console.log("Articles data:", data);
+
       if (data.results) {
-        // Separate featured articles from regular articles
-        const featured = data.results.filter(article => article.is_featured);
-        const regular = data.results.filter(article => !article.is_featured);
-        
-        setArticles(regular);
-        setFeaturedArticles(featured);
+        const validArticles = data.results.filter(article => article.statut === 'valide');
+        setArticles(validArticles);
         setTotalPages(Math.ceil(data.count / 12));
         setTotalCount(data.count);
       } else {
-        // Fallback for existing API format
-        const featured = data.filter(article => article.is_featured);
-        const regular = data.filter(article => !article.is_featured);
-        
-        setArticles(regular);
-        setFeaturedArticles(featured);
+        const validArticles = data.filter(article => article.statut === 'valide');
+        setArticles(validArticles);
         setTotalPages(1);
-        setTotalCount(data.length);
+        setTotalCount(validArticles.length);
       }
-      
+
       setCurrentPage(page);
     } catch (error) {
       console.error("Erreur:", error);
-      alert("Erreur lors du chargement des articles");
+      setError("Erreur lors du chargement des articles");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    loadArticles(1); // Reset to first page on search
-  };
-
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      loadArticles(newPage);
-    }
-  };
-
   const formatDate = (dateString) => {
-    const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString('fr-FR', options);
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
-  if (loading)
+  const getCategoryTags = (categorie) => {
+    return categorie.split(',').map(cat => cat.trim());
+  };
+
+  if (loading) {
     return (
-      <div className="text-center p-5">
-        <div className="spinner-border"></div>
+      <div className="articles-public-page">
+        <div className="page-header">
+          <div className="container">
+            <button 
+              onClick={() => navigate(-1)} 
+              className="btn btn-light mb-3"
+              style={{ color: '#000', border: '1px solid #ccc' }}
+            >
+              ← Retour
+            </button>
+          </div>
+        </div>
+        <div className="container">
+          <div className="loading-container">
+            <div className="spinner-border text-primary"></div>
+          </div>
+        </div>
       </div>
     );
+  }
+
+  if (error) {
+    return (
+      <div className="articles-public-page">
+        <div className="page-header">
+          <div className="container">
+            <button 
+              onClick={() => navigate(-1)} 
+              className="btn btn-light mb-3"
+              style={{ color: '#000', border: '1px solid #ccc' }}
+            >
+              ← Retour
+            </button>
+          </div>
+        </div>
+        <div className="container">
+          <div className="alert alert-danger">
+            {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container py-4">
-      <div className="text-center mb-5">
-        <h1 className="display-4 fw-bold mb-3">
-          <i className="bi bi-file-text text-primary"></i> Articles de Santé
-        </h1>
-        <p className="lead text-muted">
-          Découvrez les dernières informations et conseils de nos médecins experts
-        </p>
+    <div className="articles-public-page">
+      {/* Header */}
+      <div className="page-header">
+        <div className="container">
+          <button 
+            onClick={() => navigate(-1)} 
+            className="btn btn-light mb-3"
+            style={{ color: '#000', border: '1px solid #ccc' }}
+          >
+            ← Retour
+          </button>
+          <h1>📚 Articles de Santé</h1>
+          <p>Découvrez les conseils de nos médecins experts</p>
+        </div>
       </div>
 
-      {/* Featured Articles Section */}
-      {featuredArticles.length > 0 && (
-        <section className="mb-5">
-          <h2 className="mb-4 pb-2 border-bottom">
-            <i className="bi bi-star-fill text-warning"></i> Articles à la Une
-          </h2>
-          <div className="row">
-            {featuredArticles.slice(0, 3).map((article) => (
-              <div key={article.id} className="col-lg-4 col-md-6 mb-4">
-                <div className="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
-                  {article.image ? (
-                    <img
-                      src={article.image}
-                      className="card-img-top"
-                      alt={article.titre}
-                      style={{ height: "200px", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <div className="bg-light d-flex align-items-center justify-content-center" style={{ height: "200px" }}>
-                      <i className="bi bi-file-text text-muted" style={{ fontSize: "3rem" }}></i>
-                    </div>
-                  )}
-                  <div className="card-body d-flex flex-column">
-                    <div className="mb-2">
-                      <span className="badge bg-primary">{article.categorie}</span>
-                      <span className="badge bg-warning text-dark ms-2">À la Une</span>
-                    </div>
-                    <h5 className="card-title">{article.titre}</h5>
-                    <p className="card-text text-muted flex-grow-1">{article.resume}</p>
-                    <div className="d-flex justify-content-between align-items-center mt-3">
-                      <small className="text-muted">
-                        <i className="bi bi-person"></i> {article.auteur_nom}
-                      </small>
-                      <small className="text-muted">
-                        <i className="bi bi-calendar"></i> {formatDate(article.date_publication)}
-                      </small>
-                    </div>
+      <div className="container">
+        {/* Filters - REMOVED SEARCH BAR */}
+        <div className="filters-bar">
+          <select
+            className="category-select"
+            value={selectedCategorie}
+            onChange={(e) => setSelectedCategorie(e.target.value)}
+          >
+            {categories.map((cat) => (
+              <option key={cat.value} value={cat.value}>{cat.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Articles Grid */}
+        {articles.length === 0 ? (
+          <div className="no-articles">
+            <p>Aucun article trouvé</p>
+            <p className="text-muted">Il n'y a actuellement aucun article disponible dans cette catégorie.</p>
+          </div>
+        ) : (
+          <div className="articles-grid-dark">
+            {articles.map((article) => (
+              <div
+                key={article.id}
+                className="card-dark"
+                onClick={() => navigate(`/articles/${article.slug}`)}
+              >
+                <div className="main-content">
+                  <div className="header">
+                    <span>Article on</span>
+                    <span>{formatDate(article.date_publication)}</span>
                   </div>
-                  <div className="card-footer bg-white border-0">
-                    <Link
-                      to={`/articles/${article.slug}`}
-                      className="btn btn-primary w-100"
-                    >
-                      Lire l'article
-                    </Link>
+                  <p className="heading">{article.titre}</p>
+                  <p className="description">{article.resume}</p>
+                  <div className="categories">
+                    {getCategoryTags(article.categorie).map((tag, index) => (
+                      <span key={index}>{tag}</span>
+                    ))}
                   </div>
+                </div>
+                <div className="footer">
+                  by Dr. {article.auteur_nom}
                 </div>
               </div>
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Search and Filter Section */}
-      <section className="mb-4">
-        <div className="row">
-          <div className="col-md-4 mb-3 mb-md-0">
-            <select
-              className="form-select"
-              value={selectedCategorie}
-              onChange={(e) => setSelectedCategorie(e.target.value)}
-            >
-              {categories.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-md-8">
-            <form onSubmit={handleSearch} className="input-group">
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Rechercher des articles..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <button className="btn btn-primary" type="submit">
-                <i className="bi bi-search me-1"></i> Rechercher
-              </button>
-            </form>
-          </div>
-        </div>
-      </section>
-
-      {/* Articles List */}
-      <section>
-        <div className="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
-          <h2 className="mb-0">
-            <i className="bi bi-journal-text"></i> Tous les Articles
-          </h2>
-          <small className="text-muted">
-            {totalCount} article{totalCount !== 1 ? 's' : ''} trouvé{totalCount !== 1 ? 's' : ''}
-          </small>
-        </div>
-        
-        {articles.length === 0 ? (
-          <div className="text-center py-5">
-            <div className="display-1 text-muted mb-3">
-              <i className="bi bi-journal-x"></i>
-            </div>
-            <h3 className="mb-3">Aucun article trouvé</h3>
-            <p className="text-muted">
-              Il n'y a aucun article correspondant à vos critères de recherche.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="row">
-              {articles.map((article) => (
-                <div key={article.id} className="col-lg-4 col-md-6 mb-4">
-                  <div className="card h-100 shadow-sm border-0 rounded-3 overflow-hidden">
-                    {article.image ? (
-                      <img
-                        src={article.image}
-                        className="card-img-top"
-                        alt={article.titre}
-                        style={{ height: "200px", objectFit: "cover" }}
-                      />
-                    ) : (
-                      <div className="bg-light d-flex align-items-center justify-content-center" style={{ height: "200px" }}>
-                        <i className="bi bi-file-text text-muted" style={{ fontSize: "3rem" }}></i>
-                      </div>
-                    )}
-                    <div className="card-body d-flex flex-column">
-                      <div className="mb-2">
-                        <span className="badge bg-secondary">{article.categorie}</span>
-                      </div>
-                      <h5 className="card-title">{article.titre}</h5>
-                      <p className="card-text text-muted flex-grow-1">{article.resume}</p>
-                      <div className="d-flex justify-content-between align-items-center mt-3">
-                        <small className="text-muted">
-                          <i className="bi bi-person"></i> {article.auteur_nom}
-                        </small>
-                        <small className="text-muted">
-                          <i className="bi bi-calendar"></i> {formatDate(article.date_publication)}
-                        </small>
-                      </div>
-                    </div>
-                    <div className="card-footer bg-white border-0">
-                      <Link
-                        to={`/articles/${article.slug}`}
-                        className="btn btn-outline-primary w-100"
-                      >
-                        Lire <i className="bi bi-arrow-right ms-1"></i>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <nav aria-label="Pagination des articles" className="mt-4">
-                <ul className="pagination justify-content-center">
-                  <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                    <button 
-                      className="page-link" 
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      Précédent
-                    </button>
-                  </li>
-                  
-                  {/* Page numbers */}
-                  {[...Array(totalPages)].map((_, i) => {
-                    const pageNum = i + 1;
-                    // Show first, last, current, and nearby pages
-                    if (
-                      pageNum === 1 || 
-                      pageNum === totalPages || 
-                      Math.abs(pageNum - currentPage) <= 2
-                    ) {
-                      return (
-                        <li 
-                          key={pageNum} 
-                          className={`page-item ${currentPage === pageNum ? 'active' : ''}`}
-                        >
-                          <button 
-                            className="page-link" 
-                            onClick={() => handlePageChange(pageNum)}
-                          >
-                            {pageNum}
-                          </button>
-                        </li>
-                      );
-                    }
-                    // Show ellipsis for gaps
-                    else if (pageNum === currentPage - 3 || pageNum === currentPage + 3) {
-                      return (
-                        <li key={pageNum} className="page-item disabled">
-                          <span className="page-link">...</span>
-                        </li>
-                      );
-                    }
-                    return null;
-                  })}
-                  
-                  <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
-                    <button 
-                      className="page-link" 
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                    >
-                      Suivant
-                    </button>
-                  </li>
-                </ul>
-              </nav>
-            )}
-          </>
         )}
-      </section>
 
-      {/* Responsive Design Enhancements */}
-      <style jsx>{`
-        .card {
-          transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .card:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
-        }
-        
-        @media (max-width: 768px) {
-          .display-4 {
-            font-size: 2rem;
-          }
-          
-          .card-img-top {
-            height: 180px !important;
-          }
-        }
-        
-        @media (max-width: 576px) {
-          .card-img-top {
-            height: 150px !important;
-          }
-          
-          .btn {
-            font-size: 0.875rem;
-          }
-        }
-      `}</style>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pagination-container">
+            <button
+              disabled={currentPage === 1}
+              onClick={() => loadArticles(currentPage - 1)}
+            >
+              ← Précédent
+            </button>
+            <span>Page {currentPage} sur {totalPages}</span>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => loadArticles(currentPage + 1)}
+            >
+              Suivant →
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

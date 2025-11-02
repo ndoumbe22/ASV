@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { FaPlus, FaEdit, FaTrash, FaChartBar, FaCalendarAlt, FaPills } from "react-icons/fa";
+import { useNavigate } from "react-router-dom"; // Added useNavigate import
+import { FaPlus, FaEdit, FaTrash, FaChartBar, FaCalendarAlt, FaPills, FaArrowLeft } from "react-icons/fa"; // Added FaArrowLeft import
 import medicationService from "../../services/medicationService";
 import { Line, Bar } from "react-chartjs-2";
 import {
@@ -28,6 +29,7 @@ ChartJS.register(
 );
 
 function MedicationReminders() {
+  const navigate = useNavigate(); // Added navigate hook
   const [reminders, setReminders] = useState([]);
   const [filteredReminders, setFilteredReminders] = useState([]);
   const [history, setHistory] = useState([]);
@@ -282,7 +284,15 @@ function MedicationReminders() {
     <div className="container-fluid">
       <div className="row">
         <div className="col-12">
+          {/* Added back button */}
           <div className="d-flex justify-content-between align-items-center mb-4">
+            <button 
+              className="btn btn-secondary"
+              onClick={() => navigate("/patient/dashboard")}
+            >
+              <FaArrowLeft className="me-2" />
+              Retour au tableau de bord
+            </button>
             <h2>
               <FaPills className="me-2" />
               Rappels de Médicaments

@@ -1,44 +1,46 @@
-from rest_framework import viewsets, status
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.decorators import action, api_view, permission_classes
+import logging  # Added logging import
+from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
-from django.db.models import Q, Case, When
-import json
-import requests
-import time
-import uuid
-from .forms import MessageContactForm
-from django.contrib import messages
-from .serializers import (
-    CliniqueSerializer, DentisteSerializer, HopitalSerializer, PharmacieSerializer, 
-    RendezVousSerializer, TraitementSerializer, ConsultationSerializer, ConsultationMessageSerializer,
-    PatientSerializer, MedecinSerializer, MedicamentSerializer,
-    PathologieSerializer, ConstanteSerializer, MesureSerializer, ArticleSerializer, 
-    StructureDeSanteSerializer, ServiceSerializer, ContactFooterSerializer, 
-    ChatbotConversationSerializer, MedicalDocumentSerializer, ChatbotKnowledgeBaseSerializer, 
-    RendezVousCreateSerializer, DisponibiliteMedecinSerializer, IndisponibiliteMedecinSerializer,
-    RegisterSerializer, TeleconsultationSerializer, UserSerializer
-)
-from django.contrib.auth import get_user_model, authenticate
-
-User = get_user_model()
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.utils.timezone import now
-from django.shortcuts import get_object_or_404
-import os
-from django.conf import settings
-from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+from django.db.models import Q, Count, Case, When, IntegerField, Sum, Avg
+from django.db import transaction
+from django.contrib.auth import authenticate, get_user_model  # Added get_user_model import
+from django.contrib.auth.models import User
 import logging
-from .notifications import NotificationService
+from rest_framework import viewsets, status, generics
+
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import APIView
+from .models import (
+    Patient, Medecin, RendezVous, Consultation, Medicament, 
+    Pathologie, Traitement, Constante, Mesure, Article,
+    StructureDeSante, Service, Clinique, Dentiste, Hopital, Pharmacie,
+    ContactFooter, ChatbotConversation, RappelMedicament, HistoriquePriseMedicament,
+    Urgence, NotificationUrgence, MedicalDocument, Rating, Conversation, Message, ChatbotKnowledgeBase, ConsultationMessage, Teleconsultation, DisponibiliteMedecin, IndisponibiliteMedecin, Notification  # Added Notification
+)
+from .serializers import (
+    PatientSerializer, MedecinSerializer, RendezVousSerializer, 
+    ConsultationSerializer, MedicamentSerializer, PathologieSerializer,
+    TraitementSerializer, ConstanteSerializer, MesureSerializer, ArticleSerializer, ArticleListSerializer,
+    StructureDeSanteSerializer, ServiceSerializer, CliniqueSerializer, 
+    DentisteSerializer, HopitalSerializer, PharmacieSerializer,
+    ContactFooterSerializer, ChatbotConversationSerializer, RappelMedicamentSerializer,
+    HistoriquePriseMedicamentSerializer, UrgenceSerializer, NotificationUrgenceSerializer,
+    MedicalDocumentSerializer, RatingSerializer, ConversationSerializer, MessageSerializer,
+    ChatbotKnowledgeBaseSerializer, ConsultationMessageSerializer, TeleconsultationSerializer,
+    DisponibiliteMedecinSerializer, IndisponibiliteMedecinSerializer, NotificationSerializer,
+    UserSerializer, RegisterSerializer  # Added UserSerializer and RegisterSerializer
+)
+from .permissions import IsMedecin
 
 # Add these imports for admin statistics
-from django.db.models import Count
 from datetime import date, timedelta, datetime, time as datetime_time
 from django.utils import timezone
-from .models import log_action, Patient, Medecin, RendezVous, Consultation, Medicament, Pathologie, Traitement, Constante, Mesure, Article, StructureDeSante, Service, Hopital, Clinique, Dentiste, Pharmacie, ChatbotConversation, ContactFooter, MedicalDocument, ChatbotKnowledgeBase, ConsultationMessage, Teleconsultation, DisponibiliteMedecin, IndisponibiliteMedecin
-from .permissions import IsMedecin
+from .notifications import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -129,58 +131,110 @@ class MedecinViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Medecin.objects.all()
 
+    def get_serializer_class(self):
+        # Use the public serializer for list/retrieve operations to include user data
+        if self.action in ['list', 'retrieve']:
+            from .serializers import MedecinPublicSerializer
+            return MedecinPublicSerializer
+        # Use the full serializer for all other operations
+        return MedecinSerializer
+
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'prochains_creneaux']:
             return [AllowAny()]
         return [IsAuthenticated()]
     
-    @action(detail=False, methods=['get'], url_path='mes-disponibilites', permission_classes=[IsAuthenticated, IsMedecin])
+    @action(detail=False, methods=['get', 'post'], url_path='mes-disponibilites', permission_classes=[IsAuthenticated, IsMedecin])
     def mes_disponibilites(self, request):
-        """GET /api/medecins/mes-disponibilites/"""
-        try:
-            # Debug : afficher l'utilisateur connecté
-            print(f"User: {request.user}")
-            print(f"Is authenticated: {request.user.is_authenticated}")
-            print(f"Has medecin attr: {hasattr(request.user, 'medecin')}")
-            print(f"Authorization header: {request.META.get('HTTP_AUTHORIZATION')}")
-            
-            if not hasattr(request.user, 'medecin'):
-                return Response({
-                    'error': 'Utilisateur non médecin',
-                    'user_id': request.user.id,
-                    'username': request.user.username
-                }, status=status.HTTP_403_FORBIDDEN)
-            
-            medecin = request.user.medecin
-            disponibilites = DisponibiliteMedecin.objects.filter(
-                medecin=medecin,
-                actif=True
-            ).order_by(
-                Case(
-                    When(jour='lundi', then=1),
-                    When(jour='mardi', then=2),
-                    When(jour='mercredi', then=3),
-                    When(jour='jeudi', then=4),
-                    When(jour='vendredi', then=5),
-                    When(jour='samedi', then=6),
-                    When(jour='dimanche', then=7),
+        """Gérer les disponibilités du médecin connecté"""
+        
+        # GET: Récupérer les disponibilités
+        if request.method == 'GET':
+            try:
+                # Debug : afficher l'utilisateur connecté
+                print(f"User: {request.user}")
+                print(f"Is authenticated: {request.user.is_authenticated}")
+                print(f"Has medecin attr: {hasattr(request.user, 'medecin')}")
+                print(f"Authorization header: {request.META.get('HTTP_AUTHORIZATION')}")
+                
+                if not hasattr(request.user, 'medecin'):
+                    return Response({
+                        'error': 'Utilisateur non médecin',
+                        'user_id': request.user.id,
+                        'username': request.user.username
+                    }, status=status.HTTP_403_FORBIDDEN)
+                
+                medecin = request.user.medecin
+                disponibilites = DisponibiliteMedecin.objects.filter(
+                    medecin=medecin,
+                    actif=True
+                ).order_by(
+                    Case(
+                        When(jour='lundi', then=1),
+                        When(jour='mardi', then=2),
+                        When(jour='mercredi', then=3),
+                        When(jour='jeudi', then=4),
+                        When(jour='vendredi', then=5),
+                        When(jour='samedi', then=6),
+                        When(jour='dimanche', then=7),
+                    )
                 )
-            )
-            
-            serializer = DisponibiliteMedecinSerializer(disponibilites, many=True)
-            
-            return Response({
-                'success': True,
-                'disponibilites': serializer.data
-            })
-        except Exception as e:
-            import traceback
-            print(f"Erreur: {str(e)}")
-            print(traceback.format_exc())
-            return Response({
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+                
+                serializer = DisponibiliteMedecinSerializer(disponibilites, many=True)
+                
+                return Response({
+                    'success': True,
+                    'disponibilites': serializer.data
+                })
+            except Exception as e:
+                import traceback
+                print(f"Erreur: {str(e)}")
+                print(traceback.format_exc())
+                return Response({
+                    'error': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        
+        # POST: Créer une nouvelle disponibilité
+        elif request.method == 'POST':
+            try:
+                if not hasattr(request.user, 'medecin'):
+                    return Response({
+                        'error': 'Utilisateur non médecin',
+                        'user_id': request.user.id,
+                        'username': request.user.username
+                    }, status=status.HTTP_403_FORBIDDEN)
+                
+                medecin = request.user.medecin
+                
+                # Ajouter le médecin aux données
+                data = request.data.copy()
+                data['medecin'] = medecin.id
+                
+                serializer = DisponibiliteMedecinSerializer(data=data, context={'request': request})
+                
+                if serializer.is_valid():
+                    serializer.save(medecin=medecin)
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+                else:
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    
+            except Medecin.DoesNotExist:
+                return Response({
+                    'error': 'Profil médecin introuvable'
+                }, status=status.HTTP_404_NOT_FOUND)
+            except Exception as e:
+                import traceback
+                print(f"Erreur: {str(e)}")
+                print(traceback.format_exc())
+                return Response({
+                    'error': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Serialize and return the response
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get'], url_path='mes-indisponibilites', permission_classes=[IsAuthenticated, IsMedecin])
     def mes_indisponibilites(self, request):
         """GET /api/medecins/mes-indisponibilites/"""
@@ -255,70 +309,72 @@ class MedecinViewSet(viewsets.ModelViewSet):
                 'thursday': 'jeudi',
                 'friday': 'vendredi',
                 'saturday': 'samedi',
-                'sunday': 'dimanche'
+                'sunday': 'dimanche',
             }
-            jour_fr = jour_mapping.get(jour_semaine, '')
             
-            # Check if doctor is unavailable this day
-            indisponible = IndisponibiliteMedecin.objects.filter(
-                medecin=medecin,
-                date_debut__lte=check_date,
-                date_fin__gte=check_date
-            ).exists()
-            
-            if indisponible:
-                continue
-            
-            # Get doctor's availability for this day
-            try:
-                disponibilite = disponibilites.get(jour=jour_fr)
-            except DisponibiliteMedecin.DoesNotExist:
-                continue
-            
-            # Generate time slots for this day
-            heure_courante = disponibilite.heure_debut
-            duree_consultation = datetime.timedelta(minutes=disponibilite.duree_consultation)
-            
-            while heure_courante < disponibilite.heure_fin and len(creneaux_trouves) < limit:
-                # Check if this time slot is during lunch break
-                if disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
-                    if disponibilite.pause_dejeuner_debut <= heure_courante < disponibilite.pause_dejeuner_fin:
-                        heure_courante = (datetime.datetime.combine(check_date, heure_courante) + duree_consultation).time()
-                        continue
+            if jour_semaine in jour_mapping:
+                jour_fr = jour_mapping[jour_semaine]
                 
-                # Use the robust conflict detection function
-                conflit, _ = check_appointment_conflict(
-                    medecin.user,
-                    check_date,  # Fixed: was date_obj
-                    heure_courante,
-                    disponibilite.duree_consultation
-                )
+                # Check if doctor has availability on this day
+                dispos_jour = disponibilites.filter(jour=jour_fr)
+                if not dispos_jour.exists():
+                    continue
                 
-                # Check if the slot is at least 5 minutes in the future (more realistic for booking)
-                slot_datetime = timezone.make_aware(datetime.datetime.combine(check_date, heure_courante))  # Fixed: was date_obj and added timezone awareness
-                is_future = slot_datetime >= timezone.now() + datetime.timedelta(minutes=5)
+                # For each availability slot on this day
+                for disponibilite in dispos_jour:
+                    # Check if there's an unavailability on this date
+                    if IndisponibiliteMedecin.objects.filter(
+                        medecin=medecin,
+                        date_debut__lte=check_date,
+                        date_fin__gte=check_date
+                    ).exists():
+                        continue  # Skip this day if there's an unavailability
+                    
+                    # Generate time slots for this day
+                    current_time = disponibilite.heure_debut
+                    while current_time < disponibilite.heure_fin:
+                        # Skip lunch break if it exists
+                        if (disponibilite.pause_dejeuner_debut and 
+                            disponibilite.pause_dejeuner_fin and
+                            disponibilite.pause_dejeuner_debut <= current_time < disponibilite.pause_dejeuner_fin):
+                            current_time = disponibilite.pause_dejeuner_fin
+                            continue
+                        
+                        # Check if this time slot is already booked
+                        heure_rdv = current_time
+                        fin_rdv = (datetime.datetime.combine(datetime.date.today(), current_time) + 
+                                  datetime.timedelta(minutes=disponibilite.duree_consultation)).time()
+                        
+                        # Check for conflicts with existing appointments
+                        conflit = RendezVous.objects.filter(
+                            medecin=medecin.user,
+                            date=check_date,
+                            heure__lt=fin_rdv,
+                            heure__gte=heure_rdv,
+                            statut__in=['PENDING', 'CONFIRMED']
+                        ).exists()
+                        
+                        if not conflit:
+                            # This slot is available
+                            creneaux_trouves.append({
+                                'date': check_date,
+                                'heure': current_time,
+                                'duree': disponibilite.duree_consultation
+                            })
+                        
+                        # Move to next time slot
+                        current_time = (datetime.datetime.combine(datetime.date.today(), current_time) + 
+                                       datetime.timedelta(minutes=disponibilite.duree_consultation)).time()
+                        
+                        # Stop if we've reached the limit
+                        if len(creneaux_trouves) >= limit:
+                            break
                 
-                # Also check if slot is today but time has passed
-                is_today = check_date == timezone.now().date()  # Fixed: was date_obj
-                if is_today and heure_courante <= timezone.now().time():
-                    is_future = False
-                
-                if not conflit and is_future:
-                    creneaux_trouves.append({
-                        "date": check_date.strftime('%Y-%m-%d'),
-                        "heure": heure_courante.strftime('%H:%M'),
-                        "datetime": slot_datetime.isoformat()
-                    })
-                
-                heure_courante = (datetime.datetime.combine(check_date, heure_courante) + duree_consultation).time()
-                
+                # Stop if we've reached the limit
                 if len(creneaux_trouves) >= limit:
                     break
-            
-            if len(creneaux_trouves) >= limit:
-                break
         
-        return Response({'creneaux': creneaux_trouves})
+        return Response(creneaux_trouves[:limit])
 
 # --------------------
 # Rendez-vous
@@ -336,8 +392,6 @@ class RendezVousViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
     
     def get_serializer_class(self):
-        if self.action == 'create':
-            return RendezVousCreateSerializer
         return RendezVousSerializer
     
     @action(detail=False, methods=['get'], url_path='creneaux_disponibles')
@@ -383,11 +437,14 @@ class RendezVousViewSet(viewsets.ModelViewSet):
 
             # 3. RÉCUPÉRER LE MÉDECIN
             try:
-                medecin = Medecin.objects.get(user_id=medecin_id)
+                medecin = Medecin.objects.get(id=medecin_id)
             except Medecin.DoesNotExist:
                 return Response({
                     'error': 'Médecin introuvable'
                 }, status=404)
+
+            # 1️⃣ APRÈS avoir récupéré l'objet Medecin :
+            print(f"🔍 Médecin trouvé: {medecin.user.get_full_name()} (Medecin.id={medecin.id}, User.id={medecin.user.id})")
 
             # 4. RÉCUPÉRER LE JOUR DE LA SEMAINE
             jours_mapping = {
@@ -411,21 +468,25 @@ class RendezVousViewSet(viewsets.ModelViewSet):
                     'message': f'Le médecin ne travaille pas le {jour}'
                 }, status=200)
 
-            # 6. RÉCUPÉRER TOUS LES RDV CONFIRMÉS OU EN ATTENTE POUR CE MÉDECIN CE JOUR
+            # 6. RÉCUPÉRER TOUS LES RDV CONFIRMÉS/EN_ATTENTE POUR CE MÉDECIN CE JOUR
             rdv_existants = RendezVous.objects.filter(
                 medecin=medecin.user,  # Note: medecin is a User instance
                 date=date_obj,
-                statut__in=['CONFIRMED', 'PENDING']  # CRITIQUE: Seulement ces statuts
-            ).values_list('heure', flat=True)
+                statut__in=['CONFIRMED', 'PENDING']  # CRITIQUE: Inclure aussi PENDING
+            )
 
-            # Convertir en set d'heures (HH:MM) pour comparaison rapide
-            heures_reservees = {
-                rdv.strftime('%H:%M')
-                for rdv in rdv_existants
-            }
+            # 2️⃣ APRÈS avoir récupéré les RDV existants :
+            print(f"🔍 Recherche RDV pour date={date_obj}, medecin_user_id={medecin.user.id}")
+            print(f"📋 RDV existants trouvés: {rdv_existants.count()}")
+            for rdv in rdv_existants:
+                print(f"  ➡️ RDV #{rdv.numero}: {rdv.heure.strftime('%H:%M')} (Statut: {rdv.statut})")
 
-            print(f"📅 Date: {date_str}, Jour: {jour}")
-            print(f"🕐 Heures réservées: {heures_reservees}")
+            # 3️⃣ APRÈS avoir construit heures_reservees :
+            heures_reservees = set()
+            for rdv in rdv_existants:
+                heure_str = rdv.heure.strftime('%H:%M')
+                heures_reservees.add(heure_str)
+            print(f"⏰ Heures réservées: {heures_reservees}")
 
             # 7. GÉNÉRER TOUS LES CRÉNEAUX
             slots = []
@@ -440,7 +501,19 @@ class RendezVousViewSet(viewsets.ModelViewSet):
             maintenant = timezone.now()
 
             while current_time < end_time:
+
                 heure_str = current_time.time().strftime('%H:%M')
+                
+                # 4️⃣ DANS la boucle de génération des créneaux, AJOUTE ce print :
+                est_reserve = heure_str in heures_reservees
+                
+                if est_reserve:  # Print seulement les créneaux réservés
+                    print(f"  🔴 Créneau {heure_str} → RÉSERVÉ (disponible=False)")
+                
+                print(f"🔍 Check créneau {heure_str} - Réservé: {est_reserve}")
+                
+                print(f"DEBUG: Checking slot {heure_str} for date {date_obj}")
+                print(f"DEBUG: Current time: {current_time.time()}, Now: {maintenant.time()}")
 
                 # VÉRIFICATIONS D'INDISPONIBILITÉ
                 est_disponible = True
@@ -451,6 +524,7 @@ class RendezVousViewSet(viewsets.ModelViewSet):
                     if current_time.time() <= maintenant.time():
                         est_disponible = False
                         motif_indisponibilite = "Heure passée"
+                        print(f"DEBUG: Slot {heure_str} is in the past. Current time: {maintenant.time()}")
 
                 # B. Vérifier pause déjeuner
                 if est_disponible and disponibilite.pause_dejeuner_debut and disponibilite.pause_dejeuner_fin:
@@ -459,9 +533,10 @@ class RendezVousViewSet(viewsets.ModelViewSet):
                         motif_indisponibilite = "Pause déjeuner"
 
                 # C. Vérifier si RDV existe déjà (CRITIQUE)
-                if est_disponible and heure_str in heures_reservees:
+                if est_disponible and est_reserve:
                     est_disponible = False
                     motif_indisponibilite = "Déjà réservé"
+                    print(f"DEBUG: Slot {heure_str} marked as unavailable because it's already booked")
 
                 slots.append({
                     'heure': heure_str,
@@ -471,6 +546,7 @@ class RendezVousViewSet(viewsets.ModelViewSet):
 
                 current_time += delta
 
+            print(f"⏰ Créneaux générés: {slots}")
             print(f"✅ {len(slots)} créneaux générés, {sum(1 for s in slots if s['disponible'])} disponibles")
 
             return Response({
@@ -487,6 +563,216 @@ class RendezVousViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'Erreur serveur: {str(e)}'
             }, status=500)
+    
+    @action(detail=False, methods=['get'], url_path='upcoming', permission_classes=[IsAuthenticated])
+    def upcoming(self, request):
+        """GET /api/rendezvous/upcoming/ - Rendez-vous à venir du patient"""
+        try:
+            print(f"📅 Upcoming appointments pour user: {request.user}")
+            
+            # Vérifier que l'utilisateur est authentifié
+            if not request.user.is_authenticated:
+                return Response({
+                    'error': 'Utilisateur non authentifié'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # CORRECTION: Filtrer par patient (User) directement
+            from django.utils import timezone
+            today = timezone.now().date()
+            appointments = RendezVous.objects.filter(
+                patient=request.user,  # ✅ Correct: patient est un User
+                date__gte=today
+            ).exclude(
+                statut__in=['CANCELLED', 'TERMINE']
+            ).order_by('date', 'heure')
+            
+            serializer = self.get_serializer(appointments, many=True)
+            
+            print(f"✅ Trouvé {appointments.count()} rendez-vous à venir")
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Erreur upcoming: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='history', permission_classes=[IsAuthenticated])
+    def history(self, request):
+        """GET /api/rendezvous/history/ - Historique des rendez-vous du patient"""
+        try:
+            print(f"📜 History appointments pour user: {request.user}")
+            
+            # Vérifier que l'utilisateur est authentifié
+            if not request.user.is_authenticated:
+                return Response({
+                    'error': 'Utilisateur non authentifié'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # CORRECTION: Filtrer par patient (User) directement
+            from django.utils import timezone
+            from django.db import models
+            today = timezone.now().date()
+            appointments = RendezVous.objects.filter(
+                patient=request.user  # ✅ Correct: patient est un User
+            ).filter(
+                models.Q(date__lt=today) | 
+                models.Q(statut__in=['CANCELLED', 'TERMINE'])
+            ).order_by('-date', '-heure')
+            
+            serializer = self.get_serializer(appointments, many=True)
+            
+            print(f"✅ Trouvé {appointments.count()} rendez-vous dans l'historique")
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Erreur history: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='mes-demandes', permission_classes=[IsAuthenticated])
+    def mes_demandes(self, request):
+        """GET /api/rendezvous/mes-demandes/ - Tous les RDV demandés par ce patient"""
+        try:
+            print(f"📋 Mes demandes pour user: {request.user}")
+            
+            # Vérifier que l'utilisateur est authentifié
+            if not request.user.is_authenticated:
+                return Response({
+                    'error': 'Utilisateur non authentifié'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Récupérer TOUS les rendez-vous où le user connecté est le patient
+            appointments = RendezVous.objects.filter(
+                patient=request.user  # Le patient est un User
+            ).order_by('-date', '-heure')
+            
+            serializer = self.get_serializer(appointments, many=True)
+            
+            print(f"✅ Trouvé {appointments.count()} rendez-vous pour ce patient")
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Erreur mes-demandes: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='mes-rendez-vous-medecin', permission_classes=[IsAuthenticated])
+    def mes_rendez_vous_medecin(self, request):
+        """GET /api/rendezvous/mes-rendez-vous-medecin/ - Tous les RDV du médecin connecté"""
+        try:
+            print(f"📋 Mes RDV médecin pour: {request.user}")
+            
+            # Vérifier que l'utilisateur est authentifié
+            if not request.user.is_authenticated:
+                return Response({
+                    'error': 'Utilisateur non authentifié'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Récupérer TOUS les rendez-vous où le user connecté est le médecin
+            appointments = RendezVous.objects.filter(
+                medecin=request.user  # Le médecin est un User
+            ).order_by('-date', '-heure')
+            
+            serializer = self.get_serializer(appointments, many=True)
+            
+            print(f"✅ Trouvé {appointments.count()} rendez-vous pour ce médecin")
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Erreur mes_rendez_vous_medecin: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['patch'], url_path='confirmer', permission_classes=[IsAuthenticated])
+    def confirmer(self, request, pk=None):
+        """PATCH /api/rendezvous/{id}/confirmer/ - Médecin confirme le RDV"""
+        try:
+            rdv = self.get_object()
+            
+            # Vérifier que c'est le médecin concerné
+            if rdv.medecin != request.user:
+                return Response({
+                    'error': 'Seul le médecin concerné peut confirmer'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Vérifier statut actuel
+            if rdv.statut != 'PENDING':
+                return Response({
+                    'error': f'Impossible de confirmer un RDV au statut {rdv.statut}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            rdv.statut = 'CONFIRMED'
+            rdv.save()
+            
+            # Send confirmation notification
+            from .notifications import NotificationService
+            try:
+                NotificationService.send_appointment_confirmation(rdv)
+            except Exception as e:
+                print(f"Error sending appointment confirmation notification: {e}")
+            
+            serializer = self.get_serializer(rdv)
+            return Response({
+                'success': True,
+                'message': 'Rendez-vous confirmé',
+                'rdv': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except RendezVous.DoesNotExist:
+            return Response({
+                'error': 'Rendez-vous non trouvé'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"❌ Erreur confirmation RDV: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['patch'], url_path='annuler', permission_classes=[IsAuthenticated])
+    def annuler(self, request, pk=None):
+        """PATCH /api/rendezvous/{id}/annuler/ - Patient ou médecin annule"""
+        try:
+            rdv = self.get_object()
+            
+            # Vérifier que c'est le patient ou le médecin
+            if rdv.patient != request.user and rdv.medecin != request.user:
+                return Response({
+                    'error': 'Seul le patient ou le médecin concerné peut annuler'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Vérifier qu'on peut annuler
+            if rdv.statut in ['CANCELLED', 'TERMINE']:
+                return Response({
+                    'error': f'Impossible d\'annuler un RDV au statut {rdv.statut}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            rdv.statut = 'CANCELLED'
+            rdv.save()
+            
+            serializer = self.get_serializer(rdv)
+            return Response({
+                'success': True,
+                'message': 'Rendez-vous annulé',
+                'rdv': serializer.data
+            })
+            
+        except Exception as e:
+            print(f"❌ Erreur annuler: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def perform_create(self, serializer):
         # Auto-assign patient from authenticated user if not provided
@@ -516,7 +802,7 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         if user.is_authenticated:
             if user.role == 'medecin':
                 # Doctors can see their consultations
-                return Consultation.objects.filter(medecin=user.medecin_profile)
+                return Consultation.objects.filter(medecin=user.medecin)
             elif user.role == 'patient':
                 # Patients can see their consultations
                 return Consultation.objects.filter(patient=user.patient_profile)
@@ -601,7 +887,7 @@ class TeleconsultationViewSet(viewsets.ModelViewSet):
 # -------------------- User Profile --------------------
 class UserViewSet(viewsets.ModelViewSet):
     queryset = get_user_model().objects.all()
-    serializer_class = UserSerializer
+    serializer_class = UserSerializer  # Use the directly imported serializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -643,7 +929,7 @@ class TeleconsultationViewSet(viewsets.ModelViewSet):
         if user.is_authenticated:
             if user.role == 'medecin':
                 # Doctors can see their teleconsultations
-                return Teleconsultation.objects.filter(consultation__medecin=user.medecin_profile)
+                return Teleconsultation.objects.filter(consultation__medecin=user.medecin)
             elif user.role == 'patient':
                 # Patients can see their teleconsultations
                 return Teleconsultation.objects.filter(consultation__patient=user.patient_profile)
@@ -936,14 +1222,110 @@ class MesureViewSet(viewsets.ModelViewSet):
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
+    lookup_field = 'slug'  # Add this line to enable slug-based lookups
 
     def get_queryset(self):
-        return Article.objects.all()
+        """
+        - Pour les utilisateurs non authentifiés : seulement les articles validés
+        - Pour les médecins : leurs propres articles
+        - Pour les admins : tous les articles
+        """
+        user = self.request.user
+        print(f"ArticleViewSet.get_queryset called, user: {user}, is_authenticated: {user.is_authenticated}")  # Debug log
+        
+        # Si l'action est 'list' (page publique des articles)
+        if self.action == 'list':
+            print("Returning validated articles for list action")  # Debug log
+            # Seulement les articles validés pour le public
+            return Article.objects.filter(statut='valide').order_by('-date_publication')
+        
+        # Si l'action est 'retrieve' (détail d'un article)
+        if self.action == 'retrieve':
+            print("Returning validated articles for retrieve action")  # Debug log
+            # Seulement les articles validés
+            return Article.objects.filter(statut='valide')
+        
+        # Pour les actions protégées (mes_articles, etc.)
+        if user.is_authenticated:
+            print("User is authenticated")  # Debug log
+            if user.is_staff or user.role == 'admin':
+                print("User is admin, returning all articles")  # Debug log
+                # Les admins voient tous les articles
+                return Article.objects.all()
+            elif hasattr(user, 'medecin'):
+                print("User is doctor, returning their articles")  # Debug log
+                # Les médecins voient leurs propres articles (tous statuts)
+                return Article.objects.filter(auteur=user.medecin)
+        
+        # Par défaut : seulement les articles validés
+        print("Returning validated articles as default")  # Debug log
+        return Article.objects.filter(statut='valide')
 
     def get_permissions(self):
+        print(f"ArticleViewSet.get_permissions called, action: {self.action}")
+        
+        # Actions publiques (GET)
         if self.action in ['list', 'retrieve']:
+            print("Allowing public access with AllowAny")
             return [AllowAny()]
+        
+        # Création d'article (POST) - nécessite authentification
+        if self.action == 'create':
+            print("Allowing create with IsAuthenticated")
+            return [IsAuthenticated()]
+        
+        # Autres actions - nécessite authentification
+        print("Requiring authentication with IsAuthenticated")
         return [IsAuthenticated()]
+        
+    def list(self, request, *args, **kwargs):
+        print("ArticleViewSet list called")  # Debug log
+        return super().list(request, *args, **kwargs)
+        
+    def retrieve(self, request, *args, **kwargs):
+        print("ArticleViewSet retrieve called")  # Debug log
+        # Call the parent retrieve method to get the article
+        instance = self.get_object()
+        
+        # Increment view count for public access
+        if hasattr(instance, 'incrementer_vues'):
+            instance.incrementer_vues()
+            
+        # Serialize and return the response
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """Créer un nouvel article (brouillon ou soumis)"""
+        try:
+            # Vérifier que l'utilisateur est authentifié
+            if not request.user.is_authenticated:
+                return Response({
+                    'error': 'Authentification requise'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Vérifier que l'utilisateur est un médecin
+            if not hasattr(request.user, 'medecin'):
+                return Response({
+                    'error': 'Seuls les médecins peuvent créer des articles'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Ajouter l'auteur aux données
+            data = request.data.copy()
+            
+            serializer = self.get_serializer(data=data)
+            if serializer.is_valid():
+                serializer.save(auteur=request.user.medecin)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+            print(f"❌ Erreurs de validation: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            print(f"❌ Erreur création article: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # --------------------
 # Structures de santé
@@ -1005,42 +1387,112 @@ class ContactFooterViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
 
 
-# -------------------- Medical Documents --------------------
+# -------------------- Medical Document ViewSet --------------------
 class MedicalDocumentViewSet(viewsets.ModelViewSet):
     queryset = MedicalDocument.objects.all()
     serializer_class = MedicalDocumentSerializer
     permission_classes = [IsAuthenticated]
-
+    
     def get_queryset(self):
+        """Patients can only see their own documents, doctors can see documents shared with them"""
         user = self.request.user
-        if user.role == 'medecin':
-            # Doctors can see documents for their appointments
-            return MedicalDocument.objects.filter(
-                rendez_vous__medecin=user
-            )
-        else:
-            # Patients can see documents they uploaded or that were shared with them
-            return MedicalDocument.objects.filter(
-                Q(uploaded_by=user) | Q(rendez_vous__patient=user)
-            )
-
-    def perform_create(self, serializer):
-        # Save the appointment
-        appointment = serializer.save()
         
-        # Send notification to the doctor
-        from .notifications import NotificationService
+        if user.role == 'patient':
+            return MedicalDocument.objects.filter(patient=user)
+        elif user.role == 'medecin':
+            return MedicalDocument.objects.filter(medecin=user)
+        else:
+            # Admin can see all documents
+            return MedicalDocument.objects.all()
+    
+    def perform_create(self, serializer):
+        """Set the patient automatically and validate doctor relationship"""
+        user = self.request.user
+        
+        if user.role != 'patient':
+            raise PermissionDenied("Seuls les patients peuvent partager des documents")
+        
+        # Get the doctor from the request data
+        medecin_id = self.request.data.get('medecin')
+        if not medecin_id:
+            raise serializers.ValidationError("Le médecin est requis pour partager un document")
+        
         try:
-            # Additional validation to ensure we're only sending to one specific doctor
-            if hasattr(appointment, 'medecin') and appointment.medecin and hasattr(appointment.medecin, 'user'):
-                NotificationService.send_appointment_request_notification(appointment)
-            else:
-                print(f"❌ Erreur: Aucun médecin associé au rendez-vous {getattr(appointment, 'numero', 'N/A')}")
-        except Exception as e:
-            print(f"Error sending appointment notification: {e}")
+            medecin_user = User.objects.get(id=medecin_id)
+            if medecin_user.role != 'medecin':
+                raise serializers.ValidationError("L'utilisateur sélectionné n'est pas un médecin")
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Médecin non trouvé")
+        
+        # Check if patient has a confirmed appointment with this doctor
+        confirmed_appointments = RendezVous.objects.filter(
+            patient=user,
+            medecin=medecin_user,
+            statut__in=['CONFIRMED', 'TERMINE']
+        )
+        
+        if not confirmed_appointments.exists():
+            raise serializers.ValidationError("Vous ne pouvez partager des documents qu'avec des médecins avec lesquels vous avez des rendez-vous confirmés")
+        
+        # Save the document with patient and doctor
+        serializer.save(patient=user, medecin=medecin_user)
+
 
 # --------------------
 # Chatbot (Rasa)
+# --------------------
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import Notification
+from .serializers import NotificationSerializer
+
+# ==================== NOTIFICATIONS ====================
+class NotificationListView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get all notifications for the current doctor"""
+        try:
+            # Get the medecin profile for the current user
+            medecin = request.user.medecin
+            notifications = Notification.objects.filter(medecin=medecin).order_by('-date_creation')
+            serializer = NotificationSerializer(notifications, many=True)
+            return Response(serializer.data)
+        except AttributeError:
+            return Response({'error': 'Utilisateur non médecin'}, status=403)
+
+class MarkNotificationAsReadView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self, request, pk):
+        """Mark a notification as read"""
+        try:
+            # Get the medecin profile for the current user
+            medecin = request.user.medecin
+            notification = Notification.objects.get(pk=pk, medecin=medecin)
+            notification.lu = True
+            notification.save()
+            serializer = NotificationSerializer(notification)
+            return Response(serializer.data)
+        except Notification.DoesNotExist:
+            return Response({'error': 'Notification non trouvée'}, status=404)
+        except AttributeError:
+            return Response({'error': 'Utilisateur non médecin'}, status=403)
+
+class MarkAllNotificationsAsReadView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Mark all notifications as read"""
+        try:
+            # Get the medecin profile for the current user
+            medecin = request.user.medecin
+            Notification.objects.filter(medecin=medecin, lu=False).update(lu=True)
+            return Response({'message': 'Toutes les notifications ont été marquées comme lues'})
+        except AttributeError:
+            return Response({'error': 'Utilisateur non médecin'}, status=403)
+
 # --------------------
 class ChatbotAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1305,10 +1757,18 @@ def reschedule_appointment(request, pk):
     old_date = rdv.date
     old_heure = rdv.heure
 
+    # Update appointment with new date/time
     rdv.date = new_date
     rdv.heure = new_heure
-    old_status = rdv.statut
-    rdv.statut = "RESCHEDULED"
+    rdv.description = description
+    # When a doctor reschedules an appointment, it should be considered as confirmed
+    rdv.statut = "CONFIRMED"
+    
+    # Store original date/time if not already stored
+    if not rdv.original_date:
+        rdv.original_date = old_date
+        rdv.original_heure = old_heure
+        
     rdv.save()
 
     # Send reschedule notification
@@ -1340,6 +1800,18 @@ def doctor_reschedule_appointment(request, pk):
             return Response({"error": "Veuillez fournir une nouvelle date et heure"},
                           status=status.HTTP_400_BAD_REQUEST)
         
+        # Check if the doctor is already booked at this time slot (excluding the current appointment)
+        conflicting_appointments = RendezVous.objects.filter(
+            medecin=rdv.medecin,
+            date=new_date,
+            heure=new_heure
+        ).exclude(pk=pk).exclude(statut__in=['CANCELLED'])
+        
+        if conflicting_appointments.exists():
+            return Response({
+                "error": "Ce créneau est déjà réservé. Veuillez choisir un autre créneau."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # Store original values for notification
         old_date = rdv.date
         old_heure = rdv.heure
@@ -1367,6 +1839,9 @@ def doctor_reschedule_appointment(request, pk):
     except RendezVous.DoesNotExist:
         return Response({"error": "Rendez-vous non trouvé"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        print(f"❌ Erreur doctor_reschedule_appointment: {e}")
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -1524,31 +1999,138 @@ def propose_reschedule(request, pk):
 @permission_classes([IsAuthenticated])
 def admin_statistics(request):
     """Statistiques pour le dashboard admin"""
-    # Vérifier que l'utilisateur est admin
-    if request.user.role != 'admin':
-        return Response({'error': 'Accès non autorisé'}, status=403)
+    try:
+        print(f"Admin statistics called by user: {request.user.username} with role: {request.user.role}")
+        # Vérifier que l'utilisateur est admin
+        if request.user.role != 'admin':
+            print(f"User {request.user.username} is not admin, role: {request.user.role}")
+            return Response({'error': 'Accès non autorisé'}, status=403)
 
-    today = date.today()
-    week_ago = today - timedelta(days=7)
-    month_ago = today - timedelta(days=30)
+        today = date.today()
+        week_ago = today - timedelta(days=7)
+        month_ago = today - timedelta(days=30)
+        
+        print("Calculating statistics...")
 
-    stats = {
-        'total_users': User.objects.count(),
-        'total_patients': Patient.objects.count(),
-        'total_medecins': Medecin.objects.count(),
-        'total_rendez_vous': RendezVous.objects.count(),
-        'rendez_vous_today': RendezVous.objects.filter(date=today).count(),
-        'rendez_vous_week': RendezVous.objects.filter(date__gte=week_ago).count(),
-        'rendez_vous_month': RendezVous.objects.filter(date__gte=month_ago).count(),
-        'rendez_vous_by_status': RendezVous.objects.values('statut').annotate(count=Count('id')),
-        'new_users_week': User.objects.filter(date_joined__gte=week_ago).count(),
-        'new_users_month': User.objects.filter(date_joined__gte=month_ago).count(),
-        'total_consultations': Consultation.objects.count(),
-        'total_pathologies': Pathologie.objects.count(),
-        'total_medicaments': Medicament.objects.count(),
-    }
+        # Test each model query individually to identify the issue
+        try:
+            total_users = User.objects.count()
+            print(f"Total users: {total_users}")
+        except Exception as e:
+            print(f"Error counting users: {e}")
+            total_users = 0
 
-    return Response(stats)
+        try:
+            total_patients = Patient.objects.count()
+            print(f"Total patients: {total_patients}")
+        except Exception as e:
+            print(f"Error counting patients: {e}")
+            total_patients = 0
+
+        try:
+            total_medecins = Medecin.objects.count()
+            print(f"Total medecins: {total_medecins}")
+        except Exception as e:
+            print(f"Error counting medecins: {e}")
+            total_medecins = 0
+
+        try:
+            total_rendez_vous = RendezVous.objects.count()
+            print(f"Total rendez_vous: {total_rendez_vous}")
+        except Exception as e:
+            print(f"Error counting rendez_vous: {e}")
+            total_rendez_vous = 0
+
+        try:
+            rendez_vous_today = RendezVous.objects.filter(date=today).count()
+            print(f"Rendez_vous today: {rendez_vous_today}")
+        except Exception as e:
+            print(f"Error counting rendez_vous today: {e}")
+            rendez_vous_today = 0
+
+        try:
+            rendez_vous_week = RendezVous.objects.filter(date__gte=week_ago).count()
+            print(f"Rendez_vous week: {rendez_vous_week}")
+        except Exception as e:
+            print(f"Error counting rendez_vous week: {e}")
+            rendez_vous_week = 0
+
+        try:
+            rendez_vous_month = RendezVous.objects.filter(date__gte=month_ago).count()
+            print(f"Rendez_vous month: {rendez_vous_month}")
+        except Exception as e:
+            print(f"Error counting rendez_vous month: {e}")
+            rendez_vous_month = 0
+
+        try:
+            rendez_vous_by_status = list(RendezVous.objects.values('statut').annotate(count=Count('id')))
+            print(f"Rendez_vous by status: {rendez_vous_by_status}")
+        except Exception as e:
+            print(f"Error getting rendez_vous by status: {e}")
+            rendez_vous_by_status = []
+
+        try:
+            new_users_week = User.objects.filter(date_joined__gte=week_ago).count()
+            print(f"New users week: {new_users_week}")
+        except Exception as e:
+            print(f"Error counting new users week: {e}")
+            new_users_week = 0
+
+        try:
+            new_users_month = User.objects.filter(date_joined__gte=month_ago).count()
+            print(f"New users month: {new_users_month}")
+        except Exception as e:
+            print(f"Error counting new users month: {e}")
+            new_users_month = 0
+
+        try:
+            total_consultations = Consultation.objects.count()
+            print(f"Total consultations: {total_consultations}")
+        except Exception as e:
+            print(f"Error counting consultations: {e}")
+            total_consultations = 0
+
+        try:
+            total_pathologies = Pathologie.objects.count()
+            print(f"Total pathologies: {total_pathologies}")
+        except Exception as e:
+            print(f"Error counting pathologies: {e}")
+            total_pathologies = 0
+
+        try:
+            total_medicaments = Medicament.objects.count()
+            print(f"Total medicaments: {total_medicaments}")
+        except Exception as e:
+            print(f"Error counting medicaments: {e}")
+            total_medicaments = 0
+
+        stats = {
+            'total_users': total_users,
+            'total_patients': total_patients,
+            'total_medecins': total_medecins,
+            'total_rendez_vous': total_rendez_vous,
+            'rendez_vous_today': rendez_vous_today,
+            'rendez_vous_week': rendez_vous_week,
+            'rendez_vous_month': rendez_vous_month,
+            'rendez_vous_by_status': rendez_vous_by_status,
+            'new_users_week': new_users_week,
+            'new_users_month': new_users_month,
+            'total_consultations': total_consultations,
+            'total_pathologies': total_pathologies,
+            'total_medicaments': total_medicaments,
+        }
+
+        print("Admin statistics completed successfully")
+        return Response(stats)
+    except Exception as e:
+        import traceback
+        error_details = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': traceback.format_exc()
+        }
+        print(f"Admin statistics error: {error_details}")
+        return Response(error_details, status=500)
 
 # ---------- Public Statistics ----------
 @api_view(['GET'])
@@ -1583,6 +2165,7 @@ def public_statistics(request):
 # ========== ARTICLES PUBLICS ==========
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def articles_publics(request):
     """Liste des articles validés (accès public) avec pagination"""
     articles = Article.objects.filter(statut='valide').order_by('-date_publication')
@@ -1616,6 +2199,7 @@ def articles_publics(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def article_detail_public(request, slug):
     """Détail d'un article public"""
     try:
@@ -1893,6 +2477,193 @@ def get_appointment_rating(request, pk):
 @permission_classes([IsAuthenticated])
 def articles_admin_list(request):
     """Liste de tous les articles pour modération (admin uniquement)"""
+class ArticleViewSet(viewsets.ModelViewSet):
+    queryset = Article.objects.all()
+    serializer_class = ArticleSerializer
+
+    def get_queryset(self):
+        return Article.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        """Ajouter automatiquement l'auteur (médecin connecté)"""
+        # Vérifier que l'utilisateur est un médecin
+        if not hasattr(self.request.user, 'medecin'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Seuls les médecins peuvent créer des articles")
+        
+        # Debug logging
+        print(f"Setting author to: {self.request.user.medecin}")
+        serializer.save(auteur=self.request.user.medecin)
+    
+    def perform_update(self, serializer):
+        """Garder l'auteur lors de la modification"""
+        serializer.save()
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def mes_articles(self, request):
+        """Liste des articles du médecin connecté"""
+        medecin = request.user.medecin
+        articles = Article.objects.filter(auteur=medecin).order_by('-date_publication')
+        
+        # Filter by status if provided
+        statut = request.query_params.get('statut', None)
+        if statut and statut != 'all':
+            articles = articles.filter(statut=statut)
+        
+        serializer = self.get_serializer(articles, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def soumettre(self, request, pk=None):
+        """Soumettre un article pour validation"""
+        article = self.get_object()
+        if article.auteur.user != request.user:
+            return Response({'error': 'Non autorisé'}, status=403)
+
+        article.statut = 'en_attente'
+        article.save()
+        return Response({'message': 'Article soumis pour validation'})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def valider(self, request, pk=None):
+        """Valider un article et notifier le médecin"""
+        article = self.get_object()
+        article.statut = 'valide'
+        article.valide_par = request.user
+        article.date_validation = timezone.now()
+        article.commentaire_moderation = request.data.get('commentaire', '')
+        article.save()
+        
+        # Send notification to the doctor
+        NotificationService.send_article_validated_notification(article)
+        
+        # Create database notification
+        from .models import Notification
+        Notification.objects.create(
+            medecin=article.auteur,
+            type='article_valide',
+            titre='Article validé',
+            message=f'Votre article "{article.titre}" a été validé et est maintenant visible publiquement.',
+            article_titre=article.titre
+        )
+        
+        return Response({
+            'message': 'Article validé avec succès',
+            'article': ArticleSerializer(article).data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def refuser(self, request, pk=None):
+        """Refuser/Annuler un article (suppression) et notifier le médecin"""
+        article = self.get_object()
+        titre = article.titre
+        auteur_email = article.auteur.user.email
+        commentaire = request.data.get('commentaire', '')
+        
+        # Send notification to the doctor before deletion
+        NotificationService.send_article_rejected_notification(article, commentaire)
+        
+        # Create database notification
+        from .models import Notification
+        Notification.objects.create(
+            medecin=article.auteur,
+            type='article_refuse',
+            titre='Article refusé',
+            message=f'Votre article "{article.titre}" a été refusé. Raison: {commentaire}',
+            article_titre=article.titre
+        )
+        
+        article.delete()
+        
+        return Response({
+            'message': f'Article "{titre}" supprimé avec succès',
+            'commentaire': commentaire
+        }, status=204)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def desactiver(self, request, pk=None):
+        """Désactiver un article (masquer sans supprimer) et notifier le médecin"""
+        article = self.get_object()
+        article.statut = 'desactive'
+        article.commentaire_moderation = request.data.get('commentaire', '')
+        article.save()
+        
+        # Send notification to the doctor
+        NotificationService.send_article_deactivated_notification(article)
+        
+        # Create database notification
+        from .models import Notification
+        Notification.objects.create(
+            medecin=article.auteur,
+            type='article_desactive',
+            titre='Article désactivé',
+            message=f'Votre article "{article.titre}" a été désactivé. Raison: {article.commentaire_moderation}',
+            article_titre=article.titre
+        )
+        
+        return Response({
+            'message': 'Article désactivé avec succès',
+            'article': ArticleSerializer(article).data
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def reactiver(self, request, pk=None):
+        """Réactiver un article désactivé"""
+        article = self.get_object()
+        if article.statut != 'desactive':
+            return Response({'error': 'Seuls les articles désactivés peuvent être réactivés'}, status=400)
+        
+        article.statut = 'valide'
+        article.commentaire_moderation = ''
+        article.save()
+        
+        return Response({
+            'message': 'Article réactivé avec succès',
+            'article': ArticleSerializer(article).data
+        })
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminUser])
+    def liste_admin(self, request):
+        """Liste de tous les articles pour l'admin avec filtres"""
+        statut = request.query_params.get('statut', None)
+        
+        articles = Article.objects.all().order_by('-date_publication')
+        
+        if statut:
+            articles = articles.filter(statut=statut)
+        
+        serializer = ArticleSerializer(articles, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminUser])
+    def statistiques(self, request):
+        """Statistiques des articles pour le dashboard admin"""
+        stats = {
+            'total': Article.objects.count(),
+            'en_attente': Article.objects.filter(statut='en_attente').count(),
+            'valides': Article.objects.filter(statut='valide').count(),
+            'desactives': Article.objects.filter(statut='desactive').count(),
+            'brouillons': Article.objects.filter(statut='brouillon').count(),
+        }
+        return Response(stats)
+
+    @action(detail=True, methods=['delete'], permission_classes=[IsAdminUser])
+    def supprimer(self, request, pk=None):
+        """Supprimer définitivement un article"""
+        article = self.get_object()
+        article.delete()
+        return Response({'message': 'Article supprimé'}, status=204)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def articles_admin_list(request):
+    """Liste des articles pour modération"""
     if request.user.role != 'admin':
         return Response({'error': 'Accès réservé aux administrateurs'}, status=403)
 
@@ -1902,7 +2673,7 @@ def articles_admin_list(request):
     if statut != 'all':
         articles = articles.filter(statut=statut)
 
-    serializer = ArticleListSerializer(articles, many=True)
+    serializer = ArticleSerializer(articles, many=True)
     return Response(serializer.data)
 
 

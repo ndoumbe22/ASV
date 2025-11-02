@@ -29,6 +29,9 @@ function AppointmentManagement() {
       setLoading(true);
       const response = await adminService.getAppointments();
       setAppointments(response.data);
+      
+      // Refresh statistics after loading appointments
+      loadStatistics();
     } catch (err) {
       setError("Erreur lors du chargement des rendez-vous: " + (err.response?.data?.error || err.message));
       console.error(err);
@@ -62,6 +65,13 @@ function AppointmentManagement() {
         appointment.date.includes(searchTerm)
       );
     }
+    
+    // Sort by date and time (closest future date first)
+    filtered.sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.heure}`);
+      const dateB = new Date(`${b.date}T${b.heure}`);
+      return dateA - dateB;
+    });
 
     setFilteredAppointments(filtered);
   };
@@ -87,8 +97,7 @@ function AppointmentManagement() {
     if (window.confirm("Êtes-vous sûr de vouloir valider ce rendez-vous ?")) {
       try {
         await adminService.validateAppointment(appointmentId);
-        loadAppointments();
-        loadStatistics();
+        loadAppointments(); // This will also refresh statistics
         alert("Rendez-vous validé avec succès");
       } catch (err) {
         alert("Erreur lors de la validation: " + (err.response?.data?.error || err.message));
@@ -101,8 +110,7 @@ function AppointmentManagement() {
     if (window.confirm("Êtes-vous sûr de vouloir annuler ce rendez-vous ?")) {
       try {
         await adminService.cancelAppointment(appointmentId);
-        loadAppointments();
-        loadStatistics();
+        loadAppointments(); // This will also refresh statistics
         alert("Rendez-vous annulé avec succès");
       } catch (err) {
         alert("Erreur lors de l'annulation: " + (err.response?.data?.error || err.message));
@@ -124,8 +132,7 @@ function AppointmentManagement() {
       setShowRescheduleModal(false);
       setSelectedAppointment(null);
       setRescheduleData({ date: "", heure: "" });
-      loadAppointments();
-      loadStatistics();
+      loadAppointments(); // This will also refresh statistics
       alert("Rendez-vous reprogrammé avec succès");
     } catch (err) {
       alert("Erreur lors de la reprogrammation: " + (err.response?.data?.error || err.message));
@@ -151,17 +158,27 @@ function AppointmentManagement() {
     <div className="container-fluid">
       <div className="row">
         <div className="col-12">
-          <h2 className="mb-4">
-            <FaCalendarAlt className="me-2" />
-            Gestion des Rendez-vous
-          </h2>
-
-          {error && (
-            <div className="alert alert-danger alert-dismissible fade show" role="alert">
-              {error}
-              <button type="button" className="btn-close" onClick={() => setError(null)}></button>
+          <div className="d-flex justify-content-between align-items-center mb-4">
+            <div>
+              <h2 className="mb-0">
+                <FaCalendarAlt className="me-2" />
+                Gestion des Rendez-vous
+              </h2>
+              <button 
+                className="btn btn-outline-secondary btn-sm mt-2"
+                onClick={() => window.history.back()}
+              >
+                ← Retour
+              </button>
             </div>
-          )}
+
+            {error && (
+              <div className="alert alert-danger alert-dismissible fade show" role="alert">
+                {error}
+                <button type="button" className="btn-close" onClick={() => setError(null)}></button>
+              </div>
+            )}
+          </div>
 
           {/* Statistics */}
           {statistics && (

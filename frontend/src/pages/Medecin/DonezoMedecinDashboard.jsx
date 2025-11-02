@@ -8,7 +8,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
-import { appointmentAPI, userAPI } from "../../services/api";
+import { appointmentAPI, userAPI, articleAPI, rendezVousAPI } from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import "../../components/DashboardLayout.css";
@@ -33,6 +33,21 @@ function DonezoMedecinDashboard() {
   const [activeTab, setActiveTab] = useState('today'); // today, pending, validated, completed
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
+  
+  // New states for the enhanced dashboard
+  const [demandes, setDemandes] = useState([]);
+  const [loadingDemandes, setLoadingDemandes] = useState(true);
+  const [rdvAujourdhui, setRdvAujourdhui] = useState([]);
+  const [statsJour, setStatsJour] = useState({
+    total: 0,
+    termines: 0,
+    restants: 0
+  });
+  const [statsPatients, setStatsPatients] = useState({
+    labels: [],
+    data: []
+  });
+  const [filter, setFilter] = useState('tous');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -56,26 +71,35 @@ function DonezoMedecinDashboard() {
         
         // Fetch appointments
         try {
-          const appointmentsResponse = await appointmentAPI.getAppointments();
+          const appointmentsResponse = await appointmentAPI.mesRendezVousMedecin();
           // Ensure appointmentsData is an array
-          const appointmentsData = Array.isArray(appointmentsResponse?.data) 
-            ? appointmentsResponse.data 
-            : [];
+          const appointmentsData = Array.isArray(appointmentsResponse) 
+            ? appointmentsResponse 
+            : (Array.isArray(appointmentsResponse?.data) ? appointmentsResponse.data : []);
           setAppointments(appointmentsData);
+          
+          // Calculate today's appointments
+          const today = new Date().toISOString().split('T')[0];
+          const todayAppointments = Array.isArray(appointmentsData) 
+            ? appointmentsData.filter(app => {
+                const appDate = app.date_rdv ? app.date_rdv.split('T')[0] : app.date;
+                return appDate === today;
+              }).length 
+            : 0;
           
           // Update stats with proper validation
           setStats(prev => ({
             ...prev,
-            todayAppointments: appointmentsData.length,
+            todayAppointments: todayAppointments,
             pendingRequests: Array.isArray(appointmentsData) 
-              ? appointmentsData.filter(app => app.status === 'pending').length 
+              ? appointmentsData.filter(app => app.statut === 'PENDING').length 
               : 0
           }));
           
           // Fetch patients (this would need a specific endpoint)
-          // For now, we'll simulate with appointment data
+          // For now, we'll simulate with appointment data since there might not be a specific endpoint
           const uniquePatients = Array.isArray(appointmentsData) 
-            ? [...new Set(appointmentsData.map(app => app.patient_name || app.patient || 'Patient inconnu'))]
+            ? [...new Set(appointmentsData.map(app => app.patient_nom || app.patient || 'Patient inconnu'))]
             : [];
           setPatients(uniquePatients.map((name, index) => ({
             id: index + 1,
@@ -84,11 +108,25 @@ function DonezoMedecinDashboard() {
             condition: "Hypertension" // This would come from API
           })));
           
-          setStats(prev => ({
-            ...prev,
-            totalPatients: uniquePatients.length,
-            articles: 12 // This would come from articles API
-          }));
+          // Fetch articles count
+          try {
+            const articlesData = await articleAPI.getMesArticles();
+            const validatedArticles = Array.isArray(articlesData) 
+              ? articlesData.filter(article => article.statut === 'valide').length 
+              : 0;
+            setStats(prev => ({
+              ...prev,
+              totalPatients: uniquePatients.length,
+              articles: validatedArticles
+            }));
+          } catch (articlesError) {
+            console.error("Error fetching articles:", articlesError);
+            setStats(prev => ({
+              ...prev,
+              totalPatients: uniquePatients.length,
+              articles: 0
+            }));
+          }
         } catch (appointmentsError) {
           console.error("Error fetching appointments:", appointmentsError);
           setAppointments([]);
@@ -96,13 +134,20 @@ function DonezoMedecinDashboard() {
             ...prev,
             todayAppointments: 0,
             pendingRequests: 0,
-            totalPatients: 0
+            totalPatients: 0,
+            articles: 0
           }));
         }
         
       } catch (err) {
         console.error("General error fetching data:", err);
         setError("Une erreur inattendue s'est produite lors du chargement des données.");
+        setStats({
+          totalPatients: 0,
+          todayAppointments: 0,
+          articles: 0,
+          pendingRequests: 0
+        });
       } finally {
         setLoading(false);
       }
@@ -111,37 +156,172 @@ function DonezoMedecinDashboard() {
     fetchData();
   }, []);
 
-  // Generate patient data for charts
-  const generatePatientData = () => {
-    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin'];
-    return months.map((month, index) => ({
-      month,
-      patients: 40 + Math.floor(Math.random() * 20) // Simulated data
-    }));
+  // Charger les demandes de rendez-vous
+  const chargerDemandes = async () => {
+    try {
+      setLoadingDemandes(true);
+      // Use the correct API function
+      const response = await rendezVousAPI.mesDemandes();
+      const demandesPending = Array.isArray(response) 
+        ? response 
+        : (response.demandes || response.data || []);
+      
+      // Trier par date création (plus récentes en premier)
+      demandesPending.sort((a, b) => 
+        new Date(b.date_creation) - new Date(a.date_creation)
+      );
+      
+      // Garder seulement les 3 premières
+      setDemandes(demandesPending.slice(0, 3));
+    } catch (error) {
+      console.error('Erreur chargement demandes:', error);
+      setDemandes([]);
+    } finally {
+      setLoadingDemandes(false);
+    }
   };
 
-  // Appointment statistics
+  // Charger les RDV d'aujourd'hui
+  const chargerRdvAujourdhui = async () => {
+    try {
+      const response = await appointmentAPI.mesRendezVousMedecin();
+      const tousRdv = Array.isArray(response) ? response : (response.data || []);
+      
+      // Filtrer pour aujourd'hui uniquement
+      const aujourdhui = new Date().toISOString().split('T')[0];
+      const rdvJour = tousRdv.filter(rdv => 
+        rdv.date === aujourdhui && 
+        rdv.statut !== 'CANCELLED'
+      );
+      
+      // Trier par heure
+      rdvJour.sort((a, b) => a.heure.localeCompare(b.heure));
+      
+      // Calculer les stats
+      const termines = rdvJour.filter(rdv => rdv.statut === 'TERMINE').length;
+      
+      setRdvAujourdhui(rdvJour);
+      setStatsJour({
+        total: rdvJour.length,
+        termines: termines,
+        restants: rdvJour.length - termines
+      });
+    } catch (error) {
+      console.error('Erreur RDV aujourd\'hui:', error);
+    }
+  };
+
+  // Charger les stats des 30 derniers jours
+  const chargerStats30Jours = async () => {
+    try {
+      const response = await appointmentAPI.mesRendezVousMedecin();
+      const tousRdv = Array.isArray(response) ? response : (response.data || []);
+      
+      // Créer les 30 derniers jours
+      const aujourdhui = new Date();
+      const stats30j = {};
+      
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date(aujourdhui);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        stats30j[dateStr] = 0;
+      }
+      
+      // Compter les patients uniques par jour (RDV terminés ou confirmés)
+      tousRdv
+        .filter(rdv => rdv.statut === 'TERMINE' || rdv.statut === 'CONFIRMED')
+        .forEach(rdv => {
+          if (stats30j.hasOwnProperty(rdv.date)) {
+            stats30j[rdv.date]++;
+          }
+        });
+      
+      // Préparer pour le graphique
+      const labels = Object.keys(stats30j).map(d => {
+        const date = new Date(d);
+        return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+      });
+      
+      const data = Object.values(stats30j);
+      
+      setStatsPatients({ labels, data });
+      
+    } catch (error) {
+      console.error('Erreur stats 30j:', error);
+    }
+  };
+
+  // Charger toutes les données
+  useEffect(() => {
+    chargerDemandes();
+    chargerRdvAujourdhui();
+    chargerStats30Jours();
+  }, []);
+
+  // Recharger toutes les 30 secondes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      chargerDemandes();
+      chargerRdvAujourdhui();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Generate patient data for charts based on real appointments
+  const generatePatientData = () => {
+    // Create data for the last 6 months
+    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin'];
+    const currentYear = new Date().getFullYear();
+    
+    return months.map((month, index) => {
+      // Count unique patients for this month
+      const patientCount = Array.isArray(appointments) 
+        ? new Set(
+            appointments
+              .filter(app => {
+                if (!app.date) return false;
+                const appDate = new Date(app.date);
+                return appDate.getMonth() === index && appDate.getFullYear() === currentYear;
+              })
+              .map(app => app.patient_nom || app.patient)
+          ).size
+        : 0;
+      
+      return {
+        month,
+        patients: patientCount
+      };
+    });
+  };
+
+  // Appointment statistics based on real data
   const appointmentStats = [
-    { name: 'Confirmés', value: Array.isArray(appointments) ? appointments.filter(app => app.status === 'confirmed').length : 0 },
-    { name: 'En attente', value: Array.isArray(appointments) ? appointments.filter(app => app.status === 'pending').length : 0 },
-    { name: 'Annulés', value: Array.isArray(appointments) ? appointments.filter(app => app.status === 'cancelled').length : 0 }
+    { name: 'Confirmés', value: Array.isArray(appointments) ? appointments.filter(app => app.statut === 'CONFIRMED').length : 0 },
+    { name: 'En attente', value: Array.isArray(appointments) ? appointments.filter(app => app.statut === 'PENDING').length : 0 },
+    { name: 'Annulés', value: Array.isArray(appointments) ? appointments.filter(app => app.statut === 'CANCELLED').length : 0 }
   ];
 
   // Filter appointments based on active tab
   const filteredAppointments = Array.isArray(appointments) ? appointments.filter(app => {
     if (activeTab === 'today') return true;
-    if (activeTab === 'pending') return app.status === 'pending';
-    if (activeTab === 'validated') return app.status === 'confirmed';
-    if (activeTab === 'completed') return app.status === 'completed';
+    if (activeTab === 'pending') return app.statut === 'PENDING';
+    if (activeTab === 'validated') return app.statut === 'CONFIRMED';
+    if (activeTab === 'completed') return app.statut === 'TERMINE';
     return true;
   }) : [];
 
   // Stat cards data
   const statCards = [
-    { title: "Patients", value: stats.totalPatients, icon: <FaUserInjured />, color: "bg-teal-100 text-teal-600" },
+    { title: "Patients traités", value: stats.totalPatients, icon: <FaUserInjured />, color: "bg-teal-100 text-teal-600" },
     { title: "RDV aujourd'hui", value: stats.todayAppointments, icon: <FaCalendar />, color: "bg-blue-100 text-blue-600" },
-    { title: "Articles", value: stats.articles, icon: <FaFileAlt />, color: "bg-green-100 text-green-600" },
-    { title: "En attente", value: stats.pendingRequests, icon: <FaClock />, color: "bg-yellow-100 text-yellow-600" }
+    { title: "Articles validés", value: stats.articles, icon: <FaFileAlt />, color: "bg-green-100 text-green-600" },
+    { title: "RDV restants", value: Array.isArray(appointments) ? appointments.filter(app => {
+        const today = new Date();
+        const appDate = new Date(app.date_rdv || app.date);
+        return appDate >= today && app.statut !== 'CANCELLED';
+      }).length : 0, icon: <FaClock />, color: "bg-purple-100 text-purple-600" }
   ];
 
   // Quick access buttons for main functionalities
@@ -153,11 +333,21 @@ function DonezoMedecinDashboard() {
   ];
 
   // Handle appointment actions
-  const handleValidateAppointment = (appointmentId) => {
-    // In a real implementation, this would call an API
-    setAppointments(prev => prev.map(app => 
-      app.id === appointmentId ? { ...app, status: 'confirmed' } : app
-    ));
+  const handleValidateAppointment = async (appointmentId) => {
+    try {
+      await appointmentAPI.confirmer(appointmentId);
+      setAppointments(prev => prev.map(app => 
+        (app.numero === appointmentId || app.id === appointmentId) ? { ...app, statut: 'CONFIRMED' } : app
+      ));
+      // Refresh stats
+      setStats(prev => ({
+        ...prev,
+        pendingRequests: prev.pendingRequests - 1
+      }));
+    } catch (error) {
+      console.error("Error validating appointment:", error);
+      alert("Erreur lors de la validation du rendez-vous");
+    }
   };
 
   const handleRescheduleAppointment = (appointmentId) => {
@@ -165,11 +355,21 @@ function DonezoMedecinDashboard() {
     alert("Fonction de reprogrammation à implémenter");
   };
 
-  const handleRejectAppointment = (appointmentId) => {
-    // In a real implementation, this would call an API
-    setAppointments(prev => prev.map(app => 
-      app.id === appointmentId ? { ...app, status: 'rejected' } : app
-    ));
+  const handleRejectAppointment = async (appointmentId) => {
+    try {
+      await appointmentAPI.annuler(appointmentId);
+      setAppointments(prev => prev.map(app => 
+        (app.numero === appointmentId || app.id === appointmentId) ? { ...app, statut: 'CANCELLED' } : app
+      ));
+      // Refresh stats
+      setStats(prev => ({
+        ...prev,
+        pendingRequests: prev.pendingRequests - 1
+      }));
+    } catch (error) {
+      console.error("Error rejecting appointment:", error);
+      alert("Erreur lors du rejet du rendez-vous");
+    }
   };
 
   if (loading) {
@@ -211,7 +411,7 @@ function DonezoMedecinDashboard() {
               <h1 className="text-2xl font-bold">Tableau de bord médecin</h1>
               <p className="opacity-90">
                 Bonjour, {user?.first_name ? `Dr. ${user.first_name} ${user.last_name || ''}` : user?.username ? `Dr. ${user.username}` : 'Médecin'}
-                {user?.specialty ? ` - ${user.specialty}` : user?.profile?.specialty ? ` - ${user.profile.specialty}` : ' - Médecine générale'}
+                {user?.profile?.specialite && user.profile.specialite !== 'Généraliste' ? ` - ${user.profile.specialite}` : user?.profile?.specialite ? ` - ${user.profile.specialite}` : ''}
               </p>
             </div>
             <div className="flex items-center space-x-4">
@@ -289,239 +489,129 @@ function DonezoMedecinDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column */}
           <div className="space-y-6">
-            {/* Agenda and Today's Appointments */}
-            <div className="dashboard-card p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="section-title">
-                  <FaCalendar className="text-teal-600" />
-                  Agenda du jour
-                </h2>
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => navigate("/medecin/rendez-vous")}
-                    className="text-teal-600 hover:text-teal-800 flex items-center text-sm"
-                  >
-                    Voir tout <FaChevronRight className="ml-1 text-xs" />
-                  </button>
-                  <button 
-                    onClick={() => navigate("/medecin/disponibilites")}
-                    className="btn btn-primary text-sm flex items-center"
-                  >
-                    <FaPlus className="mr-1" /> Définir dispos
-                  </button>
+            {/* Agenda du jour */}
+            <div className="card mb-3">
+              <div className="card-body">
+                <h5>📅 Agenda du jour</h5>
+                <div className="row mt-3">
+                  <div className="col-4 text-center">
+                    <h3 className="text-primary mb-0">{statsJour.total}</h3>
+                    <small className="text-muted">Total</small>
+                  </div>
+                  <div className="col-4 text-center">
+                    <h3 className="text-success mb-0">{statsJour.termines}</h3>
+                    <small className="text-muted">Terminés</small>
+                  </div>
+                  <div className="col-4 text-center">
+                    <h3 className="text-warning mb-0">{statsJour.restants}</h3>
+                    <small className="text-muted">Restants</small>
+                  </div>
                 </div>
-              </div>
-              
-              {/* Tabs for appointment filtering */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                <button 
-                  onClick={() => setActiveTab('today')}
-                  className={`px-3 py-1 rounded-full text-sm ${activeTab === 'today' ? 'bg-teal-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  Aujourd'hui
-                </button>
-                <button 
-                  onClick={() => setActiveTab('pending')}
-                  className={`px-3 py-1 rounded-full text-sm ${activeTab === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  En attente
-                </button>
-                <button 
-                  onClick={() => setActiveTab('validated')}
-                  className={`px-3 py-1 rounded-full text-sm ${activeTab === 'validated' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  Validés
-                </button>
-                <button 
-                  onClick={() => setActiveTab('completed')}
-                  className={`px-3 py-1 rounded-full text-sm ${activeTab === 'completed' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  Terminés
-                </button>
-              </div>
-              
-              <div className="space-y-3">
-                {filteredAppointments && filteredAppointments.length > 0 ? (
-                  filteredAppointments.slice(0, 5).map(app => (
-                    <div key={app.id || app.appointment_id || app.date + app.time} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                      <div>
-                        <p className="font-medium">{app.patient_name || app.patient || 'Patient non spécifié'}</p>
-                        <p className="text-sm text-gray-500">
-                          {app.date ? new Date(app.date).toLocaleDateString('fr-FR') : 'Date non spécifiée'} 
-                          {app.time ? ` à ${app.time}` : ''}
-                        </p>
-                        {app.motif && <p className="text-xs text-gray-500 mt-1">{app.motif}</p>}
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`badge ${
-                          app.status === 'confirmed' ? 'badge-success' : 
-                          app.status === 'pending' ? 'badge-warning' : 
-                          app.status === 'completed' ? 'badge-info' : 
-                          app.status === 'cancelled' ? 'badge-danger' : 'badge-secondary'
-                        }`}>
-                          {app.status === 'confirmed' ? 'Confirmé' : 
-                           app.status === 'pending' ? 'En attente' : 
-                           app.status === 'completed' ? 'Terminé' : 
-                           app.status === 'cancelled' ? 'Annulé' : 'Inconnu'}
-                        </span>
-                        {app.status === 'pending' && (
-                          <div className="flex space-x-1">
-                            <button 
-                              className="btn btn-sm btn-success"
-                              onClick={() => handleValidateAppointment(app.id)}
-                            >
-                              Valider
-                            </button>
-                            <button 
-                              className="btn btn-sm btn-warning"
-                              onClick={() => handleRescheduleAppointment(app.id)}
-                            >
-                              Reporter
-                            </button>
-                            <button 
-                              className="btn btn-sm btn-danger"
-                              onClick={() => handleRejectAppointment(app.id)}
-                            >
-                              Refuser
-                            </button>
-                          </div>
-                        )}
-                        {app.status === 'confirmed' && (
-                          <button className="btn btn-sm btn-primary">
-                            Démarrer
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 italic text-center py-4">
-                    Aucun rendez-vous {activeTab === 'today' ? "aujourd'hui" : 
-                                      activeTab === 'pending' ? "en attente" : 
-                                      activeTab === 'validated' ? "validé" : 
-                                      activeTab === 'completed' ? "terminé" : ""}
-                  </p>
-                )}
               </div>
             </div>
 
-            {/* Today's Patients */}
-            <div className="dashboard-card p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="section-title">
-                  <FaUserInjured className="text-teal-600" />
-                  Patients du jour
-                </h2>
-                <button 
-                  onClick={() => navigate("/medecin/patients")}
-                  className="text-teal-600 hover:text-teal-800 flex items-center text-sm"
-                >
-                  Voir tout <FaChevronRight className="ml-1 text-xs" />
-                </button>
-              </div>
-              
-              <div className="space-y-3">
-                {patients && patients.length > 0 ? (
-                  patients.slice(0, 3).map(patient => (
-                    <div key={patient.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                      <div>
-                        <p className="font-medium">{patient.name}</p>
-                        <p className="text-sm text-gray-500">Dernière visite: {patient.lastVisit}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{patient.condition}</p>
-                        <button className="mt-1 text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded">
-                          Voir dossier
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 italic text-center py-4">Aucun patient trouvé</p>
-                )}
-              </div>
+            {/* Filtres pour les RDV */}
+            <div className="d-flex gap-2 mb-3">
+              <button 
+                className={`btn ${filter === 'tous' ? 'btn-primary' : 'btn-outline-primary'} btn-sm`}
+                onClick={() => setFilter('tous')}
+              >
+                Aujourd'hui ({statsJour.total})
+              </button>
+              <button 
+                className={`btn ${filter === 'en_attente' ? 'btn-warning' : 'btn-outline-warning'} btn-sm`}
+                onClick={() => setFilter('en_attente')}
+              >
+                En attente
+              </button>
+              <button 
+                className={`btn ${filter === 'valides' ? 'btn-success' : 'btn-outline-success'} btn-sm`}
+                onClick={() => setFilter('valides')}
+              >
+                Validés
+              </button>
+              <button 
+                className={`btn ${filter === 'termines' ? 'btn-secondary' : 'btn-outline-secondary'} btn-sm`}
+                onClick={() => setFilter('termines')}
+              >
+                Terminés
+              </button>
             </div>
+
+            {/* Liste des RDV d'aujourd'hui */}
+            {rdvAujourdhui
+              .filter(rdv => {
+                if (filter === 'tous') return true;
+                if (filter === 'en_attente') return rdv.statut === 'PENDING';
+                if (filter === 'valides') return rdv.statut === 'CONFIRMED';
+                if (filter === 'termines') return rdv.statut === 'TERMINE';
+                return true;
+              })
+              .map(rdv => (
+                <div key={rdv.numero} className="card mb-2">
+                  <div className="card-body">
+                    <h6>{rdv.patient_nom}</h6>
+                    <p className="mb-1 text-muted">
+                      🕐 {rdv.heure?.substring(0, 5)}
+                    </p>
+                    <p className="mb-2 small">{rdv.motif_consultation}</p>
+                    {/* Boutons selon statut - garder ceux qui existent déjà */}
+                  </div>
+                </div>
+              ))}
           </div>
 
           {/* Right Column */}
           <div className="space-y-6">
-            {/* Appointment Requests */}
-            <div className="dashboard-card p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="section-title">
-                  <FaClock className="text-teal-600" />
-                  Demandes de rendez-vous
-                </h2>
-                <button 
-                  onClick={() => navigate("/medecin/rendez-vous")}
-                  className="text-teal-600 hover:text-teal-800 flex items-center text-sm"
+            {/* Mes rendez-vous - Bouton simplifié */}
+            <div className="card">
+              <div className="text-center p-4">
+                <button
+                  className="btn btn-primary btn-lg px-5 py-3"
+                  onClick={() => navigate('/medecin/rendez-vous')}
+                  style={{
+                    fontSize: '1.3rem',
+                    fontWeight: '600',
+                    borderRadius: '10px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  }}
                 >
-                  Voir tout <FaChevronRight className="ml-1 text-xs" />
+                  <i className="bi bi-calendar-check me-3"></i>
+                  Voir les rendez-vous
                 </button>
-              </div>
-              
-              <div className="space-y-3">
-                {Array.isArray(appointments) && appointments.length > 0 ? (
-                  appointments.filter(app => app.status === 'pending').slice(0, 3).map(app => (
-                    <div key={app.id || app.appointment_id} className="p-3 border rounded-lg bg-yellow-50">
-                      <div className="flex justify-between">
-                        <p className="font-medium">{app.patient_name || app.patient || 'Patient non spécifié'}</p>
-                        <span className="badge badge-warning">En attente</span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {app.date ? new Date(app.date).toLocaleDateString('fr-FR') : 'Date non spécifiée'} 
-                        {app.time ? ` à ${app.time}` : ''}
-                      </p>
-                      {app.motif && <p className="text-xs text-gray-500 mt-1">{app.motif}</p>}
-                      <div className="flex space-x-2 mt-2">
-                        <button 
-                          className="btn btn-sm btn-success"
-                          onClick={() => handleValidateAppointment(app.id)}
-                        >
-                          Accepter
-                        </button>
-                        <button 
-                          className="btn btn-sm btn-warning"
-                          onClick={() => handleRescheduleAppointment(app.id)}
-                        >
-                          Reporter
-                        </button>
-                        <button 
-                          className="btn btn-sm btn-danger"
-                          onClick={() => handleRejectAppointment(app.id)}
-                        >
-                          Refuser
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 italic text-center py-4">Aucune demande en attente</p>
-                )}
-                {Array.isArray(appointments) && appointments.filter(app => app.status === 'pending').length === 0 && (
-                  <p className="text-gray-500 italic text-center py-4">Aucune demande en attente</p>
+                
+                {/* Afficher le nombre de demandes en attente si > 0 */}
+                {stats.pendingRequests > 0 && (
+                  <div className="mt-3">
+                    <span className="badge bg-warning text-dark fs-6 px-3 py-2">
+                      {stats.pendingRequests} demande(s) en attente
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Patient Statistics Chart */}
+            {/* Patients des 30 derniers jours */}
             <div className="dashboard-card p-6">
               <h2 className="section-title mb-4">
                 <FaChartBar className="text-teal-600" />
-                Évolution des patients
+                Patients des 30 derniers jours
               </h2>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={generatePatientData()}>
+                  <LineChart data={statsPatients.labels.map((label, index) => ({ 
+                    name: label, 
+                    patients: statsPatients.data[index] || 0 
+                  }))}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
+                    <XAxis dataKey="name" />
                     <YAxis />
                     <Tooltip />
                     <Legend />
                     <Line 
                       type="monotone" 
                       dataKey="patients" 
-                      stroke="#0d9488" 
+                      stroke="#3b82f6" 
                       name="Patients" 
                       strokeWidth={2}
                       activeDot={{ r: 8 }} 

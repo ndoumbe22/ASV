@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { medicalDocumentAPI, appointmentAPI } from "../../services/api";
+import { medicalDocumentAPI, rendezVousAPI, doctorAPI } from "../../services/api";
 import { FaFileMedical, FaDownload, FaTrash, FaUpload } from "react-icons/fa";
 
 function DocumentPartage() {
   const [documents, setDocuments] = useState([]);
-  const [appointments, setAppointments] = useState([]);
-  const [doctors, setDoctors] = useState([]); // New state for doctors
+  const [doctors, setDoctors] = useState([]); // Doctors with confirmed appointments
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadData, setUploadData] = useState({
-    rendez_vous: "",
+    doctor: "",
     file: null,
     document_type: "",
     description: ""
@@ -18,7 +17,7 @@ function DocumentPartage() {
 
   useEffect(() => {
     loadDocuments();
-    loadAppointments();
+    loadDoctorsWithConfirmedAppointments();
   }, []);
 
   const loadDocuments = async () => {
@@ -38,27 +37,30 @@ function DocumentPartage() {
     }
   };
 
-  const loadAppointments = async () => {
+  const loadDoctorsWithConfirmedAppointments = async () => {
     try {
-      const response = await appointmentAPI.getAppointments();
-      const appointmentsData = response.data;
-      setAppointments(appointmentsData);
+      // Load appointments
+      const appointmentsData = await rendezVousAPI.mesRendezVous();
+      // Ensure appointmentsData is an array
+      const appointmentsArray = Array.isArray(appointmentsData) ? appointmentsData : [];
       
-      // Extract unique doctors from appointments
-      const uniqueDoctors = {};
-      appointmentsData.forEach(appointment => {
-        if (appointment.medecin && appointment.medecin_nom) {
-          uniqueDoctors[appointment.medecin] = {
-            id: appointment.medecin,
-            name: appointment.medecin_nom,
-            specialite: appointment.specialite
-          };
-        }
-      });
+      // Extract doctors with confirmed appointments
+      const doctorsWithConfirmedAppointments = {};
+      appointmentsArray
+        .filter(app => app.statut === "CONFIRMED" || app.statut === "TERMINE")
+        .forEach(appointment => {
+          if (appointment.medecin && appointment.medecin_nom) {
+            doctorsWithConfirmedAppointments[appointment.medecin] = {
+              id: appointment.medecin,
+              name: appointment.medecin_nom,
+              specialite: appointment.specialite
+            };
+          }
+        });
       
-      setDoctors(Object.values(uniqueDoctors));
+      setDoctors(Object.values(doctorsWithConfirmedAppointments));
     } catch (err) {
-      setError("Erreur lors du chargement des rendez-vous");
+      setError("Erreur lors du chargement des médecins");
       console.error(err);
     }
   };
@@ -66,39 +68,19 @@ function DocumentPartage() {
   const handleUpload = async (e) => {
     e.preventDefault();
     try {
-      // Find the first appointment with the selected doctor to associate the document
-      let appointmentId = uploadData.rendez_vous;
-      
-      // If we're using doctor selection instead of direct appointment selection
-      if (!uploadData.rendez_vous && uploadData.doctor) {
-        // Find the most recent appointment with this doctor
-        const doctorAppointments = appointments.filter(app => 
-          app.medecin === uploadData.doctor && 
-          (app.statut === "CONFIRMED" || app.statut === "TERMINE")
-        );
-        
-        if (doctorAppointments.length > 0) {
-          // Sort by date and get the most recent
-          doctorAppointments.sort((a, b) => new Date(b.date) - new Date(a.date));
-          appointmentId = doctorAppointments[0].id;
-        } else {
-          throw new Error("Aucun rendez-vous confirmé trouvé avec ce médecin");
-        }
-      }
-      
-      if (!appointmentId) {
-        throw new Error("Veuillez sélectionner un rendez-vous ou un médecin");
+      if (!uploadData.doctor) {
+        throw new Error("Veuillez sélectionner un médecin");
       }
       
       const formData = new FormData();
-      formData.append('rendez_vous', appointmentId);
+      formData.append('medecin', uploadData.doctor);
       formData.append('file', uploadData.file);
       formData.append('document_type', uploadData.document_type);
       formData.append('description', uploadData.description);
       
       await medicalDocumentAPI.createDocument(formData);
       setShowUploadModal(false);
-      setUploadData({ rendez_vous: "", file: null, document_type: "", description: "" });
+      setUploadData({ doctor: "", file: null, document_type: "", description: "" });
       loadDocuments();
     } catch (err) {
       setError("Erreur lors de l'upload du document: " + (err.message || err.response?.data?.error || ""));
@@ -156,7 +138,7 @@ function DocumentPartage() {
                   <p className="card-text">{document.description}</p>
                   <p className="card-text">
                     <small className="text-muted">
-                      Partagé le {formatDate(document.uploaded_at)} avec Dr. {document.rendez_vous_medecin_nom}
+                      Partagé le {formatDate(document.uploaded_at)} avec Dr. {document.medecin_nom}
                     </small>
                   </p>
                   <div className="d-flex justify-content-between">
@@ -202,8 +184,9 @@ function DocumentPartage() {
                     <label className="form-label">Sélectionner un médecin</label>
                     <select
                       className="form-control"
-                      value={uploadData.doctor || ""}
-                      onChange={(e) => setUploadData({...uploadData, doctor: e.target.value, rendez_vous: ""})}
+                      value={uploadData.doctor}
+                      onChange={(e) => setUploadData({...uploadData, doctor: e.target.value})}
+                      required
                     >
                       <option value="">Sélectionnez un médecin</option>
                       {doctors.map(doctor => (
@@ -212,31 +195,10 @@ function DocumentPartage() {
                         </option>
                       ))}
                     </select>
+                    <small className="form-text text-muted">
+                      Vous pouvez uniquement partager des documents avec des médecins avec lesquels vous avez des rendez-vous confirmés.
+                    </small>
                   </div>
-                  
-                  {uploadData.doctor && (
-                    <div className="mb-3">
-                      <label className="form-label">Rendez-vous associé (sélectionné automatiquement)</label>
-                      <select
-                        className="form-control"
-                        value={uploadData.rendez_vous}
-                        onChange={(e) => setUploadData({...uploadData, rendez_vous: e.target.value})}
-                        required
-                      >
-                        <option value="">Sélectionnez un rendez-vous</option>
-                        {appointments
-                          .filter(app => app.medecin === uploadData.doctor && (app.statut === "CONFIRMED" || app.statut === "TERMINE"))
-                          .map(appointment => (
-                            <option key={appointment.id} value={appointment.id}>
-                              {appointment.date} à {appointment.heure}
-                            </option>
-                          ))}
-                      </select>
-                      <small className="form-text text-muted">
-                        Un rendez-vous confirmé avec ce médecin est requis pour partager un document.
-                      </small>
-                    </div>
-                  )}
                   
                   <div className="mb-3">
                     <label className="form-label">Fichier</label>
@@ -280,7 +242,7 @@ function DocumentPartage() {
                   <button 
                     type="submit" 
                     className="btn btn-primary"
-                    disabled={!uploadData.doctor || !uploadData.rendez_vous || !uploadData.file || !uploadData.document_type}
+                    disabled={!uploadData.doctor || !uploadData.file || !uploadData.document_type}
                   >
                     Partager
                   </button>

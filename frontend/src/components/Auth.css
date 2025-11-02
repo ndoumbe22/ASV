@@ -261,14 +261,23 @@
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #718096;
+  color: #000000; /* Changed to black color for better visibility */
   cursor: pointer;
   padding: 0.5rem;
   transition: color 0.2s ease;
+  font-size: 1.2rem; /* Increased size for better visibility */
+  z-index: 10; /* Ensure it's on top */
+  text-shadow: 0 0 1px rgba(0,0,0,0.1); /* Add subtle shadow for better contrast */
 }
 
 .password-toggle-btn:hover {
   color: #667eea;
+}
+
+/* Ensure the icon is always visible */
+.password-toggle-btn i {
+  color: #000000 !important; /* Force black color with !important */
+  font-weight: bold;
 }
 
 /* Password Strength */
@@ -425,6 +434,18 @@
 .auth-link:hover {
   color: #764ba2;
   text-decoration: underline;
+}
+
+/* Slot Button Styles */
+.slot-button.unavailable {
+  background-color: #e0e0e0 !important;
+  color: #999 !important;
+  cursor: not-allowed !important;
+  opacity: 0.5;
+}
+
+.slot-button:disabled {
+  pointer-events: none;
 }
 
 /* Responsive Design */

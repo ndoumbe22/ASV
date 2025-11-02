@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { patientAPI, appointmentAPI } from "../../services/api";
-import { FaCalendarCheck, FaUserMd, FaSearch, FaEdit, FaVideo } from "react-icons/fa";
+import { rendezVousAPI, patientAPI } from "../../services/api";
+import { FaCalendarCheck, FaUserMd, FaSearch, FaEdit, FaVideo, FaArrowLeft, FaHistory, FaCheck, FaClock, FaTimes } from "react-icons/fa";
 import appointmentReminderService from "../../services/appointmentReminderService";
 
 function RendezVous() {
   const navigate = useNavigate();
-  const [rendezvous, setRendezvous] = useState([]);
+  const [rendezvous, setRendezvous] = useState([]); // ✅ DOIT être [] par défaut
   const [filteredRdv, setFilteredRdv] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [todaysAppointments, setTodaysAppointments] = useState([]);
+  const [filter, setFilter] = useState("à_venir"); // Changed default to "à_venir" to show pending appointments
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // Check for today's appointments
   useEffect(() => {
@@ -49,62 +51,135 @@ function RendezVous() {
   }, [rendezvous]);
 
   // Charger les rendez-vous depuis l'API
-  useEffect(() => {
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true);
-        const response = await patientAPI.getAppointments();
-        setRendezvous(response.data);
-        setFilteredRdv(response.data);
-        setLoading(false);
+  const chargerMesRendezVous = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Chargement RDV patient...');
+      console.log('📊 Filtre actuel:', filter);
+      
+      let rdvs;
+      if (filter === 'à_venir') {
+        // Charger TOUS les rendez-vous, puis filtrer côté frontend
+        const allRdvs = await rendezVousAPI.mesRendezVous();
+        console.log('📥 Tous les RDV:', allRdvs);
         
-        // Initialize appointment reminders for confirmed appointments
-        response.data
+        // Filtrer pour garder seulement les RDV futurs (PENDING ou CONFIRMED)
+        const now = new Date();
+        rdvs = allRdvs.filter(rdv => {
+          const rdvDate = new Date(rdv.date_rdv || rdv.date);
+          const isFuture = rdvDate >= now;
+          const isPendingOrConfirmed = ['PENDING', 'CONFIRMED'].includes(rdv.statut);
+          
+          console.log(`RDV ${rdv.id}: date=${rdvDate}, isFuture=${isFuture}, statut=${rdv.statut}, inclus=${isFuture && isPendingOrConfirmed}`);
+          
+          return isFuture && isPendingOrConfirmed;
+        });
+        
+        console.log('✅ RDV à venir filtrés:', rdvs.length);
+        
+      } else if (filter === 'historique') {
+        rdvs = await rendezVousAPI.historique();
+        console.log('📥 RDV historique:', rdvs);
+      } else {
+        rdvs = await rendezVousAPI.mesRendezVous();
+        console.log('📥 Tous les RDV:', rdvs);
+      }
+      
+      console.log('✅ RDV reçus:', rdvs);
+      console.log('📊 Nombre:', rdvs.length);
+      
+      // Afficher le détail des RDV PENDING
+      const pendingRdvs = rdvs.filter(rdv => rdv.statut === 'PENDING');
+      console.log('⏳ RDV en attente:', pendingRdvs);
+      console.log('📊 Nombre en attente:', pendingRdvs.length);
+      
+      // VÉRIFIE QUE rdvs est un array
+      if (Array.isArray(rdvs)) {
+        setRendezvous(rdvs);
+        setFilteredRdv(rdvs);
+      } else {
+        console.warn('⚠️ Réponse non-array:', rdvs);
+        setRendezvous([]);
+        setFilteredRdv([]);
+      }
+      
+      setLoading(false);
+      
+      // Initialize appointment reminders for confirmed appointments
+      if (Array.isArray(rdvs)) {
+        rdvs
           .filter(app => app.statut === "CONFIRMED")
           .forEach(app => {
             appointmentReminderService.addAppointmentReminder(app);
           });
-      } catch (err) {
-        setError("Erreur lors du chargement des rendez-vous");
-        setLoading(false);
-        console.error("Erreur lors du chargement des rendez-vous :", err);
       }
-    };
+      
+    } catch (error) {
+      console.error('❌ Erreur chargement RDV:', error);
+      setRendezvous([]); // ✅ Initialiser à [] en cas d'erreur
+      setFilteredRdv([]);
+      setError("Erreur lors du chargement des rendez-vous");
+      setLoading(false);
+    }
+  };
 
-    fetchAppointments();
-  }, []);
-
-  // Filtrer selon recherche
   useEffect(() => {
-    const filtered = rendezvous.filter(
-      (rdv) =>
-        rdv.medecin_nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        rdv.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        rdv.date?.includes(searchTerm)
-    );
+    chargerMesRendezVous();
+  }, [filter]);
+
+  // Filtrer selon recherche et statut
+  useEffect(() => {
+    let filtered = Array.isArray(rendezvous) 
+      ? rendezvous.filter(
+          (rdv) =>
+            rdv.medecin_nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            rdv.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            rdv.date?.includes(searchTerm)
+        )
+      : [];
+      
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(rdv => rdv.statut === statusFilter);
+    }
+    
+    // Sort by date and time (closest future date first)
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.date_rdv || `${a.date}T${a.heure}`);
+      const dateB = new Date(b.date_rdv || `${b.date}T${b.heure}`);
+      return dateB - dateA; // Sort by date descending for history
+    });
+    
     setFilteredRdv(filtered);
-  }, [searchTerm, rendezvous]);
+  }, [searchTerm, rendezvous, statusFilter]);
 
   // Annuler un rendez-vous
-  const cancelAppointment = async (appointment) => {
+  const handleAnnuler = async (rdvId) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir annuler ce rendez-vous ?')) {
+      return;
+    }
+    
     try {
-      // Use the ID field that's available in the appointment object
-      const id = appointment.id || appointment.numero;
-      
-      await patientAPI.cancelAppointment(id);
+      await rendezVousAPI.annuler(rdvId);
       setRendezvous((prev) =>
-        prev.map((rdv) =>
-          (rdv.id === id || rdv.numero === id) ? { ...rdv, statut: "CANCELLED" } : rdv
-        )
+        Array.isArray(prev) 
+          ? prev.map((rdv) =>
+              (rdv.id === rdvId || rdv.numero === rdvId) ? { ...rdv, statut: "CANCELLED" } : rdv
+            )
+          : []
       );
       
       // Remove the reminder for this appointment
-      appointmentReminderService.removeReminder(id);
+      appointmentReminderService.removeReminder(rdvId);
       
       // Show success message
       alert("Rendez-vous annulé avec succès !");
+      
+      // Recharger la liste
+      chargerMesRendezVous();
+      
     } catch (error) {
-      console.error("Erreur lors de l'annulation :", error);
+      console.error('❌ Erreur annulation:', error);
       
       // Show specific error message to user
       let errorMessage = "Erreur lors de l'annulation du rendez-vous. Veuillez réessayer.";
@@ -150,23 +225,21 @@ function RendezVous() {
       // Use the ID field that's available in the appointment object
       const id = appointment.id || appointment.numero;
       
+      // Note: This functionality might need to be updated to use rendezVousAPI if available
+      // For now, keeping existing implementation as it may require backend changes
       await patientAPI.rescheduleAppointment(id, { date: newDate, heure: newHeure });
-      const updatedRdv = {
-        ...rendezvous.find(rdv => (rdv.id === id || rdv.numero === id)),
-        date: newDate,
-        heure: newHeure,
-        statut: "RESCHEDULED"
-      };
       
       setRendezvous((prev) =>
-        prev.map((rdv) =>
-          (rdv.id === id || rdv.numero === id) ? updatedRdv : rdv
-        )
+        Array.isArray(prev)
+          ? prev.map((rdv) =>
+              (rdv.id === id || rdv.numero === id) ? { ...rdv, date: newDate, heure: newHeure, statut: "RESCHEDULED" } : rdv
+            )
+          : []
       );
       
       // Update the reminder for this appointment
       appointmentReminderService.removeReminder(id);
-      appointmentReminderService.addAppointmentReminder(updatedRdv);
+      // Add new reminder if needed
       
       // Show success message
       alert("Rendez-vous reprogrammé avec succès !");
@@ -218,20 +291,16 @@ function RendezVous() {
       const id = appointment.id || appointment.numero;
       
       // Use the propose reschedule API endpoint
+      // Note: This functionality might need to be updated to use rendezVousAPI if available
+      // For now, keeping existing implementation as it may require backend changes
       const response = await patientAPI.proposeReschedule(id, { date: newDate, heure: newHeure });
       
-      // Update the appointment status to RESCHEDULED (matching backend)
-      const updatedRdv = {
-        ...rendezvous.find(rdv => (rdv.id === id || rdv.numero === id)),
-        date: newDate,
-        heure: newHeure,
-        statut: "RESCHEDULED"
-      };
-      
       setRendezvous((prev) =>
-        prev.map((rdv) =>
-          (rdv.id === id || rdv.numero === id) ? updatedRdv : rdv
-        )
+        Array.isArray(prev)
+          ? prev.map((rdv) =>
+              (rdv.id === id || rdv.numero === id) ? { ...rdv, date: newDate, heure: newHeure, statut: "RESCHEDULED" } : rdv
+            )
+          : []
       );
       
       // Remove the reminder for this appointment since it's now rescheduled
@@ -273,9 +342,9 @@ function RendezVous() {
       return minutesDiff > 30;
     }
     
-    // Si le rendez-vous est reprogrammé, on ne peut pas en proposer un autre immédiatement
+    // Si le rendez-vous est reprogrammé, on peut en proposer un autre immédiatement
     if (rdv.statut === "RESCHEDULED") {
-      return false;
+      return true;
     }
     
     // Pour les autres statuts, on ne peut pas reprogrammer
@@ -290,13 +359,23 @@ function RendezVous() {
     return false;
   };
 
-  // Déterminer la couleur du fond selon le statut
-  const getStatusBg = (statut) => {
-    if (statut === "CONFIRMED") return "#d4edda"; // vert clair
-    if (statut === "RESCHEDULED") return "#fff3cd"; // orange clair
-    if (statut === "CANCELLED") return "#f8d7da"; // rouge clair
-    if (statut === "PENDING") return "#cce7ff"; // bleu clair
-    return "#f5f6fa"; // neutre
+  // Get status badge with color
+  const getStatusBadge = (statut) => {
+    const statusConfig = {
+      "CONFIRMED": { text: "Confirmé", color: "success", icon: <FaCheck /> },
+      "PENDING": { text: "En attente", color: "warning", icon: <FaClock /> },
+      "CANCELLED": { text: "Annulé", color: "danger", icon: <FaTimes /> },
+      "RESCHEDULED": { text: "Reprogrammé", color: "info", icon: <FaEdit /> }
+    };
+    
+    const config = statusConfig[statut] || { text: statut, color: "secondary", icon: null };
+    
+    return (
+      <span className={`badge bg-${config.color} d-flex align-items-center gap-1`}>
+        {config.icon}
+        {config.text}
+      </span>
+    );
   };
 
   // Vérifier si un rendez-vous est aujourd'hui
@@ -352,7 +431,7 @@ function RendezVous() {
   return (
     <div className="container-fluid">
       {/* Teleconsultation Banner */}
-      {todaysAppointments.length > 0 && (
+      {Array.isArray(todaysAppointments) && todaysAppointments.length > 0 && (
         <div className="alert alert-info alert-dismissible fade show mb-4" role="alert">
           <div className="d-flex align-items-center">
             <FaVideo className="me-2" />
@@ -372,140 +451,249 @@ function RendezVous() {
       )}
       
       <div className="row">
+        {/* Back button */}
+        <div className="col-12 mb-4">
+          <button 
+            className="btn btn-outline-secondary d-flex align-items-center gap-2"
+            onClick={() => navigate("/patient/dashboard")}
+          >
+            <FaArrowLeft />
+            Retour au tableau de bord
+          </button>
+        </div>
+        
         {/* Sidebar */}
         <div className="col-md-3">
-          <div className="card shadow-sm p-3 mb-4">
-            <h5>Rendez-vous</h5>
-            <ul className="list-group">
-              <li className="list-group-item active">Mes Rendez-vous</li>
-              <li className="list-group-item">Historique</li>
-              <li className="list-group-item">Annulés</li>
-            </ul>
+          <div className="card shadow-sm">
+            <div className="card-header bg-primary text-white">
+              <h5 className="mb-0">Filtres</h5>
+            </div>
+            <div className="list-group list-group-flush">
+              <button 
+                className={`list-group-item list-group-item-action d-flex align-items-center gap-2 ${filter === 'historique' ? 'active' : ''}`}
+                onClick={() => setFilter('historique')}
+              >
+                <FaHistory />
+                Historique
+              </button>
+              <button 
+                className={`list-group-item list-group-item-action d-flex align-items-center gap-2 ${filter === 'à_venir' ? 'active' : ''}`}
+                onClick={() => setFilter('à_venir')}
+              >
+                <FaCalendarCheck />
+                À venir
+              </button>
+              <button 
+                className={`list-group-item list-group-item-action d-flex align-items-center gap-2 ${filter === 'tous' ? 'active' : ''}`}
+                onClick={() => setFilter('tous')}
+              >
+                <FaUserMd />
+                Tous les RDV
+              </button>
+            </div>
+            
+            <div className="card-body border-top">
+              <h6 className="card-title">Filtrer par statut</h6>
+              <div className="d-flex flex-column gap-2">
+                <button 
+                  className={`btn btn-sm ${statusFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setStatusFilter('all')}
+                >
+                  Tous les statuts
+                </button>
+                <button 
+                  className={`btn btn-sm ${statusFilter === 'CONFIRMED' ? 'btn-success' : 'btn-outline-success'}`}
+                  onClick={() => setStatusFilter('CONFIRMED')}
+                >
+                  Confirmés
+                </button>
+                <button 
+                  className={`btn btn-sm ${statusFilter === 'PENDING' ? 'btn-warning' : 'btn-outline-warning'}`}
+                  onClick={() => setStatusFilter('PENDING')}
+                >
+                  En attente
+                </button>
+                <button 
+                  className={`btn btn-sm ${statusFilter === 'CANCELLED' ? 'btn-danger' : 'btn-outline-danger'}`}
+                  onClick={() => setStatusFilter('CANCELLED')}
+                >
+                  Annulés
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Main Content */}
         <div className="col-md-9">
           <div className="d-flex justify-content-between align-items-center mb-4">
-            <h2>Mes Rendez-vous</h2>
-            <div style={{ position: "relative", width: "250px" }}>
-              <input
-                type="text"
-                placeholder="Rechercher un rendez-vous..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="form-control"
-              />
-              <FaSearch
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  right: "12px",
-                  transform: "translateY(-50%)",
-                  color: "#888",
-                }}
-              />
+            <h2>
+              {filter === 'historique' && 'Historique des Rendez-vous'}
+              {filter === 'à_venir' && 'Rendez-vous à venir'}
+              {filter === 'tous' && 'Tous les Rendez-vous'}
+            </h2>
+            <div className="d-flex gap-2">
+              <div style={{ position: "relative", width: "250px" }}>
+                <input
+                  type="text"
+                  placeholder="Rechercher un rendez-vous..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="form-control"
+                />
+                <FaSearch
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    right: "12px",
+                    transform: "translateY(-50%)",
+                    color: "#888",
+                  }}
+                />
+              </div>
             </div>
           </div>
 
-          {filteredRdv.length === 0 ? (
+          {/* DANS le rendu JSX, VÉRIFIE qu'on vérifie toujours si c'est un array */}
+          {Array.isArray(filteredRdv) && filteredRdv.length === 0 ? (
             <div className="card shadow-sm p-5 text-center">
-              <h4>Aucun rendez-vous planifié</h4>
-              <p>Vous n'avez aucun rendez-vous à venir.</p>
+              <h4>Aucun rendez-vous trouvé</h4>
+              <p>
+                {filter === 'historique' && 'Vous n\'avez aucun rendez-vous dans l\'historique.'}
+                {filter === 'à_venir' && 'Vous n\'avez aucun rendez-vous à venir.'}
+                {filter === 'tous' && 'Vous n\'avez aucun rendez-vous.'}
+              </p>
               <a href="/patient/prise-rendez-vous" className="btn btn-success">Prendre un rendez-vous</a>
             </div>
           ) : (
-            <div className="row g-3">
-              {filteredRdv.map((rdv, index) => (
-                <div key={`rdv-${rdv.id || rdv.numero || index}`} className="col-md-6">
-                  <div className="card shadow-sm p-3" style={{ backgroundColor: getStatusBg(rdv.statut) }}>
-                    <div className="d-flex justify-content-between align-items-start">
-                      {/* Info rendez-vous */}
-                      <div>
-                        <h6 className="mb-1"><strong>{rdv.date}</strong> - {rdv.heure}</h6>
-                        <p className="mb-1"><FaUserMd className="me-1 text-primary" /> {rdv.medecin_nom}</p>
-                        <p className="mb-1"><em>{rdv.description}</em></p>
-                        <p className="mb-1" style={{ fontSize: "13px", color: "#6c757d" }}>
-                          Statut :{" "}
-                          {rdv.statut === "CONFIRMED" && <span style={{ color: "green" }}>✔ Confirmé</span>}
-                          {rdv.statut === "RESCHEDULED" && <span style={{ color: "#ff9800" }}>↻ Reprogrammé</span>}
-                          {rdv.statut === "CANCELLED" && <span style={{ color: "red" }}>✖ Annulé</span>}
-                          {rdv.statut === "PENDING" && <span style={{ color: "#1976d2" }}>⏳ En attente</span>}
-                        </p>
-                        <p className="mb-1" style={{ fontSize: "13px", color: "#6c757d" }}>
-                          Type :{" "}
-                          {rdv.type_consultation === "teleconsultation" ? (
-                            <span style={{ color: "#17a2b8" }}>📹 Téléconsultation en ligne</span>
-                          ) : (
-                            <span style={{ color: "#28a745" }}>🏥 Consultation au cabinet</span>
+            <div className="row g-4">
+              {Array.isArray(filteredRdv) && filteredRdv.map((rdv, index) => (
+                <div key={`rdv-${rdv.id || rdv.numero || index}`} className="col-md-12">
+                  <div className="card border-0 shadow-sm h-100">
+                    <div className="card-body">
+                      <div className="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                          <h5 className="card-title mb-1">{rdv.medecin_nom}</h5>
+                          <div className="d-flex align-items-center gap-3 text-muted mb-2">
+                            <span><i className="bi bi-calendar-event"></i> {rdv.date}</span>
+                            <span><i className="bi bi-clock"></i> {rdv.heure || '00:00'}</span>
+                            <span>
+                              <i className={`bi ${rdv.type_consultation === "teleconsultation" ? "bi-camera-video" : "bi-building"}`}></i>
+                              {rdv.type_consultation === "teleconsultation" ? " Téléconsultation" : " Cabinet"}
+                            </span>
+                          </div>
+                          <p className="text-muted mb-0">{rdv.description}</p>
+                        </div>
+                        
+                        <div className="d-flex flex-column align-items-end gap-2">
+                          {getStatusBadge(rdv.statut)}
+                          {isToday(rdv.date) && (
+                            <span className="badge bg-info">
+                              <FaVideo className="me-1" />
+                              Aujourd'hui
+                            </span>
                           )}
-                        </p>
+                        </div>
                       </div>
-
-                      {/* Actions */}
-                      {rdv.statut === "CONFIRMED" && (
-                        <div className="d-flex flex-column gap-2">
-                          {isToday(rdv.date) && (
-                            <button className="btn btn-sm btn-info" onClick={() => goToTeleconsultation(rdv)}>
-                              <FaVideo className="me-1" /> Téléconsultation
-                            </button>
+                      
+                      <div className="d-flex justify-content-between align-items-center">
+                        <div>
+                          {rdv.statut === "CONFIRMED" && (
+                            <div className="d-flex gap-2">
+                              {isToday(rdv.date) && (
+                                <button 
+                                  className="btn btn-sm btn-info"
+                                  onClick={() => goToTeleconsultation(rdv)}
+                                >
+                                  <FaVideo className="me-1" /> Téléconsultation
+                                </button>
+                              )}
+                              {canReschedule(rdv) ? (
+                                <>
+                                  <button 
+                                    className="btn btn-sm btn-warning"
+                                    onClick={() => proposeReschedule(rdv)}
+                                  >
+                                    <FaEdit className="me-1" /> Proposer un changement
+                                  </button>
+                                  <button 
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => handleAnnuler(rdv.id || rdv.numero)}
+                                  >
+                                    Annuler
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button 
+                                    className="btn btn-sm btn-secondary"
+                                    disabled
+                                  >
+                                    Changement possible après 30 min
+                                  </button>
+                                  <button 
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => handleAnnuler(rdv.id || rdv.numero)}
+                                  >
+                                    Annuler
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           )}
-                          {canReschedule(rdv) ? (
-                            <>
-                              <button className="btn btn-sm btn-warning" onClick={() => proposeReschedule(rdv)}>
-                                <FaEdit className="me-1" /> Proposer un changement
+                          
+                          {rdv.statut === "PENDING" && (
+                            <div className="d-flex gap-2">
+                              <button className="btn btn-sm btn-info" disabled>
+                                En attente de confirmation
                               </button>
-                              <button className="btn btn-sm btn-danger" onClick={() => cancelAppointment(rdv)}>
+                              <button 
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleAnnuler(rdv.id || rdv.numero)}
+                              >
                                 Annuler
                               </button>
-                            </>
-                          ) : (
-                            <>
+                            </div>
+                          )}
+                          
+                          {rdv.statut === "RESCHEDULED" && (
+                            <div className="d-flex gap-2">
+                              {isToday(rdv.date) && (
+                                <button 
+                                  className="btn btn-sm btn-info"
+                                  onClick={() => goToTeleconsultation(rdv)}
+                                >
+                                  <FaVideo className="me-1" /> Téléconsultation
+                                </button>
+                              )}
+                              <button 
+                                className="btn btn-sm btn-warning"
+                                onClick={() => proposeReschedule(rdv)}
+                              >
+                                <FaEdit className="me-1" /> Proposer un autre changement
+                              </button>
+                              <button 
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleAnnuler(rdv.id || rdv.numero)}
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          )}
+                          
+                          {rdv.statut === "CANCELLED" && (
+                            <div>
                               <button className="btn btn-sm btn-secondary" disabled>
-                                Changement possible après 30 min
+                                Rendez-vous annulé
                               </button>
-                              <button className="btn btn-sm btn-danger" onClick={() => cancelAppointment(rdv)}>
-                                Annuler
-                              </button>
-                            </>
+                            </div>
                           )}
                         </div>
-                      )}
-                      
-                      {rdv.statut === "PENDING" && (
-                        <div className="d-flex flex-column gap-2">
-                          <button className="btn btn-sm btn-info" disabled>
-                            En attente de confirmation
-                          </button>
-                          <button className="btn btn-sm btn-danger" onClick={() => cancelAppointment(rdv)}>
-                            Annuler
-                          </button>
+                        
+                        <div className="text-end">
+                          <small className="text-muted">RDV #{rdv.id || rdv.numero}</small>
                         </div>
-                      )}
-                      
-                      {rdv.statut === "RESCHEDULED" && (
-                        <div className="d-flex flex-column gap-2">
-                          {isToday(rdv.date) && (
-                            <button className="btn btn-sm btn-info" onClick={() => goToTeleconsultation(rdv)}>
-                              <FaVideo className="me-1" /> Téléconsultation
-                            </button>
-                          )}
-                          <button className="btn btn-sm btn-warning" onClick={() => proposeReschedule(rdv)}>
-                            <FaEdit className="me-1" /> Proposer un autre changement
-                          </button>
-                          <button className="btn btn-sm btn-danger" onClick={() => cancelAppointment(rdv)}>
-                            Annuler
-                          </button>
-                        </div>
-                      )}
-                      
-                      {rdv.statut === "CANCELLED" && (
-                        <div className="d-flex flex-column gap-2">
-                          <button className="btn btn-sm btn-secondary" disabled>
-                            Annulé
-                          </button>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>

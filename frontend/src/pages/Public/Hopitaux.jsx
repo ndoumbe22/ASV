@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { hospitalAPI } from "../../services/api";
 
 function Hopitaux() {
   const [hospitals, setHospitals] = useState([]);
@@ -9,55 +8,47 @@ function Hopitaux() {
   const mapContainerRef = useRef(null);
 
   useEffect(() => {
-    const fetchHospitals = async () => {
-      try {
-        const response = await hospitalAPI.getHospitals();
-        setHospitals(response.data);
-        setFilteredHospitals(response.data);
-      } catch (error) {
-        console.error("Error fetching hospitals:", error);
-        // Fallback to mock data if API fails
-        const mockHospitals = [
-          {
-            id: 1,
-            nom: "Hôpital Principal de Dakar",
-            adresse: "Avenue Georges Pompidou, Dakar",
-            telephone: "+221 33 123 45 67",
-            email: "contact@hpd.sn",
-            site_web: "https://www.hopital-principal.sn",
-          },
-          {
-            id: 2,
-            nom: "Hôpital Aristide Le Dantec",
-            adresse: "Rue Carnot, Dakar",
-            telephone: "+221 33 987 65 43",
-            email: "info@ald.sn",
-            site_web: "https://www.ald.sn",
-          },
-          {
-            id: 3,
-            nom: "Clinique Pasteur",
-            adresse: "Avenue Malick Sy, Dakar",
-            telephone: "+221 33 456 78 90",
-            email: "contact@pasteur.sn",
-            site_web: "https://www.pasteur.sn",
-          },
-        ];
-        setHospitals(mockHospitals);
-        setFilteredHospitals(mockHospitals);
-      }
-    };
-
-    fetchHospitals();
+    // Mock data since the API doesn't exist
+    const mockHospitals = [
+      {
+        id: 1,
+        nom: "Hôpital Principal de Dakar",
+        adresse: "Avenue Georges Pompidou, Dakar",
+        telephone: "+221 33 123 45 67",
+        email: "contact@hpd.sn",
+        site_web: "https://www.hopital-principal.sn",
+      },
+      {
+        id: 2,
+        nom: "Hôpital Aristide Le Dantec",
+        adresse: "Rue Carnot, Dakar",
+        telephone: "+221 33 987 65 43",
+        email: "info@ald.sn",
+        site_web: "https://www.ald.sn",
+      },
+      {
+        id: 3,
+        nom: "Clinique Pasteur",
+        adresse: "Avenue Malick Sy, Dakar",
+        telephone: "+221 33 456 78 90",
+        email: "contact@pasteur.sn",
+        site_web: "https://www.pasteur.sn",
+      },
+    ];
+    setHospitals(mockHospitals);
+    setFilteredHospitals(mockHospitals);
   }, []);
 
   useEffect(() => {
-    const filtered = hospitals.filter(
-      (hospital) =>
-        hospital.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        hospital.adresse.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredHospitals(filtered);
+    // Ensure hospitals is an array before filtering
+    if (Array.isArray(hospitals)) {
+      const filtered = hospitals.filter(
+        (hospital) =>
+          hospital.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          hospital.adresse.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredHospitals(filtered);
+    }
   }, [searchTerm, hospitals]);
 
   // Initialize map with proper cleanup

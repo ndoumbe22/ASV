@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
-import { patientAPI, userAPI, articleAPI } from "../../services/api";
+import { patientAPI, userAPI, articleAPI, consultationAPI, rendezVousAPI } from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import "../../components/DashboardLayout.css";
 import EnhancedChatbot from "../../components/EnhancedChatbot";
@@ -31,6 +31,118 @@ function DonezoPatientDashboard() {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all'); // all, upcoming, past, cancelled
   const navigate = useNavigate();
+  
+  // New states for the enhanced dashboard
+  const [rdvConfirmes, setRdvConfirmes] = useState(new Set());
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [statsRdvSemaine, setStatsRdvSemaine] = useState({
+    labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+    data: [0, 0, 0, 0, 0, 0, 0]
+  });
+  const [filtreRdv, setFiltreRdv] = useState('tous'); // 'tous', 'a_venir', 'en_attente', 'annules'
+  const [rdvFiltres, setRdvFiltres] = useState([]);
+
+  // Charger les RDV pour le mois
+  const chargerRdvMois = async () => {
+    try {
+      const response = await rendezVousAPI.mesRendezVous();
+      const tousRdv = Array.isArray(response) ? response : (response.data || []);
+      
+      // Filtrer les RDV confirmés pour ce mois
+      const moisActuel = selectedMonth.getMonth();
+      const anneeActuelle = selectedMonth.getFullYear();
+      
+      const rdvMois = tousRdv.filter(rdv => {
+        const dateRdv = new Date(rdv.date);
+        return rdv.statut === 'CONFIRMED' && 
+               dateRdv.getMonth() === moisActuel &&
+               dateRdv.getFullYear() === anneeActuelle;
+      });
+      
+      // Créer un Set des dates avec RDV (format YYYY-MM-DD)
+      const datesAvecRdv = new Set(rdvMois.map(rdv => rdv.date));
+      
+      setRdvConfirmes(datesAvecRdv);
+      
+    } catch (error) {
+      console.error('Erreur chargement RDV mois:', error);
+    }
+  };
+
+  // Charger les stats des RDV de la semaine
+  const chargerStatsRdvSemaine = async () => {
+    try {
+      const response = await rendezVousAPI.mesRendezVous();
+      const tousRdv = Array.isArray(response) ? response : (response.data || []);
+      
+      // Définir la semaine actuelle (lundi → dimanche)
+      const aujourdhui = new Date();
+      const jourSemaine = aujourdhui.getDay(); // 0=dimanche, 1=lundi, ...
+      const premierJour = new Date(aujourdhui);
+      premierJour.setDate(aujourdhui.getDate() - (jourSemaine === 0 ? 6 : jourSemaine - 1));
+      
+      // Initialiser compteur par jour
+      const rdvParJour = [0, 0, 0, 0, 0, 0, 0];
+      
+      // Compter les RDV par jour de la semaine (TOUS les statuts sauf CANCELLED)
+      tousRdv
+        .filter(rdv => rdv.statut !== 'CANCELLED')
+        .forEach(rdv => {
+          const dateRdv = new Date(rdv.date);
+          const diffJours = Math.floor((dateRdv - premierJour) / (1000 * 60 * 60 * 24));
+          
+          // Si le RDV est dans la semaine actuelle
+          if (diffJours >= 0 && diffJours < 7) {
+            rdvParJour[diffJours]++;
+          }
+        });
+      
+      setStatsRdvSemaine({
+        labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+        data: rdvParJour
+      });
+      
+    } catch (error) {
+      console.error('Erreur stats semaine:', error);
+    }
+  };
+
+  // Filtrer les RDV selon l'onglet actif
+  const filtrerRdv = async () => {
+    try {
+      const response = await rendezVousAPI.mesRendezVous();
+      const tousRdv = Array.isArray(response) ? response : (response.data || []);
+      
+      let rdv = [];
+      const maintenant = new Date();
+      
+      switch(filtreRdv) {
+        case 'tous':
+          rdv = tousRdv.filter(r => r.statut !== 'CANCELLED');
+          break;
+        case 'a_venir':
+          rdv = tousRdv.filter(r => 
+            (r.statut === 'PENDING' || r.statut === 'CONFIRMED') && 
+            new Date(r.date) >= maintenant
+          );
+          break;
+        case 'en_attente':
+          rdv = tousRdv.filter(r => r.statut === 'PENDING');
+          break;
+        case 'annules':
+          rdv = tousRdv.filter(r => r.statut === 'CANCELLED');
+          break;
+      }
+      
+      // Trier par date (plus proche en premier)
+      rdv.sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      setRdvFiltres(rdv);
+      
+    } catch (error) {
+      console.error('Erreur filtrage RDV:', error);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,7 +171,9 @@ function DonezoPatientDashboard() {
           setAppointments(appointmentsData);
           setStats(prev => ({
             ...prev,
-            upcomingAppointments: appointmentsData.length
+            upcomingAppointments: Array.isArray(appointmentsData) 
+              ? appointmentsData.filter(app => app.statut === 'CONFIRMED').length 
+              : 0
           }));
         } catch (appointmentsError) {
           console.error("Error fetching appointments:", appointmentsError);
@@ -72,7 +186,7 @@ function DonezoPatientDashboard() {
           const historyData = historyResponse?.data || [];
           setStats(prev => ({
             ...prev,
-            pastAppointments: historyData.length
+            pastAppointments: Array.isArray(historyData) ? historyData.length : 0
           }));
         } catch (historyError) {
           console.error("Error fetching appointment history:", historyError);
@@ -106,12 +220,26 @@ function DonezoPatientDashboard() {
           setArticles([]);
         }
         
-        // Update stats
-        setStats(prev => ({
-          ...prev,
-          doctors: 5, // This would need a specific API endpoint
-          messages: 8  // This would need a specific API endpoint
-        }));
+        // Fetch consultations count
+        try {
+          const consultationsResponse = await consultationAPI.getConsultations();
+          const consultationsData = consultationsResponse?.data || [];
+          const onlineConsultations = Array.isArray(consultationsData) 
+            ? consultationsData.filter(consultation => consultation.type === 'teleconsultation').length 
+            : 0;
+          setStats(prev => ({
+            ...prev,
+            doctors: 5, // This would need a specific API endpoint
+            messages: onlineConsultations  // Replacing messages with online consultations count
+          }));
+        } catch (consultationsError) {
+          console.error("Error fetching consultations:", consultationsError);
+          setStats(prev => ({
+            ...prev,
+            doctors: 5, // This would need a specific API endpoint
+            messages: 0
+          }));
+        }
         
       } catch (err) {
         console.error("General error fetching data:", err);
@@ -124,31 +252,72 @@ function DonezoPatientDashboard() {
     fetchData();
   }, []);
 
-  // Generate appointment data for charts
+  // Charger les données pour le calendrier et les stats
+  useEffect(() => {
+    chargerRdvMois();
+    chargerStatsRdvSemaine();
+    filtrerRdv();
+  }, [selectedMonth, filtreRdv]);
+
+  // Generate appointment data for charts based on real appointments
   const generateAppointmentData = () => {
+    // Create data for the last 7 days
     const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-    return days.map((day, index) => ({
-      day,
-      count: appointments.filter(app => {
-        // This is a simplified example - in reality, you'd parse the actual appointment dates
-        const dayIndex = new Date().getDay();
-        return (dayIndex + index) % 7 === index;
-      }).length
-    }));
+    const today = new Date();
+    
+    return days.map((day, index) => {
+      // Calculate the date for each day of the week
+      const date = new Date(today);
+      const dayDiff = index - today.getDay() + (index < today.getDay() ? 7 : 0);
+      date.setDate(today.getDate() - today.getDay() + index + (index < today.getDay() ? 7 : 0));
+      
+      // Count appointments for this date
+      const count = Array.isArray(appointments) 
+        ? appointments.filter(app => {
+            if (!app.date) return false;
+            const appDate = new Date(app.date);
+            return appDate.toDateString() === date.toDateString() && app.statut === 'CONFIRMED';
+          }).length 
+        : 0;
+      
+      return {
+        day,
+        count
+      };
+    });
   };
 
-  // Medication adherence data
+  // Medication adherence data based on real medications
   const medicationAdherence = [
-    { name: 'Pris', value: medications.filter(med => med.taken).length || 0 },
-    { name: 'Manqués', value: medications.filter(med => !med.taken).length || 0 }
+    { name: 'Pris', value: Array.isArray(medications) ? medications.filter(med => med.taken).length : 0 },
+    { name: 'Manqués', value: Array.isArray(medications) ? medications.filter(med => !med.taken).length : 0 }
   ];
+
+  // Get appointment dates for calendar highlighting
+  const getAppointmentDates = () => {
+    if (!Array.isArray(appointments)) return [];
+    
+    return appointments
+      .filter(app => app.statut === 'CONFIRMED' && app.date)
+      .map(app => {
+        const date = new Date(app.date);
+        return {
+          date: date.getDate(),
+          month: date.getMonth(),
+          year: date.getFullYear(),
+          fullDate: date.toDateString()
+        };
+      });
+  };
+
+  const appointmentDates = getAppointmentDates();
 
   // Filter appointments based on selected filter
   const filteredAppointments = appointments.filter(app => {
     if (filter === 'all') return true;
-    if (filter === 'upcoming') return app.status === 'confirmed';
-    if (filter === 'pending') return app.status === 'pending';
-    if (filter === 'cancelled') return app.status === 'cancelled';
+    if (filter === 'upcoming') return app.statut === 'CONFIRMED';
+    if (filter === 'pending') return app.statut === 'PENDING';
+    if (filter === 'cancelled') return app.statut === 'CANCELLED';
     return true;
   });
 
@@ -157,7 +326,7 @@ function DonezoPatientDashboard() {
     { title: "RDV à venir", value: stats.upcomingAppointments, icon: <FaCalendar />, color: "bg-teal-100 text-teal-600" },
     { title: "RDV passés", value: stats.pastAppointments, icon: <FaHistory />, color: "bg-blue-100 text-blue-600" },
     { title: "Médecins", value: stats.doctors, icon: <FaUserMd />, color: "bg-green-100 text-green-600" },
-    { title: "Messages", value: stats.messages, icon: <FaEnvelope />, color: "bg-purple-100 text-purple-600" }
+    { title: "Consultations en ligne", value: stats.messages, icon: <FaVideo />, color: "bg-purple-100 text-purple-600" }
   ];
 
   // Quick access buttons for main functionalities
@@ -167,6 +336,12 @@ function DonezoPatientDashboard() {
     { title: "Téléconsultation", icon: <FaVideo />, color: "bg-purple-100 text-purple-600", onClick: () => navigate("/patient/consultations") },
     { title: "Centres de santé", icon: <FaMapMarkerAlt />, color: "bg-red-100 text-red-600", onClick: () => navigate("/patient/localiser-centres") }
   ];
+
+  // Handle day click in calendar
+  const handleDayClick = (day) => {
+    console.log("Day clicked:", day);
+    // Implement day click functionality if needed
+  };
 
   if (loading) {
     return (
@@ -307,95 +482,128 @@ function DonezoPatientDashboard() {
                 </div>
               </div>
               
-              {/* Filters */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                <button 
-                  onClick={() => setFilter('all')}
-                  className={`px-3 py-1 rounded-full text-sm ${filter === 'all' ? 'bg-teal-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  Tous
-                </button>
-                <button 
-                  onClick={() => setFilter('upcoming')}
-                  className={`px-3 py-1 rounded-full text-sm ${filter === 'upcoming' ? 'bg-teal-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  À venir
-                </button>
-                <button 
-                  onClick={() => setFilter('pending')}
-                  className={`px-3 py-1 rounded-full text-sm ${filter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  En attente
-                </button>
-                <button 
-                  onClick={() => setFilter('cancelled')}
-                  className={`px-3 py-1 rounded-full text-sm ${filter === 'cancelled' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  Annulés
-                </button>
-              </div>
-              
+              {/* Calendar */}
               <div className="mb-6">
                 <div className="bg-gray-100 rounded-lg p-4 mb-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="font-semibold">Juin 2025</h3>
+                    <h3 className="font-semibold">
+                      {selectedMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </h3>
                     <div className="flex space-x-2">
-                      <button className="p-1 hover:bg-gray-200 rounded">&lt;</button>
-                      <button className="p-1 hover:bg-gray-200 rounded">&gt;</button>
+                      <button 
+                        className="p-1 hover:bg-gray-200 rounded"
+                        onClick={() => {
+                          const newMonth = new Date(selectedMonth);
+                          newMonth.setMonth(newMonth.getMonth() - 1);
+                          setSelectedMonth(newMonth);
+                        }}
+                      >
+                        &lt;
+                      </button>
+                      <button 
+                        className="p-1 hover:bg-gray-200 rounded"
+                        onClick={() => {
+                          const newMonth = new Date(selectedMonth);
+                          newMonth.setMonth(newMonth.getMonth() + 1);
+                          setSelectedMonth(newMonth);
+                        }}
+                      >
+                        &gt;
+                      </button>
                     </div>
                   </div>
                   <div className="grid grid-cols-7 gap-1 mt-2 text-center text-sm">
                     {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((day, i) => (
                       <div key={i} className="font-medium py-1">{day}</div>
                     ))}
-                    {Array.from({ length: 30 }, (_, i) => (
-                      <div 
-                        key={i} 
-                        className={`p-1 text-center rounded ${
-                          i === 14 ? 'bg-teal-500 text-white' : 
-                          [12, 17, 19].includes(i) ? 'bg-teal-100 text-teal-800' : ''
-                        }`}
-                      >
-                        {i + 1}
-                      </div>
-                    ))}
+                    {Array.from({ length: 31 }, (_, i) => {
+                      const day = i + 1;
+                      const dateStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const hasAppointment = rdvConfirmes.has(dateStr);
+                      
+                      // Skip days that don't exist in this month
+                      const testDate = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), day);
+                      if (testDate.getMonth() !== selectedMonth.getMonth()) {
+                        return <div key={i}></div>;
+                      }
+                      
+                      return (
+                        <div 
+                          key={i} 
+                          className={`calendar-day p-1 text-center rounded cursor-pointer transition-all ${
+                            hasAppointment ? 'has-appointment bg-blue-500 text-white font-bold hover:bg-blue-600 transform hover:scale-105' : ''
+                          }`}
+                          title={hasAppointment ? '📅 Rendez-vous confirmé' : ''}
+                          onClick={() => handleDayClick(day)}
+                        >
+                          {day}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
               
+              {/* RDV Filters */}
+              <div className="d-flex gap-2 mb-3">
+                <button 
+                  className={`btn btn-sm ${filtreRdv === 'tous' ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={() => setFiltreRdv('tous')}
+                >
+                  Tous
+                </button>
+                <button 
+                  className={`btn btn-sm ${filtreRdv === 'a_venir' ? 'btn-success' : 'btn-outline-success'}`}
+                  onClick={() => setFiltreRdv('a_venir')}
+                >
+                  À venir
+                </button>
+                <button 
+                  className={`btn btn-sm ${filtreRdv === 'en_attente' ? 'btn-warning' : 'btn-outline-warning'}`}
+                  onClick={() => setFiltreRdv('en_attente')}
+                >
+                  En attente
+                </button>
+                <button 
+                  className={`btn btn-sm ${filtreRdv === 'annules' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                  onClick={() => setFiltreRdv('annules')}
+                >
+                  Annulés
+                </button>
+              </div>
+              
+              {/* RDV List */}
               <div className="space-y-3">
-                <h3 className="font-semibold text-gray-700">Rendez-vous {filter === 'all' ? '' : filter === 'upcoming' ? 'à venir' : filter === 'pending' ? 'en attente' : 'annulés'}</h3>
-                {filteredAppointments && filteredAppointments.length > 0 ? (
-                  filteredAppointments.slice(0, 3).map(app => (
-                    <div key={app.id || app.appointment_id || app.date + app.time} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                {rdvFiltres && rdvFiltres.length > 0 ? (
+                  rdvFiltres.slice(0, 5).map(rdv => (
+                    <div key={rdv.id || rdv.numero || rdv.date + rdv.heure} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                       <div>
-                        <p className="font-medium">{app.doctor_name || app.doctor || 'Médecin non spécifié'}</p>
+                        <p className="font-medium">{rdv.medecin_nom || 'Médecin non spécifié'}</p>
                         <p className="text-sm text-gray-500">
-                          {app.date ? new Date(app.date).toLocaleDateString('fr-FR') : 'Date non spécifiée'} 
-                          {app.time ? ` à ${app.time}` : ''}
+                          {rdv.date ? new Date(rdv.date).toLocaleDateString('fr-FR') : 'Date non spécifiée'} 
+                          {rdv.heure ? ` à ${rdv.heure}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center space-x-2">
                         <span className={`badge ${
-                          app.status === 'confirmed' ? 'badge-success' : 
-                          app.status === 'pending' ? 'badge-warning' : 
-                          app.status === 'cancelled' ? 'badge-danger' : 'badge-secondary'
+                          rdv.statut === 'CONFIRMED' ? 'badge-success' : 
+                          rdv.statut === 'PENDING' ? 'badge-warning' : 
+                          rdv.statut === 'CANCELLED' ? 'badge-danger' : 'badge-secondary'
                         }`}>
-                          {app.status === 'confirmed' ? 'Confirmé' : 
-                           app.status === 'pending' ? 'En attente' : 
-                           app.status === 'cancelled' ? 'Annulé' : 'Inconnu'}
+                          {rdv.statut === 'CONFIRMED' ? 'Confirmé' : 
+                           rdv.statut === 'PENDING' ? 'En attente' : 
+                           rdv.statut === 'CANCELLED' ? 'Annulé' : 'Inconnu'}
                         </span>
-                        {(app.status === 'confirmed' || app.status === 'pending') && (
-                          <div className="flex space-x-1">
-                            <button className="btn btn-sm btn-warning">Reporter</button>
-                            <button className="btn btn-sm btn-danger">Annuler</button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-gray-500 italic">Aucun rendez-vous {filter === 'all' ? '' : filter === 'upcoming' ? 'à venir' : filter === 'pending' ? 'en attente' : 'annulé'}</p>
+                  <p className="text-gray-500 italic text-center py-4">
+                    Aucun rendez-vous {filtreRdv === 'tous' ? '' : 
+                                      filtreRdv === 'a_venir' ? 'à venir' : 
+                                      filtreRdv === 'en_attente' ? 'en attente' : 
+                                      filtreRdv === 'annules' ? 'annulé' : ''}
+                  </p>
                 )}
               </div>
             </div>
@@ -441,57 +649,61 @@ function DonezoPatientDashboard() {
           {/* Right Column */}
           <div className="space-y-6">
             {/* Charts */}
-            <div className="dashboard-card p-6">
-              <h2 className="section-title mb-4">
-                <FaFileAlt className="text-teal-600" />
-                Activité des rendez-vous
-              </h2>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={generateAppointmentData()}>
+            <div className="card">
+              <div className="card-header">
+                <h5>📊 Activité des rendez-vous</h5>
+                <small className="text-muted">Rendez-vous de cette semaine</small>
+              </div>
+              <div className="card-body">
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={statsRdvSemaine.labels.map((label, index) => ({ 
+                    name: label, 
+                    count: statsRdvSemaine.data[index] || 0 
+                  }))}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="day" />
+                    <XAxis dataKey="name" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="count" fill="#0d9488" name="Rendez-vous" />
+                    <Bar 
+                      dataKey="count" 
+                      fill="#3b82f6" 
+                      name="Nombre de RDV"
+                      radius={[8, 8, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
+                
+                {/* Résumé textuel */}
+                <div className="mt-3 text-center">
+                  <p className="mb-0 text-muted">
+                    <strong>{statsRdvSemaine.data.reduce((a, b) => a + b, 0)}</strong> rendez-vous cette semaine
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Health Articles */}
-            <div className="dashboard-card p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="section-title">
-                  <FaFileAlt className="text-teal-600" />
-                  Articles de santé
-                </h2>
-                <button 
-                  onClick={() => navigate("/articles")}
-                  className="text-teal-600 hover:text-teal-800 flex items-center text-sm"
+            <div className="card">
+              <div className="card-body text-center py-5">
+                <div className="mb-3">
+                  <i className="bi bi-file-text" style={{ fontSize: '4rem', color: '#10b981' }}></i>
+                </div>
+                <h4 className="mb-3">📚 Articles de santé</h4>
+                <p className="text-muted mb-4">
+                  Découvrez nos articles et conseils santé rédigés par des professionnels
+                </p>
+                <a 
+                  href="/articles" 
+                  className="btn btn-success btn-lg px-5"
+                  style={{
+                    fontSize: '1.2rem',
+                    borderRadius: '50px',
+                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
+                  }}
                 >
-                  Voir tout <FaChevronRight className="ml-1 text-xs" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                {articles && articles.length > 0 ? (
-                  articles.map(article => (
-                    <div key={article.id || article.article_id || article.title} className="border-b pb-4 last:border-0 last:pb-0">
-                      <h3 
-                        className="font-medium hover:text-teal-600 cursor-pointer"
-                        onClick={() => article.slug ? navigate(`/articles/${article.slug}`) : null}
-                      >
-                        {article.title || 'Titre non spécifié'}
-                      </h3>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {article.created_at ? new Date(article.created_at).toLocaleDateString('fr-FR') : 'Date non spécifiée'}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 italic">Aucun article disponible</p>
-                )}
+                  📖 Voir tous les articles
+                  <i className="bi bi-arrow-right ms-2"></i>
+                </a>
               </div>
             </div>
 

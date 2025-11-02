@@ -21,10 +21,14 @@ function PatientDocuments() {
     try {
       setLoading(true);
       const response = await medicalDocumentAPI.getDocuments();
-      setDocuments(response.data);
+      // Ensure documents is an array
+      const documentsData = Array.isArray(response.data) ? response.data : [];
+      setDocuments(documentsData);
     } catch (err) {
       setError("Erreur lors du chargement des documents");
       console.error(err);
+      // Set documents to empty array on error
+      setDocuments([]);
     } finally {
       setLoading(false);
     }
@@ -98,7 +102,7 @@ function PatientDocuments() {
                   <p className="card-text">{document.description}</p>
                   <p className="card-text">
                     <small className="text-muted">
-                      Uploadé le {formatDate(document.uploaded_at)}
+                      Uploadé le {formatDate(document.uploaded_at)} par {document.patient_nom}
                     </small>
                   </p>
                   <div className="d-flex justify-content-between">
@@ -125,66 +129,70 @@ function PatientDocuments() {
         </div>
       )}
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="modal show d-block" tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Upload Document Médical</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setShowUploadModal(false)}
-                ></button>
-              </div>
-              <form onSubmit={handleUpload}>
-                <div className="modal-body">
-                  <div className="mb-3">
-                    <label className="form-label">Fichier</label>
-                    <input
-                      type="file"
-                      className="form-control"
-                      onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
-                      required
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Type de document</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={uploadData.document_type}
-                      onChange={(e) => setUploadData({...uploadData, document_type: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Description</label>
-                    <textarea
-                      className="form-control"
-                      value={uploadData.description}
-                      onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
-                    ></textarea>
-                  </div>
-                </div>
-                <div className="modal-footer">
+      {/* Upload Modal */}{
+        showUploadModal && (
+          <div className="modal show d-block" tabIndex="-1">
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Upload Document Médical</h5>
                   <button
                     type="button"
-                    className="btn btn-secondary"
+                    className="btn-close"
                     onClick={() => setShowUploadModal(false)}
-                  >
-                    Annuler
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Upload
-                  </button>
+                  ></button>
                 </div>
-              </form>
+                <form onSubmit={handleUpload}>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Fichier</label>
+                      <input
+                        type="file"
+                        className="form-control"
+                        onChange={(e) => setUploadData({...uploadData, file: e.target.files[0]})}
+                        required
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Type de document</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={uploadData.document_type}
+                        onChange={(e) => setUploadData({...uploadData, document_type: e.target.value})}
+                        required
+                        placeholder="Ex: Ordonnance, Bilan sanguin, etc."
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Description</label>
+                      <textarea
+                        className="form-control"
+                        value={uploadData.description}
+                        onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
+                        placeholder="Description du document..."
+                        rows="3"
+                      ></textarea>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowUploadModal(false)}
+                    >
+                      Annuler
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Upload
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
     </div>
   );
 }

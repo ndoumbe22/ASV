@@ -63,7 +63,7 @@ import PatientsList from "./pages/Medecin/PatientsList"; // Added PatientsList
 import DashboardAdmin from "./pages/Admin/DashboardAdmin";
 import EnhancedDashboardAdminV2 from "./pages/Admin/EnhancedDashboardAdminV2";
 import UtilisateursAdmin from "./pages/Admin/Utilisateurs";
-import MedecinsAdmin from "./pages/Admin/Medecins";
+import MedecinsList from "./pages/Medecins";
 import MedecinsSpecialiteAdmin from "./pages/Admin/MedecinsSpecialite";
 import SecretairesAdmin from "./pages/Admin/Secretaires";
 import PatientsAdmin from "./pages/Admin/Patients";
@@ -110,25 +110,15 @@ function App() {
               <Route path="hopitaux" element={<Hopitaux />} />
               <Route path="pharmacie" element={<Pharmacie />} />
               <Route path="qui_sommes_nous" element={<QuiSommeNous />} />
-              <Route
-                path="medecin_specialiste"
-                element={<MedecinSpecialiste />}
-              />
-              <Route
-                path="medecin_generaliste"
-                element={<MedecinGeneraliste />}
-              />
+              <Route path="medecins" element={<MedecinsList />} />
               <Route path="rendez_vous" element={<RendezVous />} />
-              {/* Article Routes */}
-              <Route path="articles" element={<ArticlesPublics />} />
-              <Route path="articles/:slug" element={<ArticleDetail />} />
-              {/* Visitor Routes */}
-              <Route
-                path="localiser-services"
-                element={<LocaliserServices />}
-              />
+              {/* Other routes that need the layout */}
+              <Route path="localiser-services" element={<LocaliserServices />} />
               <Route path="search" element={<SearchResults />} />
             </Route>
+            {/* Articles route without Layout wrapper for more space */}
+            <Route path="/articles" element={<ArticlesPublics />} />
+            <Route path="/articles/:slug" element={<ArticleDetail />} />
             <Route path="connecter" element={<Connecter />} />
             <Route path="inscrire" element={<Inscrire />} />
             {/* Protected Routes */}
@@ -504,7 +494,7 @@ function App() {
                 path="medecins"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <MedecinsAdmin />
+                    <MedecinsList />
                   </ProtectedRoute>
                 }
               />

@@ -13,19 +13,45 @@ class NotificationService:
         medecin = rendez_vous.medecin
 
         # Additional validation to ensure we're only sending to one specific doctor
-        if not medecin or not hasattr(medecin, 'user') or not getattr(medecin.user, 'email', None):
+        if not medecin or not hasattr(medecin, 'email') or not getattr(medecin, 'email', None):
             print(f"❌ Erreur: Médecin invalide ou email manquant pour le rendez-vous {getattr(rendez_vous, 'numero', 'N/A')}")
             return
 
+        # Handle date formatting
+        if isinstance(rendez_vous.date, str):
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(rendez_vous.date, '%Y-%m-%d')
+                date_formatted = date_obj.strftime('%d/%m/%Y')
+            except:
+                date_formatted = rendez_vous.date
+        else:
+            date_formatted = rendez_vous.date.strftime('%d/%m/%Y')
+
+        # Handle time formatting
+        if isinstance(rendez_vous.heure, str):
+            try:
+                from datetime import datetime
+                # Handle different time formats
+                if len(rendez_vous.heure) == 8 and rendez_vous.heure[2] == ':' and rendez_vous.heure[5] == ':':  # HH:MM:SS
+                    time_obj = datetime.strptime(rendez_vous.heure, '%H:%M:%S')
+                else:  # HH:MM
+                    time_obj = datetime.strptime(rendez_vous.heure, '%H:%M')
+                time_formatted = time_obj.strftime('%H:%M')
+            except:
+                time_formatted = rendez_vous.heure
+        else:
+            time_formatted = rendez_vous.heure.strftime('%H:%M')
+
         subject = f"📅 Nouvelle demande de rendez-vous - AssitoSanté"
         message = f"""
-Bonjour Dr. {medecin.user.first_name},
+Bonjour Dr. {medecin.first_name},
 
 Vous avez reçu une nouvelle demande de rendez-vous :
 
-👤 Patient : {patient.user.first_name} {patient.user.last_name}
-📅 Date : {rendez_vous.date.strftime('%d/%m/%Y')}
-⏰ Heure : {rendez_vous.heure.strftime('%H:%M')}
+👤 Patient : {patient.first_name} {patient.last_name}
+📅 Date : {date_formatted}
+⏰ Heure : {time_formatted}
 📝 Description : {rendez_vous.description}
 
 Veuillez vous connecter à votre espace médecin pour confirmer ou refuser cette demande.
@@ -39,10 +65,10 @@ L'équipe AssitoSanté
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [medecin.user.email],
+                [medecin.email],
                 fail_silently=False,
             )
-            print(f"✅ Notification de demande de rendez-vous envoyée à {medecin.user.email}")
+            print(f"✅ Notification de demande de rendez-vous envoyée à {medecin.email}")
         except Exception as e:
             print(f"❌ Erreur lors de l'envoi de la notification : {e}")
 
@@ -52,15 +78,41 @@ L'équipe AssitoSanté
         patient = rendez_vous.patient
         medecin = rendez_vous.medecin
 
+        # Handle date formatting
+        if isinstance(rendez_vous.date, str):
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(rendez_vous.date, '%Y-%m-%d')
+                date_formatted = date_obj.strftime('%d/%m/%Y')
+            except:
+                date_formatted = rendez_vous.date
+        else:
+            date_formatted = rendez_vous.date.strftime('%d/%m/%Y')
+
+        # Handle time formatting
+        if isinstance(rendez_vous.heure, str):
+            try:
+                from datetime import datetime
+                # Handle different time formats
+                if len(rendez_vous.heure) == 8 and rendez_vous.heure[2] == ':' and rendez_vous.heure[5] == ':':  # HH:MM:SS
+                    time_obj = datetime.strptime(rendez_vous.heure, '%H:%M:%S')
+                else:  # HH:MM
+                    time_obj = datetime.strptime(rendez_vous.heure, '%H:%M')
+                time_formatted = time_obj.strftime('%H:%M')
+            except:
+                time_formatted = rendez_vous.heure
+        else:
+            time_formatted = rendez_vous.heure.strftime('%H:%M')
+
         subject = f"✅ Rendez-vous confirmé - AssitoSanté"
         message = f"""
-Bonjour {patient.user.first_name},
+Bonjour {patient.first_name},
 
 Votre rendez-vous a été confirmé :
 
-📅 Date : {rendez_vous.date.strftime('%d/%m/%Y')}
-⏰ Heure : {rendez_vous.heure.strftime('%H:%M')}
-👨‍⚕️ Médecin : Dr. {medecin.user.first_name} {medecin.user.last_name}
+📅 Date : {date_formatted}
+⏰ Heure : {time_formatted}
+👨‍⚕️ Médecin : Dr. {medecin.first_name} {medecin.last_name}
 📍 Lieu : À déterminer
 
 Merci d'arriver 10 minutes avant l'heure prévue.
@@ -74,10 +126,10 @@ L'équipe AssitoSanté
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [patient.user.email],
+                [patient.email],
                 fail_silently=False,
             )
-            print(f"✅ Email de confirmation envoyé à {patient.user.email}")
+            print(f"✅ Email de confirmation envoyé à {patient.email}")
         except Exception as e:
             print(f"❌ Erreur lors de l'envoi de l'email : {e}")
 
@@ -87,11 +139,37 @@ L'équipe AssitoSanté
         patient = rendez_vous.patient
         medecin = rendez_vous.medecin
 
+        # Handle date formatting
+        if isinstance(rendez_vous.date, str):
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(rendez_vous.date, '%Y-%m-%d')
+                date_formatted = date_obj.strftime('%d/%m/%Y')
+            except:
+                date_formatted = rendez_vous.date
+        else:
+            date_formatted = rendez_vous.date.strftime('%d/%m/%Y')
+
+        # Handle time formatting
+        if isinstance(rendez_vous.heure, str):
+            try:
+                from datetime import datetime
+                # Handle different time formats
+                if len(rendez_vous.heure) == 8 and rendez_vous.heure[2] == ':' and rendez_vous.heure[5] == ':':  # HH:MM:SS
+                    time_obj = datetime.strptime(rendez_vous.heure, '%H:%M:%S')
+                else:  # HH:MM
+                    time_obj = datetime.strptime(rendez_vous.heure, '%H:%M')
+                time_formatted = time_obj.strftime('%H:%M')
+            except:
+                time_formatted = rendez_vous.heure
+        else:
+            time_formatted = rendez_vous.heure.strftime('%H:%M')
+
         subject = f"❌ Rendez-vous annulé - AssitoSanté"
         message = f"""
-Bonjour {patient.user.first_name},
+Bonjour {patient.first_name},
 
-Votre rendez-vous du {rendez_vous.date.strftime('%d/%m/%Y')} à {rendez_vous.heure.strftime('%H:%M')} avec Dr. {medecin.user.first_name} {medecin.user.last_name} a été annulé.
+Votre rendez-vous du {date_formatted} à {time_formatted} avec Dr. {medecin.first_name} {medecin.last_name} a été annulé.
 
 Veuillez nous contacter pour reprogrammer un nouveau rendez-vous.
 
@@ -104,10 +182,10 @@ L'équipe AssitoSanté
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [patient.user.email],
+                [patient.email],
                 fail_silently=False,
             )
-            print(f"✅ Email d'annulation envoyé à {patient.user.email}")
+            print(f"✅ Email d'annulation envoyé à {patient.email}")
         except Exception as e:
             print(f"❌ Erreur lors de l'envoi de l'email : {e}")
 
@@ -117,15 +195,79 @@ L'équipe AssitoSanté
         patient = rendez_vous.patient
         medecin = rendez_vous.medecin
 
+        # Handle date formatting for old_date (could be string or date object)
+        if isinstance(old_date, str):
+            try:
+                # Try to parse the string as a date
+                from datetime import datetime
+                old_date_obj = datetime.strptime(old_date, '%Y-%m-%d')
+                old_date_formatted = old_date_obj.strftime('%d/%m/%Y')
+            except:
+                # If parsing fails, use the string as is
+                old_date_formatted = old_date
+        else:
+            # Assume it's a date object
+            old_date_formatted = old_date.strftime('%d/%m/%Y')
+
+        # Handle time formatting for old_time (could be string or time object)
+        if isinstance(old_time, str):
+            try:
+                # Try to parse the string as a time
+                from datetime import datetime
+                # Handle different time formats
+                if len(old_time) == 8 and old_time[2] == ':' and old_time[5] == ':':  # HH:MM:SS
+                    old_time_obj = datetime.strptime(old_time, '%H:%M:%S')
+                else:  # HH:MM
+                    old_time_obj = datetime.strptime(old_time, '%H:%M')
+                old_time_formatted = old_time_obj.strftime('%H:%M')
+            except:
+                # If parsing fails, use the string as is
+                old_time_formatted = old_time
+        else:
+            # Assume it's a time object
+            old_time_formatted = old_time.strftime('%H:%M')
+
+        # Handle date formatting for new date
+        if isinstance(rendez_vous.date, str):
+            try:
+                # Try to parse the string as a date
+                from datetime import datetime
+                new_date_obj = datetime.strptime(rendez_vous.date, '%Y-%m-%d')
+                new_date_formatted = new_date_obj.strftime('%d/%m/%Y')
+            except:
+                # If parsing fails, use the string as is
+                new_date_formatted = rendez_vous.date
+        else:
+            # Assume it's a date object
+            new_date_formatted = rendez_vous.date.strftime('%d/%m/%Y')
+
+        # Handle time formatting for new time
+        if isinstance(rendez_vous.heure, str):
+            try:
+                # Try to parse the string as a time
+                from datetime import datetime
+                # Handle different time formats
+                if len(rendez_vous.heure) == 8 and rendez_vous.heure[2] == ':' and rendez_vous.heure[5] == ':':  # HH:MM:SS
+                    new_time_obj = datetime.strptime(rendez_vous.heure, '%H:%M:%S')
+                else:  # HH:MM
+                    new_time_obj = datetime.strptime(rendez_vous.heure, '%H:%M')
+                new_time_formatted = new_time_obj.strftime('%H:%M')
+            except:
+                # If parsing fails, use the string as is
+                new_time_formatted = rendez_vous.heure
+        else:
+            # Assume it's a time object
+            new_time_formatted = rendez_vous.heure.strftime('%H:%M')
+
         subject = f"📅 Rendez-vous reprogrammé - AssitoSanté"
         message = f"""
-Bonjour {patient.user.first_name},
+Bonjour {patient.first_name},
 
 Votre rendez-vous a été reprogrammé :
 
-📅 Ancienne date : {old_date.strftime('%d/%m/%Y')} à {old_time.strftime('%H:%M')}
-📅 Nouvelle date : {rendez_vous.date.strftime('%d/%m/%Y')} à {rendez_vous.heure.strftime('%H:%M')}
-👨‍⚕️ Médecin : Dr. {medecin.user.first_name} {medecin.user.last_name}
+📅 Ancienne date : {old_date_formatted} à {old_time_formatted}
+📅 Nouvelle date : {new_date_formatted} à {new_time_formatted}
+👨‍⚕️ Médecin : Dr. {medecin.first_name} {medecin.last_name}
 
 Merci d'arriver 10 minutes avant l'heure prévue.
 
@@ -138,10 +280,10 @@ L'équipe AssitoSanté
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [patient.user.email],
+                [patient.email],
                 fail_silently=False,
             )
-            print(f"✅ Email de reprogrammation envoyé à {patient.user.email}")
+            print(f"✅ Email de reprogrammation envoyé à {patient.email}")
         except Exception as e:
             print(f"❌ Erreur lors de l'envoi de l'email : {e}")
 
@@ -181,7 +323,7 @@ L'équipe AssitoSanté
         """Envoyer rappel de prise de médicament"""
         subject = f"💊 Rappel de prise de médicament - {medicament}"
         message = f"""
-Bonjour {patient.user.first_name},
+Bonjour {patient.first_name},
 
 C'est l'heure de prendre votre médicament :
 
@@ -200,10 +342,10 @@ L'équipe AssitoSanté
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [patient.user.email],
+                [patient.email],
                 fail_silently=False,
             )
-            print(f"✅ Rappel de médicament envoyé à {patient.user.email}")
+            print(f"✅ Rappel de médicament envoyé à {patient.email}")
         except Exception as e:
             print(f"❌ Erreur lors de l'envoi du rappel de médicament : {e}")
 
@@ -329,14 +471,66 @@ Le médecin va vous contacter sous peu au {urgence.telephone_contact}.
         patient = rendez_vous.patient
         medecin = rendez_vous.medecin
 
+        # Handle date formatting for original date
+        if isinstance(rendez_vous.original_date, str):
+            try:
+                from datetime import datetime
+                orig_date_obj = datetime.strptime(rendez_vous.original_date, '%Y-%m-%d')
+                orig_date_formatted = orig_date_obj.strftime('%d/%m/%Y')
+            except:
+                orig_date_formatted = rendez_vous.original_date
+        else:
+            orig_date_formatted = rendez_vous.original_date.strftime('%d/%m/%Y') if rendez_vous.original_date else "N/A"
+
+        # Handle time formatting for original time
+        if isinstance(rendez_vous.original_heure, str):
+            try:
+                from datetime import datetime
+                # Handle different time formats
+                if len(rendez_vous.original_heure) == 8 and rendez_vous.original_heure[2] == ':' and rendez_vous.original_heure[5] == ':':  # HH:MM:SS
+                    orig_time_obj = datetime.strptime(rendez_vous.original_heure, '%H:%M:%S')
+                else:  # HH:MM
+                    orig_time_obj = datetime.strptime(rendez_vous.original_heure, '%H:%M')
+                orig_time_formatted = orig_time_obj.strftime('%H:%M')
+            except:
+                orig_time_formatted = rendez_vous.original_heure
+        else:
+            orig_time_formatted = rendez_vous.original_heure.strftime('%H:%M') if rendez_vous.original_heure else "N/A"
+
+        # Handle date formatting for new date
+        if isinstance(rendez_vous.date, str):
+            try:
+                from datetime import datetime
+                new_date_obj = datetime.strptime(rendez_vous.date, '%Y-%m-%d')
+                new_date_formatted = new_date_obj.strftime('%d/%m/%Y')
+            except:
+                new_date_formatted = rendez_vous.date
+        else:
+            new_date_formatted = rendez_vous.date.strftime('%d/%m/%Y')
+
+        # Handle time formatting for new time
+        if isinstance(rendez_vous.heure, str):
+            try:
+                from datetime import datetime
+                # Handle different time formats
+                if len(rendez_vous.heure) == 8 and rendez_vous.heure[2] == ':' and rendez_vous.heure[5] == ':':  # HH:MM:SS
+                    new_time_obj = datetime.strptime(rendez_vous.heure, '%H:%M:%S')
+                else:  # HH:MM
+                    new_time_obj = datetime.strptime(rendez_vous.heure, '%H:%M')
+                new_time_formatted = new_time_obj.strftime('%H:%M')
+            except:
+                new_time_formatted = rendez_vous.heure
+        else:
+            new_time_formatted = rendez_vous.heure.strftime('%H:%M')
+
         subject = f"📅 Demande de reprogrammation de rendez-vous - AssitoSanté"
         message = f"""
-Bonjour Dr. {medecin.user.first_name},
+Bonjour Dr. {medecin.first_name},
 
-Le patient {patient.user.first_name} {patient.user.last_name} a demandé à reprogrammer son rendez-vous :
+Le patient {patient.first_name} {patient.last_name} a demandé à reprogrammer son rendez-vous :
 
-📅 Date actuelle : {rendez_vous.original_date.strftime('%d/%m/%Y')} à {rendez_vous.original_heure.strftime('%H:%M')}
-📅 Nouvelle date demandée : {rendez_vous.date.strftime('%d/%m/%Y')} à {rendez_vous.heure.strftime('%H:%M')}
+📅 Date actuelle : {orig_date_formatted} à {orig_time_formatted}
+📅 Nouvelle date demandée : {new_date_formatted} à {new_time_formatted}
 📝 Raison : {rendez_vous.description}
 
 Veuillez vous connecter à votre espace médecin pour accepter ou refuser cette demande.
@@ -350,26 +544,27 @@ L'équipe AssitoSanté
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [medecin.user.email],
+                [medecin.email],
                 fail_silently=False,
             )
-            print(f"✅ Notification de demande de reprogrammation envoyée à {medecin.user.email}")
+            print(f"✅ Notification de demande de reprogrammation envoyée à {medecin.email}")
         except Exception as e:
             print(f"❌ Erreur lors de l'envoi de la notification : {e}")
 
     @staticmethod
-    def send_rating_notification(medecin, note, commentaire):
-        """Envoyer notification d'une nouvelle évaluation au médecin"""
-        subject = f"⭐ Nouvelle évaluation reçue - AssitoSanté"
+    def send_article_validated_notification(article):
+        """Envoyer notification de validation d'article au médecin"""
+        medecin = article.auteur
+        subject = f"✅ Article validé - AssitoSanté"
         message = f"""
 Bonjour Dr. {medecin.user.first_name},
 
-Un patient a laissé une évaluation pour votre consultation :
+Bonne nouvelle ! Votre article "{article.titre}" a été validé par l'administrateur et est maintenant publié.
 
-⭐ Note : {note}/5
-📝 Commentaire : {commentaire}
+Titre : {article.titre}
+Date de validation : {article.date_validation.strftime('%d/%m/%Y %H:%M') if article.date_validation else 'N/A'}
 
-Merci pour votre engagement envers la qualité des soins.
+Vous pouvez consulter votre article publié sur la plateforme.
 
 Cordialement,
 L'équipe AssitoSanté
@@ -383,6 +578,68 @@ L'équipe AssitoSanté
                 [medecin.user.email],
                 fail_silently=False,
             )
-            print(f"✅ Notification d'évaluation envoyée à {medecin.user.email}")
+            print(f"✅ Notification de validation d'article envoyée à {medecin.user.email}")
         except Exception as e:
-            print(f"❌ Erreur lors de l'envoi de la notification d'évaluation : {e}")
+            print(f"❌ Erreur lors de l'envoi de la notification : {e}")
+
+    @staticmethod
+    def send_article_rejected_notification(article, reason=""):
+        """Envoyer notification de refus d'article au médecin"""
+        medecin = article.auteur
+        subject = f"❌ Article refusé - AssitoSanté"
+        message = f"""
+Bonjour Dr. {medecin.user.first_name},
+
+Malheureusement, votre article "{article.titre}" a été refusé par l'administrateur.
+
+Titre : {article.titre}
+Raison du refus : {reason if reason else 'Non spécifiée'}
+
+Vous pouvez modifier votre article et le soumettre à nouveau pour validation.
+
+Cordialement,
+L'équipe AssitoSanté
+        """
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [medecin.user.email],
+                fail_silently=False,
+            )
+            print(f"✅ Notification de refus d'article envoyée à {medecin.user.email}")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'envoi de la notification : {e}")
+
+    @staticmethod
+    def send_article_deactivated_notification(article):
+        """Envoyer notification de désactivation d'article au médecin"""
+        medecin = article.auteur
+        subject = f"⚠️ Article désactivé - AssitoSanté"
+        message = f"""
+Bonjour Dr. {medecin.user.first_name},
+
+Votre article "{article.titre}" a été désactivé par l'administrateur.
+
+Titre : {article.titre}
+Raison : {article.commentaire_moderation if article.commentaire_moderation else 'Non spécifiée'}
+
+L'article n'est plus visible publiquement. Vous pouvez contacter l'administrateur pour plus d'informations.
+
+Cordialement,
+L'équipe AssitoSanté
+        """
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [medecin.user.email],
+                fail_silently=False,
+            )
+            print(f"✅ Notification de désactivation d'article envoyée à {medecin.user.email}")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'envoi de la notification : {e}")

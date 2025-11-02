@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { authAPI } from "../services/api";
+import { authAPI, specialtyAPI } from "../services/api";
 import "./Auth.css";
 
 function Inscrire() {
@@ -14,14 +14,54 @@ function Inscrire() {
     telephone: "",
     adresse: "",
     role: "patient",
+    specialite: "", // Add specialty field
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [specialties, setSpecialties] = useState([
+    "Cardiologie",
+    "Dermatologie",
+    "Pédiatrie",
+    "Gynécologie",
+    "Orthopédie",
+    "Neurologie",
+    "Généraliste",
+  ]); // Store available specialties
 
   const navigate = useNavigate();
+
+  // Fetch specialties when component mounts
+  useEffect(() => {
+    const fetchSpecialties = async () => {
+      try {
+        const response = await specialtyAPI.getSpecialties();
+        // Ensure we're working with an array
+        const specialtiesData = Array.isArray(response.data)
+          ? response.data
+          : response.data && typeof response.data === "object"
+          ? Object.values(response.data)
+          : [];
+        setSpecialties(specialtiesData);
+      } catch (err) {
+        console.error("Error fetching specialties:", err);
+        // Fallback to some default specialties
+        setSpecialties([
+          "Cardiologie",
+          "Dermatologie",
+          "Pédiatrie",
+          "Gynécologie",
+          "Orthopédie",
+          "Neurologie",
+          "Généraliste",
+        ]);
+      }
+    };
+
+    fetchSpecialties();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -37,30 +77,9 @@ function Inscrire() {
       setError("Email invalide");
       return false;
     }
-    return true;
-  };
-
-  const validateStep2 = () => {
-    if (!formData.username || !formData.password || !formData.confirmPassword) {
-      setError("Veuillez remplir tous les champs");
-      return false;
-    }
-    if (formData.password.length < 8) {
-      setError("Le mot de passe doit contenir au moins 8 caractères");
-      return false;
-    }
-    if (formData.password !== formData.confirmPassword) {
-      setError("Les mots de passe ne correspondent pas");
-      return false;
-    }
-    // Additional validation for username
-    if (formData.username.length < 3) {
-      setError("Le nom d'utilisateur doit contenir au moins 3 caractères");
-      return false;
-    }
-    // Additional validation for email
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setError("Email invalide");
+    // For doctors, specialty is required
+    if (formData.role === "medecin" && !formData.specialite) {
+      setError("Veuillez sélectionner une spécialité");
       return false;
     }
     return true;
@@ -81,7 +100,7 @@ function Inscrire() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!validateStep2()) return;
+    if (!validateStep1()) return;
 
     setError("");
     setLoading(true);
@@ -92,27 +111,26 @@ function Inscrire() {
       const res = await authAPI.register(dataToSend);
       console.log("Registration response:", res.data);
 
-      alert(
-        "✅ Compte créé avec succès ! Vous pouvez maintenant vous connecter."
-      );
+      // Show success message and redirect to login
+      alert("Compte créé avec succès! Veuillez vous connecter.");
       navigate("/connecter");
-    } catch (error) {
-      console.error("Registration error:", error);
-
-      let errorMessage = "Une erreur est survenue. Veuillez réessayer.";
-
-      if (error.response?.data) {
-        const errorData = error.response.data;
-
-        if (errorData.error) {
-          errorMessage = errorData.error;
-        } else if (typeof errorData === "object") {
-          const firstError = Object.values(errorData)[0];
-          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+    } catch (err) {
+      console.error("Registration error:", err);
+      if (err.response && err.response.data) {
+        if (err.response.data.error) {
+          setError(err.response.data.error);
+        } else if (err.response.data.username) {
+          setError(`Nom d'utilisateur: ${err.response.data.username[0]}`);
+        } else if (err.response.data.email) {
+          setError(`Email: ${err.response.data.email[0]}`);
+        } else {
+          setError("Erreur lors de l'inscription. Veuillez réessayer.");
         }
+      } else {
+        setError(
+          "Erreur de connexion. Veuillez vérifier votre connexion internet."
+        );
       }
-
-      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -120,31 +138,20 @@ function Inscrire() {
 
   return (
     <div className="auth-container">
-      <div className="auth-card auth-card-large">
+      <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-icon">
-            <i className="bi bi-person-plus"></i>
-          </div>
-          <h2 className="auth-title">Inscription</h2>
-          <p className="auth-subtitle">Créez votre compte AssitoSanté</p>
-        </div>
-
-        {/* Progress Indicator */}
-        <div className="progress-indicator">
-          <div className={`progress-step ${currentStep >= 1 ? "active" : ""}`}>
-            <div className="step-number">1</div>
-            <div className="step-label">Informations personnelles</div>
-          </div>
-          <div className="progress-line"></div>
-          <div className={`progress-step ${currentStep >= 2 ? "active" : ""}`}>
-            <div className="step-number">2</div>
-            <div className="step-label">Compte & Sécurité</div>
-          </div>
+          <h2 className="auth-title">
+            <i className="bi bi-person-plus me-2"></i>
+            Créer un compte
+          </h2>
+          <p className="auth-subtitle">
+            Rejoignez notre plateforme de santé virtuelle
+          </p>
         </div>
 
         {error && (
-          <div className="alert alert-danger-custom" role="alert">
-            <i className="bi bi-exclamation-circle me-2"></i>
+          <div className="alert alert-danger alert-custom" role="alert">
+            <i className="bi bi-exclamation-triangle me-2"></i>
             {error}
           </div>
         )}
@@ -199,41 +206,46 @@ function Inscrire() {
                   type="email"
                   name="email"
                   className="form-control-custom"
-                  placeholder="votre.email@exemple.com"
+                  placeholder="votre@email.com"
                   value={formData.email}
                   onChange={handleChange}
                   required
                 />
               </div>
 
-              <div className="form-group-custom">
-                <label className="form-label-custom">
-                  <i className="bi bi-telephone me-2"></i>
-                  Téléphone
-                </label>
-                <input
-                  type="tel"
-                  name="telephone"
-                  className="form-control-custom"
-                  placeholder="+221 XX XXX XX XX"
-                  value={formData.telephone}
-                  onChange={handleChange}
-                />
-              </div>
-
-              <div className="form-group-custom">
-                <label className="form-label-custom">
-                  <i className="bi bi-geo-alt me-2"></i>
-                  Adresse
-                </label>
-                <input
-                  type="text"
-                  name="adresse"
-                  className="form-control-custom"
-                  placeholder="Votre adresse"
-                  value={formData.adresse}
-                  onChange={handleChange}
-                />
+              <div className="row">
+                <div className="col-md-6">
+                  <div className="form-group-custom">
+                    <label className="form-label-custom">
+                      <i className="bi bi-telephone me-2"></i>
+                      Téléphone
+                    </label>
+                    <input
+                      type="tel"
+                      name="telephone"
+                      className="form-control-custom"
+                      placeholder="Votre numéro de téléphone"
+                      value={formData.telephone}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <div className="form-group-custom">
+                    <label className="form-label-custom">
+                      <i className="bi bi-geo-alt me-2"></i>
+                      Adresse
+                    </label>
+                    <input
+                      type="text"
+                      name="adresse"
+                      className="form-control-custom"
+                      placeholder="Votre adresse"
+                      value={formData.adresse}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="form-group-custom">
@@ -252,6 +264,32 @@ function Inscrire() {
                   <option value="medecin">Médecin</option>
                 </select>
               </div>
+
+              {/* Specialty selection for doctors */}
+              {formData.role === "medecin" && (
+                <div className="form-group-custom">
+                  <label className="form-label-custom">
+                    <i className="bi bi-stethoscope me-2"></i>
+                    Spécialité *
+                  </label>
+                  <select
+                    name="specialite"
+                    className="form-control-custom"
+                    value={formData.specialite}
+                    onChange={handleChange}
+                    required={formData.role === "medecin"}
+                  >
+                    <option value="">Sélectionnez une spécialité</option>
+                    <option value="Cardiologie">Cardiologie</option>
+                    <option value="Dermatologie">Dermatologie</option>
+                    <option value="Pédiatrie">Pédiatrie</option>
+                    <option value="Gynécologie">Gynécologie</option>
+                    <option value="Orthopédie">Orthopédie</option>
+                    <option value="Neurologie">Neurologie</option>
+                    <option value="Généraliste">Généraliste</option>
+                  </select>
+                </div>
+              )}
 
               <button
                 type="button"

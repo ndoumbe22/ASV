@@ -391,6 +391,7 @@ class RendezVous(models.Model):
     date = models.DateField()
     heure = models.TimeField()
     description = models.TextField(blank=True, null=True)
+    motif_consultation = models.TextField(blank=True, null=True, help_text="Motif de la consultation")
 
     # Add consultation type field
     TYPE_CONSULTATION_CHOICES = [
@@ -970,24 +971,6 @@ class NotificationUrgence(models.Model):
     def __str__(self):
         return f"Notification pour Dr. {self.medecin.user.username} - {self.urgence.type_urgence}"
 
-# -------------------- Medical Documents --------------------
-class MedicalDocument(models.Model):
-    """Documents médicaux partagés"""
-    rendez_vous = models.ForeignKey(RendezVous, on_delete=models.CASCADE, related_name='documents')
-    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    file = models.FileField(upload_to='medical_documents/%Y/%m/')
-    document_type = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.document_type} - {self.rendez_vous}"
-
-    class Meta:
-        db_table = 'MedicalDocument'
-        ordering = ['-uploaded_at']
-
-
 # -------------------- Consultation Messages --------------------
 class ConsultationMessage(models.Model):
     """Messages exchanged during online consultations"""
@@ -1105,3 +1088,45 @@ class ChatbotKnowledgeBase(models.Model):
         return f"{self.keyword} - {self.get_category_display()}"
 
 
+# -------------------- Notifications --------------------
+class Notification(models.Model):
+    TYPE_CHOICES = [
+        ('article_valide', 'Article validé'),
+        ('article_refuse', 'Article refusé'),
+        ('article_desactive', 'Article désactivé'),
+    ]
+    
+    medecin = models.ForeignKey(Medecin, on_delete=models.CASCADE, related_name='notifications')
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    titre = models.CharField(max_length=200)
+    message = models.TextField()
+    article_titre = models.CharField(max_length=200, blank=True)
+    lu = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'Notification'
+        ordering = ['-date_creation']
+    
+    def __str__(self):
+        return f"{self.get_type_display()} - {self.article_titre}"
+
+# -------------------- Medical Documents --------------------
+class MedicalDocument(models.Model):
+    """Medical documents shared between patients and doctors"""
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_documents')
+    medecin = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_documents')
+    rendez_vous = models.ForeignKey(RendezVous, on_delete=models.CASCADE, related_name='documents', null=True, blank=True)
+    document_type = models.CharField(max_length=100, verbose_name="Type de document")
+    description = models.TextField(blank=True, verbose_name="Description")
+    file = models.FileField(upload_to='medical_documents/', verbose_name="Fichier")
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="Date d'upload")
+    
+    class Meta:
+        db_table = 'MedicalDocument'
+        verbose_name = "Document médical"
+        verbose_name_plural = "Documents médicaux"
+        ordering = ['-uploaded_at']
+    
+    def __str__(self):
+        return f"{self.document_type} - {self.patient.get_full_name()} to Dr. {self.medecin.get_full_name()}"

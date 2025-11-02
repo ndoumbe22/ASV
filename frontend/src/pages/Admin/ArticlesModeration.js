@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { FaCheck, FaTimes, FaBan, FaSearch, FaChartBar, FaStar, FaRegStar, FaTrash } from "react-icons/fa";
+import {
+  FaCheck,
+  FaTimes,
+  FaBan,
+  FaSearch,
+  FaChartBar,
+  FaStar,
+  FaRegStar,
+  FaTrash,
+  FaRedo,
+} from "react-icons/fa";
 import articleService from "../../services/articleService";
 
 function ArticlesModeration() {
   const [articles, setArticles] = useState([]);
-  const [filteredArticles, setFilteredArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -12,20 +21,17 @@ function ArticlesModeration() {
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [stats, setStats] = useState(null);
+  const [filtreStatut, setFiltreStatut] = useState(null); // Default filter
 
   useEffect(() => {
     loadArticles();
     loadStatistics();
-  }, []);
-
-  useEffect(() => {
-    filterArticles();
-  }, [searchTerm, articles]);
+  }, [filtreStatut]);
 
   const loadArticles = async () => {
     try {
       setLoading(true);
-      const data = await articleService.getAdminArticles();
+      const data = await articleService.getArticlesAdmin(filtreStatut);
       setArticles(data);
     } catch (err) {
       setError(
@@ -40,30 +46,10 @@ function ArticlesModeration() {
 
   const loadStatistics = async () => {
     try {
-      const data = await articleService.getArticleStatistics();
+      const data = await articleService.getStatistiquesArticles();
       setStats(data);
     } catch (err) {
       console.error("Erreur lors du chargement des statistiques:", err);
-    }
-  };
-
-  const filterArticles = () => {
-    // Filter only articles waiting for validation
-    const pendingArticles = articles.filter(
-      (article) => article.statut === "en_attente"
-    );
-
-    if (searchTerm) {
-      const filtered = pendingArticles.filter(
-        (article) =>
-          article.titre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          article.auteur_nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (article.tags &&
-            article.tags.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-      setFilteredArticles(filtered);
-    } else {
-      setFilteredArticles(pendingArticles);
     }
   };
 
@@ -72,22 +58,23 @@ function ArticlesModeration() {
       case "brouillon":
         return <span className="badge bg-secondary">Brouillon</span>;
       case "en_attente":
-        return <span className="badge bg-warning">En attente</span>;
+        return <span className="badge bg-warning">⏳ En attente</span>;
       case "valide":
-        return <span className="badge bg-success">Validé</span>;
+        return <span className="badge bg-success">✅ Validé</span>;
       case "refuse":
         return <span className="badge bg-danger">Refusé</span>;
       case "desactive":
-        return <span className="badge bg-dark">Désactivé</span>;
+        return <span className="badge bg-danger">🚫 Désactivé</span>;
       default:
         return <span className="badge bg-secondary">{status}</span>;
     }
   };
 
-  const handleValidate = async (articleId) => {
+  const handleValider = async (articleId) => {
+    const commentaire = prompt("Commentaire de validation (optionnel):") || "";
     if (window.confirm("Êtes-vous sûr de vouloir valider cet article ?")) {
       try {
-        await articleService.validateArticle(articleId);
+        await articleService.validerArticle(articleId, commentaire);
         loadArticles();
         loadStatistics();
         alert("Article validé avec succès");
@@ -104,9 +91,7 @@ function ArticlesModeration() {
   const handleReject = async (articleId) => {
     if (window.confirm("Êtes-vous sûr de vouloir refuser cet article ?")) {
       try {
-        await articleService.rejectArticle(articleId, {
-          commentaire: rejectionReason,
-        });
+        await articleService.refuserArticle(articleId, rejectionReason);
         setShowRejectModal(false);
         setRejectionReason("");
         loadArticles();
@@ -121,13 +106,11 @@ function ArticlesModeration() {
     }
   };
 
-  const handleDeactivate = async (articleId) => {
-    const reason = prompt("Motif de désactivation (optionnel):");
-    if (reason !== null) {
+  const handleDesactiver = async (articleId) => {
+    const commentaire = prompt("Motif de désactivation (optionnel):") || "";
+    if (window.confirm("Êtes-vous sûr de vouloir désactiver cet article ?")) {
       try {
-        await articleService.deactivateArticle(articleId, {
-          commentaire: reason,
-        });
+        await articleService.desactiverArticle(articleId, commentaire);
         loadArticles();
         loadStatistics();
         alert("Article désactivé");
@@ -141,11 +124,30 @@ function ArticlesModeration() {
     }
   };
 
-  // New function to completely cancel/remove an article
-  const handleCancelArticle = async (articleId, articleTitle) => {
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement l'article "${articleTitle}" ? Cette action est irréversible.`)) {
+  const handleReactiver = async (articleId) => {
+    if (window.confirm("Êtes-vous sûr de vouloir réactiver cet article ?")) {
       try {
-        // Use the admin delete method
+        await articleService.reactiverArticle(articleId);
+        loadArticles();
+        loadStatistics();
+        alert("Article réactivé");
+      } catch (err) {
+        alert(
+          "Erreur lors de la réactivation: " +
+            (err.response?.data?.error || err.message)
+        );
+        console.error(err);
+      }
+    }
+  };
+
+  const handleSupprimer = async (articleId, articleTitle) => {
+    if (
+      window.confirm(
+        `Êtes-vous sûr de vouloir supprimer définitivement l'article "${articleTitle}" ? Cette action est irréversible.`
+      )
+    ) {
+      try {
         await articleService.deleteAdminArticle(articleId);
         loadArticles();
         loadStatistics();
@@ -160,32 +162,11 @@ function ArticlesModeration() {
     }
   };
 
-  const handleFeature = async (articleId) => {
-    try {
-      await articleService.featureArticle(articleId);
-      loadArticles();
-      alert("Article mis en avant");
-    } catch (err) {
-      alert(
-        "Erreur lors de la mise en avant: " +
-          (err.response?.data?.error || err.message)
-      );
-      console.error(err);
-    }
-  };
-
-  const handleUnfeature = async (articleId) => {
-    try {
-      await articleService.unfeatureArticle(articleId);
-      loadArticles();
-      alert("Article retiré de la mise en avant");
-    } catch (err) {
-      alert(
-        "Erreur lors du retrait de la mise en avant: " +
-          (err.response?.data?.error || err.message)
-      );
-      console.error(err);
-    }
+  const handleVoirDetails = (article) => {
+    // For now, we'll just show an alert with article details
+    alert(
+      `Titre: ${article.titre}\nAuteur: Dr. ${article.auteur_nom}\nStatut: ${article.statut}\nCatégorie: ${article.categorie}`
+    );
   };
 
   const openRejectModal = (article) => {
@@ -207,197 +188,201 @@ function ArticlesModeration() {
   }
 
   return (
-    <div className="container-fluid">
-      <div className="row">
-        <div className="col-12">
-          <h2 className="mb-4">
-            <FaCheck className="me-2" />
-            Modération des Articles
-          </h2>
-
-          {error && (
-            <div
-              className="alert alert-danger alert-dismissible fade show"
-              role="alert"
-            >
-              {error}
-              <button
-                type="button"
-                className="btn-close"
-                onClick={() => setError(null)}
-              ></button>
-            </div>
-          )}
-
-          {/* Statistics */}
-          {stats && (
-            <div className="row mb-4">
-              <div className="col-md-3">
-                <div className="card bg-primary text-white">
-                  <div className="card-body">
-                    <h5 className="card-title">Total</h5>
-                    <h2>{stats.total}</h2>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-3">
-                <div className="card bg-warning text-dark">
-                  <div className="card-body">
-                    <h5 className="card-title">En attente</h5>
-                    <h2>{stats.en_attente}</h2>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-3">
-                <div className="card bg-success text-white">
-                  <div className="card-body">
-                    <h5 className="card-title">Validés</h5>
-                    <h2>{stats.valides}</h2>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-3">
-                <div className="card bg-info text-white">
-                  <div className="card-body">
-                    <h5 className="card-title">Vues</h5>
-                    <h2>{stats.total_vues}</h2>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="card mb-4">
-            <div className="card-body">
-              <div className="row">
-                <div className="col-md-6">
-                  <div className="input-group">
-                    <span className="input-group-text">
-                      <FaSearch />
-                    </span>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Rechercher des articles en attente..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </div>
+    <div className="container-fluid py-4">
+      {/* 1. CARDS DE STATISTIQUES EN HAUT */}
+      {stats && (
+        <div className="row mb-4">
+          <div className="col-md-3">
+            <div className="card bg-warning text-white">
+              <div className="card-body text-center">
+                <h2 className="display-4">{stats.en_attente}</h2>
+                <p className="mb-0">⏳ En attente</p>
               </div>
             </div>
           </div>
+          <div className="col-md-3">
+            <div className="card bg-success text-white">
+              <div className="card-body text-center">
+                <h2 className="display-4">{stats.valides}</h2>
+                <p className="mb-0">✅ Validés</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card bg-danger text-white">
+              <div className="card-body text-center">
+                <h2 className="display-4">{stats.desactives}</h2>
+                <p className="mb-0">🚫 Désactivés</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card bg-info text-white">
+              <div className="card-body text-center">
+                <h2 className="display-4">{stats.total}</h2>
+                <p className="mb-0">📊 Total</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-          {filteredArticles.length === 0 ? (
-            <div className="card text-center p-5">
-              <h4 className="text-muted">
-                <FaCheck className="me-2" />
-                Aucun article en attente de validation
-              </h4>
-              <p className="text-muted">Tous les articles ont été traités.</p>
+      {/* 2. FILTRES PAR STATUT */}
+      <div className="card mb-4">
+        <div className="card-body">
+          <div className="btn-group" role="group">
+            <button
+              className={`btn ${
+                filtreStatut === null ? "btn-primary" : "btn-outline-primary"
+              }`}
+              onClick={() => setFiltreStatut(null)}
+            >
+              Tous ({stats?.total || 0})
+            </button>
+            <button
+              className={`btn ${
+                filtreStatut === "en_attente"
+                  ? "btn-warning"
+                  : "btn-outline-warning"
+              }`}
+              onClick={() => setFiltreStatut("en_attente")}
+            >
+              En attente ({stats?.en_attente || 0})
+            </button>
+            <button
+              className={`btn ${
+                filtreStatut === "valide"
+                  ? "btn-success"
+                  : "btn-outline-success"
+              }`}
+              onClick={() => setFiltreStatut("valide")}
+            >
+              Validés ({stats?.valides || 0})
+            </button>
+            <button
+              className={`btn ${
+                filtreStatut === "desactive"
+                  ? "btn-danger"
+                  : "btn-outline-danger"
+              }`}
+              onClick={() => setFiltreStatut("desactive")}
+            >
+              Désactivés ({stats?.desactives || 0})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. TABLEAU DES ARTICLES */}
+      <div className="card">
+        <div className="card-header">
+          <h5 className="mb-0">Gestion des Articles</h5>
+        </div>
+        <div className="card-body">
+          {articles.length === 0 ? (
+            <div className="text-center py-5">
+              <h4 className="text-muted">Aucun article trouvé</h4>
+              <p className="text-muted">
+                Aucun article ne correspond à vos critères de filtrage.
+              </p>
             </div>
           ) : (
             <div className="table-responsive">
-              <table className="table table-striped">
+              <table className="table table-hover">
                 <thead>
                   <tr>
                     <th>Titre</th>
                     <th>Auteur</th>
                     <th>Catégorie</th>
-                    <th>Date de soumission</th>
                     <th>Statut</th>
-                    <th>Actions</th>
+                    <th>Date</th>
+                    <th className="text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredArticles.map((article) => (
+                  {articles.map((article) => (
                     <tr key={article.id}>
                       <td>
-                        <div>
-                          <strong>{article.titre}</strong>
-                        </div>
-                        <div className="text-muted">
-                          {article.extrait_contenu}
-                        </div>
+                        <strong>{article.titre}</strong>
                       </td>
-                      <td>{article.auteur_nom}</td>
+                      <td>Dr. {article.auteur_nom}</td>
                       <td>
                         <span className="badge bg-secondary">
                           {article.categorie}
                         </span>
                       </td>
                       <td>
-                        {new Date(article.date_modification).toLocaleDateString(
-                          "fr-FR"
+                        {article.statut === "en_attente" && (
+                          <span className="badge bg-warning">
+                            ⏳ En attente
+                          </span>
+                        )}
+                        {article.statut === "valide" && (
+                          <span className="badge bg-success">✅ Validé</span>
+                        )}
+                        {article.statut === "desactive" && (
+                          <span className="badge bg-danger">🚫 Désactivé</span>
                         )}
                       </td>
                       <td>
-                        <div className="d-flex align-items-center">
-                          {getStatusBadge(article.statut)}
-                          {article.is_featured && (
-                            <span className="badge bg-warning ms-2">
-                              <FaStar /> À la Une
-                            </span>
-                          )}
-                        </div>
+                        {new Date(
+                          article.date_publication
+                        ).toLocaleDateString()}
                       </td>
-                      <td>
-                        <div className="btn-group" role="group">
+                      <td className="text-center">
+                        <div className="btn-group btn-group-sm">
+                          {/* Bouton Valider (si en attente) */}
+                          {article.statut === "en_attente" && (
+                            <button
+                              className="btn btn-success"
+                              onClick={() => handleValider(article.id)}
+                              title="Valider"
+                            >
+                              ✅
+                            </button>
+                          )}
+
+                          {/* Bouton Désactiver (si validé) */}
+                          {article.statut === "valide" && (
+                            <button
+                              className="btn btn-warning"
+                              onClick={() => handleDesactiver(article.id)}
+                              title="Désactiver"
+                            >
+                              🚫
+                            </button>
+                          )}
+
+                          {/* Bouton Réactiver (si désactivé) */}
+                          {article.statut === "desactive" && (
+                            <button
+                              className="btn btn-info"
+                              onClick={() => handleReactiver(article.id)}
+                              title="Réactiver"
+                            >
+                              🔄
+                            </button>
+                          )}
+
+                          {/* Bouton Supprimer (toujours disponible) */}
                           <button
-                            type="button"
-                            className="btn btn-success btn-sm me-1"
-                            onClick={() => handleValidate(article.id)}
-                            title="Valider"
-                          >
-                            <FaCheck />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm me-1"
-                            onClick={() => openRejectModal(article)}
-                            title="Refuser"
-                          >
-                            <FaTimes />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-dark btn-sm me-1"
-                            onClick={() => handleDeactivate(article.id)}
-                            title="Désactiver"
-                          >
-                            <FaBan />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline-danger btn-sm me-1"
-                            onClick={() => handleCancelArticle(article.id, article.titre)}
+                            className="btn btn-danger"
+                            onClick={() =>
+                              handleSupprimer(article.id, article.titre)
+                            }
                             title="Supprimer définitivement"
                           >
-                            <FaTrash />
+                            🗑️
                           </button>
-                          {article.statut === "valide" && (
-                            <>
-                              {article.is_featured ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-warning btn-sm"
-                                  onClick={() => handleUnfeature(article.id)}
-                                  title="Retirer de la une"
-                                >
-                                  <FaStar />
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-warning btn-sm"
-                                  onClick={() => handleFeature(article.id)}
-                                  title="Mettre en avant"
-                                >
-                                  <FaRegStar />
-                                </button>
-                              )}
-                            </>
-                          )}
+
+                          {/* Bouton Voir détails */}
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => handleVoirDetails(article)}
+                            title="Voir détails"
+                          >
+                            👁️
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -414,6 +399,7 @@ function ArticlesModeration() {
         <div
           className="modal show d-block"
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          tabIndex="-1"
         >
           <div className="modal-dialog">
             <div className="modal-content">

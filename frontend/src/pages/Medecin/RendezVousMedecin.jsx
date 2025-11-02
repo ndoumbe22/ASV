@@ -1,120 +1,278 @@
 import React, { useState, useEffect } from "react";
+import { rendezVousAPI } from '../../services/api';
+import { toast } from 'react-toastify';
 
 function RendezVousMedecin() {
   const [rendezVous, setRendezVous] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("tous");
 
-  useEffect(() => {
-    loadRendezVous();
-  }, [filter]);
+  // Filter appointments based on status and sort by date/time
+  const filterAndSortAppointments = (appointments) => {
+    let filtered = appointments;
+    
+    // Apply status filter
+    if (filter === 'en_attente') {
+      filtered = filtered.filter(rdv => rdv.statut === 'PENDING');
+    } else if (filter === 'confirmé') {
+      filtered = filtered.filter(rdv => rdv.statut === 'CONFIRMED');
+    } else if (filter === 'reporté') {
+      filtered = filtered.filter(rdv => rdv.statut === 'RESCHEDULED');
+    } else if (filter === 'annulé') {
+      filtered = filtered.filter(rdv => rdv.statut === 'CANCELLED');
+    }
+    // For 'tous', we show all appointments
+    
+    // Sort by date and time (closest future date first)
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.date_rdv || `${a.date}T${a.heure}`);
+      const dateB = new Date(b.date_rdv || `${b.date}T${b.heure}`);
+      return dateA - dateB;
+    });
+    
+    return filtered;
+  };
 
-  const loadRendezVous = async () => {
+  // Charger les demandes de rendez-vous
+  const chargerDemandes = async () => {
     try {
       setLoading(true);
-      // TODO: Implémenter l'API
-      // const data = await rendezVousService.getMedecinRendezVous(filter);
-      // setRendezVous(data);
-
-      setRendezVous([]);
+      console.log('📄 Chargement RDV médecin...', {filter});
+      
+      let rdvs = [];
+      
+      if (filter === 'en_attente') {
+        // Demandes PENDING uniquement
+        console.log('🔍 Appel mesDemandes()...');
+        const response = await rendezVousAPI.mesDemandes();
+        console.log('✅ Réponse mesDemandes:', response);
+        // The mesDemandes API returns an object with a 'demandes' property
+        rdvs = response.demandes || response.data || response || [];
+        
+      } else {
+        // TOUS les RDV du médecin
+        console.log('🔍 Appel mesRendezVousMedecin()...');
+        const response = await rendezVousAPI.mesRendezVousMedecin();
+        console.log('✅ Réponse mesRendezVousMedecin:', response);
+        
+        // The mesRendezVousMedecin API returns a direct array
+        rdvs = Array.isArray(response) ? response : (response.data || []);
+        
+        console.log('📊 RDV bruts récupérés:', rdvs.length);
+      }
+      
+      console.log('🎯 RDV finaux à afficher:', rdvs);
+      // Ensure we always set an array
+      setRendezVous(Array.isArray(rdvs) ? rdvs : []);
+      
     } catch (error) {
-      console.error("Erreur:", error);
+      console.error('❌ Erreur chargement RDV:', error);
+      console.error('❌ Détails:', error.response?.data);
+      toast.error('Erreur lors du chargement des rendez-vous: ' + (error.response?.data?.error || error.message));
+      // Always set an empty array on error
+      setRendezVous([]);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="d-flex justify-content-center p-5">
-        <div className="spinner-border text-primary"></div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    chargerDemandes();
+  }, [filter]);
+
+  // Confirmer un rendez-vous
+  const handleConfirmer = async (rdvId) => {
+    try {
+      console.log('✅ Confirmation RDV:', rdvId);
+      
+      await rendezVousAPI.confirmer(rdvId);
+      
+      toast.success('Rendez-vous confirmé avec succès');
+      
+      // Recharger la liste
+      chargerDemandes();
+      
+    } catch (error) {
+      console.error('❌ Erreur confirmation:', error);
+      toast.error('Erreur lors de la confirmation');
+    }
+  };
+
+  // Annuler un rendez-vous
+  const handleAnnuler = async (rdvId) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir annuler ce rendez-vous ?')) {
+      return;
+    }
+    
+    try {
+      console.log('❌ Annulation RDV:', rdvId);
+      
+      await rendezVousAPI.annuler(rdvId);
+      
+      toast.success('Rendez-vous annulé avec succès');
+      
+      // Recharger la liste
+      chargerDemandes();
+      
+    } catch (error) {
+      console.error('❌ Erreur annulation:', error);
+      toast.error('Erreur lors de l\'annulation');
+    }
+  };
 
   return (
-    <div className="container-fluid p-4">
-      <div className="row mb-4">
-        <div className="col-12">
-          <h2>
-            <i className="bi bi-calendar-check text-primary"></i> Mes Rendez-vous
-          </h2>
+    <div className="container mt-4">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h2 className="mb-0">Mes Rendez-vous</h2>
+          <button 
+            className="btn btn-outline-secondary btn-sm mt-2"
+            onClick={() => window.history.back()}
+          >
+            ← Retour
+          </button>
+        </div>
+        
+        {/* FILTRES */}
+        <div className="btn-group" role="group">
+          <button
+            className={`btn ${filter === 'en_attente' ? 'btn-primary' : 'btn-outline-primary'}`}
+            onClick={() => setFilter('en_attente')}
+          >
+            En attente ({rendezVous.filter(d => d.statut === 'PENDING').length})
+          </button>
+          <button
+            className={`btn ${filter === 'confirmé' ? 'btn-success' : 'btn-outline-success'}`}
+            onClick={() => setFilter('confirmé')}
+          >
+            Confirmés ({rendezVous.filter(d => d.statut === 'CONFIRMED').length})
+          </button>
+          <button
+            className={`btn ${filter === 'reporté' ? 'btn-warning' : 'btn-outline-warning'}`}
+            onClick={() => setFilter('reporté')}
+          >
+            Reportés ({rendezVous.filter(d => d.statut === 'RESCHEDULED').length})
+          </button>
+          <button
+            className={`btn ${filter === 'annulé' ? 'btn-danger' : 'btn-outline-danger'}`}
+            onClick={() => setFilter('annulé')}
+          >
+            Annulés ({rendezVous.filter(d => d.statut === 'CANCELLED').length})
+          </button>
+          <button
+            className={`btn ${filter === 'tous' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+            onClick={() => setFilter('tous')}
+          >
+            Tous ({rendezVous.length})
+          </button>
         </div>
       </div>
-
-      {/* Filtres */}
-      <div className="row mb-4">
-        <div className="col-12">
-          <div className="btn-group" role="group">
-            <button
-              className={`btn ${
-                filter === "tous" ? "btn-primary" : "btn-outline-primary"
-              }`}
-              onClick={() => setFilter("tous")}
-            >
-              Tous
-            </button>
-            <button
-              className={`btn ${
-                filter === "aujourdhui" ? "btn-primary" : "btn-outline-primary"
-              }`}
-              onClick={() => setFilter("aujourdhui")}
-            >
-              Aujourd'hui
-            </button>
-            <button
-              className={`btn ${
-                filter === "a_venir" ? "btn-primary" : "btn-outline-primary"
-              }`}
-              onClick={() => setFilter("a_venir")}
-            >
-              À venir
-            </button>
-            <button
-              className={`btn ${
-                filter === "passes" ? "btn-primary" : "btn-outline-primary"
-              }`}
-              onClick={() => setFilter("passes")}
-            >
-              Passés
-            </button>
+      
+      {/* LOADING */}
+      {loading && (
+        <div className="text-center py-4">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Chargement...</span>
           </div>
         </div>
-      </div>
-
-      {/* Liste */}
-      {rendezVous.length === 0 ? (
+      )}
+      
+      {/* LISTE DES RDV */}
+      {!loading && filterAndSortAppointments(rendezVous).length === 0 && (
         <div className="alert alert-info">
-          <i className="bi bi-info-circle"></i> Aucun rendez-vous pour cette période.
+          Aucun rendez-vous à afficher
         </div>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-hover">
-            <thead>
-              <tr>
-                <th>Patient</th>
-                <th>Date</th>
-                <th>Heure</th>
-                <th>Statut</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rendezVous.map((rdv) => (
-                <tr key={rdv.id}>
-                  <td>{rdv.patient}</td>
-                  <td>{rdv.date}</td>
-                  <td>{rdv.heure}</td>
-                  <td>
-                    <span className="badge bg-primary">{rdv.statut}</span>
-                  </td>
-                  <td>
-                    <button className="btn btn-sm btn-primary">Détails</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      )}
+      
+      {!loading && filterAndSortAppointments(rendezVous).length > 0 && (
+        <div className="row">
+          {filterAndSortAppointments(rendezVous).map((rdv) => (
+            <div key={rdv.numero || rdv.id} className="col-md-6 mb-3">
+              <div className="card">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <h5 className="card-title mb-0">
+                      {rdv.patient_nom || 'Patient'}
+                    </h5>
+                    <span className={`badge ${
+                      rdv.statut === 'PENDING' ? 'bg-warning' :
+                      rdv.statut === 'CONFIRMED' ? 'bg-success' :
+                      rdv.statut === 'RESCHEDULED' ? 'bg-warning' :
+                      rdv.statut === 'CANCELLED' ? 'bg-danger' :
+                      'bg-secondary'
+                    }`}>
+                      {rdv.statut === 'PENDING' ? 'En attente' :
+                       rdv.statut === 'CONFIRMED' ? 'Confirmé' :
+                       rdv.statut === 'RESCHEDULED' ? 'Reporté' :
+                       rdv.statut === 'CANCELLED' ? 'Annulé' :
+                       rdv.statut}
+                    </span>
+                  </div>
+                  
+                  <p className="card-text">
+                    <strong>📅 Date :</strong> {new Date(rdv.date_rdv || `${rdv.date}T${rdv.heure}`).toLocaleString('fr-FR', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                  
+                  <p className="card-text">
+                    <strong>📝 Motif :</strong> {rdv.motif_consultation || rdv.description || 'Non spécifié'}
+                  </p>
+                  
+                  <p className="card-text">
+                    <strong>🏥 Type :</strong> {
+                      rdv.type_consultation === 'teleconsultation' ? 'Téléconsultation' : 'Au cabinet'
+                    }
+                  </p>
+                  
+                  {/* ACTIONS */}
+                  {rdv.statut === 'PENDING' && (
+                    <div className="d-flex gap-2 mt-3">
+                      <button
+                        className="btn btn-success btn-sm flex-fill"
+                        onClick={() => handleConfirmer(rdv.numero || rdv.id)}
+                      >
+                        ✅ Confirmer
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm flex-fill"
+                        onClick={() => handleAnnuler(rdv.numero || rdv.id)}
+                      >
+                        ❌ Annuler
+                      </button>
+                    </div>
+                  )}
+                  
+                  {rdv.statut === 'CONFIRMED' && (
+                    <div className="mt-3">
+                      <button
+                        className="btn btn-outline-danger btn-sm w-100"
+                        onClick={() => handleAnnuler(rdv.numero || rdv.id)}
+                      >
+                        ❌ Annuler ce rendez-vous
+                      </button>
+                    </div>
+                  )}
+                  
+                  {rdv.statut === 'RESCHEDULED' && (
+                    <div className="mt-3">
+                      <button
+                        className="btn btn-success btn-sm w-100"
+                        onClick={() => handleConfirmer(rdv.numero || rdv.id)}
+                      >
+                        ✅ Confirmer le nouveau créneau
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
